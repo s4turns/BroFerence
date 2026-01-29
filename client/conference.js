@@ -14,18 +14,9 @@ class ConferenceClient {
         this.screenStream = null;
         this.isScreenSharing = false;
 
-        // ICE servers
-        this.iceServers = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                {
-                    urls: 'turn:localhost:3479',
-                    username: 'webrtc',
-                    credential: 'webrtc123'
-                }
-            ]
-        };
+        // ICE servers - will be set dynamically in initICEServers()
+        this.iceServers = null;
+        this.initICEServers();
 
         // UI state
         this.audioEnabled = true;
@@ -37,6 +28,29 @@ class ConferenceClient {
 
     generateId() {
         return 'client_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    initICEServers() {
+        // Dynamic ICE server configuration based on hostname
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+
+        // Use localhost for local development, actual hostname for production
+        const turnServer = isLocalhost ? 'localhost' : hostname;
+
+        this.iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                {
+                    urls: `turn:${turnServer}:3479`,
+                    username: 'webrtc',
+                    credential: 'webrtc123'
+                }
+            ]
+        };
+
+        console.log('ICE servers configured:', this.iceServers);
     }
 
     initUI() {
@@ -90,7 +104,16 @@ class ConferenceClient {
         return new Promise((resolve, reject) => {
             this.updateStatus('Connecting to server...', 'info');
 
-            this.ws = new WebSocket('wss://ts.interdo.me:8765');
+            // Dynamic WebSocket URL based on hostname
+            const hostname = window.location.hostname;
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+
+            // Use ws:// for localhost, wss:// for production
+            const protocol = isLocalhost ? 'ws' : 'wss';
+            const wsUrl = `${protocol}://${hostname}:8765`;
+
+            console.log(`Connecting to signaling server: ${wsUrl}`);
+            this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
