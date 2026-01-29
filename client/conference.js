@@ -456,11 +456,6 @@ class ConferenceClient {
         video.playsinline = true;
         video.srcObject = stream;
 
-        // Try to play, handling autoplay restrictions
-        video.play().catch(err => {
-            console.warn('Video autoplay failed, user interaction required:', err);
-        });
-
         const label = document.createElement('div');
         label.className = 'video-label';
         label.textContent = username;
@@ -468,6 +463,11 @@ class ConferenceClient {
         container.appendChild(video);
         container.appendChild(label);
         this.videoGrid.appendChild(container);
+
+        // Try to play after adding to DOM
+        video.play().catch(err => {
+            console.warn('Video autoplay failed, user interaction required:', err);
+        });
 
         // Start monitoring for speaking indicator
         this.monitorAudioLevel(stream, container);
