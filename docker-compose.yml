@@ -40,6 +40,9 @@ services:
     ports:
       - "8080:80"
       - "443:443"
+    volumes:
+      - ./ssl/fullchain.pem:/etc/ssl/certs/fullchain.pem:ro
+      - ./ssl/privkey.pem:/etc/ssl/private/privkey.pem:ro
     restart: unless-stopped
     logging:
       driver: "json-file"

@@ -3,9 +3,7 @@ FROM nginx:alpine
 # Copy client files directly into the image
 COPY client/ /usr/share/nginx/html/
 
-# Copy SSL certificates
-COPY ssl/fullchain.pem /etc/ssl/certs/fullchain.pem
-COPY ssl/privkey.pem /etc/ssl/private/privkey.pem
+# SSL certificates will be mounted as volumes at runtime
 
 # Set app.html as the default index with HTTP and HTTPS support
 RUN echo 'server { \
