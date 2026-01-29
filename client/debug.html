@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Connection Debug</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+        }
+        .section {
+            background: #16213e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .good { color: #27ae60; }
+        .bad { color: #e74c3c; }
+        .warning { color: #f39c12; }
+        button {
+            background: #00d4ff;
+            color: #000;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        pre {
+            background: #0f3460;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 WebRTC Debug Tool</h1>
+
+    <div class="section">
+        <h2>1. Media Permissions</h2>
+        <button onclick="testMedia()">Test Camera/Mic</button>
+        <div id="mediaStatus"></div>
+        <video id="testVideo" autoplay muted playsinline style="width: 320px; margin-top: 10px;"></video>
+    </div>
+
+    <div class="section">
+        <h2>2. WebSocket Connection</h2>
+        <button onclick="testWebSocket()">Test WebSocket</button>
+        <div id="wsStatus"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. STUN/TURN Server</h2>
+        <button onclick="testICE()">Test ICE Candidates</button>
+        <div id="iceStatus"></div>
+        <pre id="iceCandidates"></pre>
+    </div>
+
+    <div class="section">
+        <h2>4. Peer Connection Test</h2>
+        <button onclick="testPeerConnection()">Test Local Peer Connection</button>
+        <div id="peerStatus"></div>
+        <pre id="peerLog"></pre>
+    </div>
+
+    <script>
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+        const wsProtocol = isLocalhost ? 'ws' : 'wss';
+        const wsUrl = `${wsProtocol}://${hostname}:8765`;
+
+        async function testMedia() {
+            const status = document.getElementById('mediaStatus');
+            const video = document.getElementById('testVideo');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                video.srcObject = stream;
+                status.innerHTML = '<span class="good">✅ Camera and microphone access granted</span>';
+                status.innerHTML += `<br>Video tracks: ${stream.getVideoTracks().length}`;
+                status.innerHTML += `<br>Audio tracks: ${stream.getAudioTracks().length}`;
+            } catch (error) {
+                status.innerHTML = `<span class="bad">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        async function testWebSocket() {
+            const status = document.getElementById('wsStatus');
+            status.innerHTML = `Testing connection to ${wsUrl}...`;
+
+            try {
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    status.innerHTML = `<span class="good">✅ WebSocket connected to ${wsUrl}</span>`;
+                    ws.close();
+                };
+
+                ws.onerror = (error) => {
+                    status.innerHTML = `<span class="bad">❌ WebSocket failed to connect</span>`;
+                };
+
+                ws.onclose = () => {
+                    status.innerHTML += '<br>Connection closed';
+                };
+            } catch (error) {
+                status.innerHTML = `<span class="bad">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        async function testICE() {
+            const status = document.getElementById('iceStatus');
+            const candidatesDiv = document.getElementById('iceCandidates');
+
+            status.innerHTML = 'Gathering ICE candidates...';
+            candidatesDiv.textContent = '';
+
+            const turnServer = isLocalhost ? 'localhost' : hostname;
+            const config = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    {
+                        urls: `turn:${turnServer}:3479`,
+                        username: 'webrtc',
+                        credential: 'webrtc123'
+                    }
+                ]
+            };
+
+            const pc = new RTCPeerConnection(config);
+            const candidates = [];
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    candidates.push(event.candidate);
+                    candidatesDiv.textContent = JSON.stringify(candidates, null, 2);
+                } else {
+                    // Gathering complete
+                    const hasHost = candidates.some(c => c.type === 'host');
+                    const hasSrflx = candidates.some(c => c.type === 'srflx');
+                    const hasRelay = candidates.some(c => c.type === 'relay');
+
+                    status.innerHTML = `
+                        <span class="${hasHost ? 'good' : 'bad'}">${hasHost ? '✅' : '❌'} Host candidates</span><br>
+                        <span class="${hasSrflx ? 'good' : 'warning'}">${hasSrflx ? '✅' : '⚠️'} STUN (srflx) candidates</span><br>
+                        <span class="${hasRelay ? 'good' : 'bad'}">${hasRelay ? '✅' : '❌'} TURN (relay) candidates</span><br>
+                        Total: ${candidates.length} candidates
+                    `;
+                }
+            };
+
+            pc.onicegatheringstatechange = () => {
+                console.log('ICE gathering state:', pc.iceGatheringState);
+            };
+
+            // Create a dummy offer to trigger ICE gathering
+            pc.createDataChannel('test');
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+        }
+
+        async function testPeerConnection() {
+            const status = document.getElementById('peerStatus');
+            const log = document.getElementById('peerLog');
+
+            status.innerHTML = 'Creating local peer connection...';
+            log.textContent = '';
+
+            const turnServer = isLocalhost ? 'localhost' : hostname;
+            const config = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    {
+                        urls: `turn:${turnServer}:3479`,
+                        username: 'webrtc',
+                        credential: 'webrtc123'
+                    }
+                ]
+            };
+
+            const pc1 = new RTCPeerConnection(config);
+            const pc2 = new RTCPeerConnection(config);
+
+            const logs = [];
+            function addLog(msg) {
+                logs.push(`${new Date().toISOString()}: ${msg}`);
+                log.textContent = logs.join('\n');
+            }
+
+            pc1.onicecandidate = e => {
+                if (e.candidate) {
+                    addLog(`PC1 ICE: ${e.candidate.type} ${e.candidate.address || ''}`);
+                    pc2.addIceCandidate(e.candidate);
+                }
+            };
+
+            pc2.onicecandidate = e => {
+                if (e.candidate) {
+                    addLog(`PC2 ICE: ${e.candidate.type} ${e.candidate.address || ''}`);
+                    pc1.addIceCandidate(e.candidate);
+                }
+            };
+
+            pc1.onconnectionstatechange = () => {
+                addLog(`PC1 connection state: ${pc1.connectionState}`);
+                status.innerHTML = `Connection State: ${pc1.connectionState}`;
+            };
+
+            pc2.onconnectionstatechange = () => {
+                addLog(`PC2 connection state: ${pc2.connectionState}`);
+            };
+
+            // Add media
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                stream.getTracks().forEach(track => {
+                    pc1.addTrack(track, stream);
+                    addLog(`Added ${track.kind} track to PC1`);
+                });
+
+                pc2.ontrack = (e) => {
+                    addLog(`PC2 received ${e.track.kind} track`);
+                };
+
+                const offer = await pc1.createOffer();
+                addLog('PC1 created offer');
+
+                await pc1.setLocalDescription(offer);
+                addLog('PC1 set local description');
+
+                await pc2.setRemoteDescription(offer);
+                addLog('PC2 set remote description');
+
+                const answer = await pc2.createAnswer();
+                addLog('PC2 created answer');
+
+                await pc2.setLocalDescription(answer);
+                addLog('PC2 set local description');
+
+                await pc1.setRemoteDescription(answer);
+                addLog('PC1 set remote description');
+
+                addLog('Peer connection test complete');
+
+            } catch (error) {
+                addLog(`ERROR: ${error.message}`);
+                status.innerHTML = `<span class="bad">❌ Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>
