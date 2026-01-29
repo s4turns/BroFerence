@@ -1,7 +1,5 @@
 # WebRTC Video Chat Server
 
-<img width="2914" height="1453" alt="image" src="https://github.com/user-attachments/assets/e39f2c7d-bb93-4d83-8c91-4570c6e88a0f" />
-
 A complete WebRTC video chat application with Python signaling server and local TURN server.
 
 ## Components
