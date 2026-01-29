@@ -232,9 +232,17 @@ class ConferenceClient {
         if (!this.localStream) {
             try {
                 this.localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
+                console.log('Audio enhancements enabled: echo cancellation, noise suppression, auto gain');
                 this.localVideo.srcObject = this.localStream;
 
                 // Start monitoring for speaking indicator
