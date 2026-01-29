@@ -96,10 +96,14 @@ body::before {
 }
 
 .room-info span {
-    padding: 8px 16px;
+    padding: 14px 28px;
     background: var(--darker);
-    border: 1px solid var(--secondary);
+    border: 2px solid var(--secondary);
     font-family: 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
 }
 
 /* Join Screen */
