@@ -90,9 +90,7 @@ class ConferenceClient {
         return new Promise((resolve, reject) => {
             this.updateStatus('Connecting to server...', 'info');
 
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
-            this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket('wss://ts.interdo.me:8765');
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
