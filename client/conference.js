@@ -295,7 +295,9 @@ class ConferenceClient {
 
         // Handle incoming tracks
         pc.ontrack = (event) => {
-            console.log('Received remote track from', peerId);
+            console.log('Received remote track from', peerId, 'kind:', event.track.kind);
+            console.log('Remote stream:', event.streams[0]);
+            console.log('Stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}: ${t.enabled}`));
             this.addRemoteVideo(peerId, peerUsername, event.streams[0]);
         };
 
@@ -399,6 +401,11 @@ class ConferenceClient {
         video.autoplay = true;
         video.playsinline = true;
         video.srcObject = stream;
+
+        // Try to play, handling autoplay restrictions
+        video.play().catch(err => {
+            console.warn('Video autoplay failed, user interaction required:', err);
+        });
 
         const label = document.createElement('div');
         label.className = 'video-label';
