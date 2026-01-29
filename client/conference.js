@@ -233,6 +233,10 @@ class ConferenceClient {
                     audio: true
                 });
                 this.localVideo.srcObject = this.localStream;
+
+                // Start monitoring for speaking indicator
+                this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
+
                 console.log('Got local stream');
             } catch (error) {
                 console.error('Error accessing media devices:', error);
@@ -241,6 +245,45 @@ class ConferenceClient {
             }
         }
         return this.localStream;
+    }
+
+    monitorAudioLevel(stream, containerElement) {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioSource = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            audioSource.connect(analyser);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            const checkAudioLevel = () => {
+                analyser.getByteFrequencyData(dataArray);
+
+                // Calculate average volume
+                let sum = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    sum += dataArray[i];
+                }
+                const average = sum / bufferLength;
+
+                // Threshold for "speaking" (adjust as needed)
+                const SPEAKING_THRESHOLD = 20;
+
+                if (average > SPEAKING_THRESHOLD) {
+                    containerElement.classList.add('speaking');
+                } else {
+                    containerElement.classList.remove('speaking');
+                }
+
+                requestAnimationFrame(checkAudioLevel);
+            };
+
+            checkAudioLevel();
+        } catch (error) {
+            console.warn('Could not monitor audio level:', error);
+        }
     }
 
     async joinRoom() {
@@ -414,6 +457,9 @@ class ConferenceClient {
         container.appendChild(video);
         container.appendChild(label);
         this.videoGrid.appendChild(container);
+
+        // Start monitoring for speaking indicator
+        this.monitorAudioLevel(stream, container);
 
         this.updateRoomInfo(this.peerConnections.size + 1);
     }

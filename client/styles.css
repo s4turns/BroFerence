@@ -64,23 +64,12 @@ body::before {
     background: var(--darker);
     padding: 16px 32px;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     box-shadow: 0 2px 0 var(--primary);
     border-bottom: 2px solid var(--primary);
     position: relative;
     z-index: 100;
-}
-
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.logo-icon {
-    font-size: 32px;
-    filter: drop-shadow(var(--glow));
 }
 
 .header h1 {
@@ -100,6 +89,8 @@ body::before {
     color: var(--secondary);
     font-weight: 500;
     text-shadow: 0 0 5px var(--secondary);
+    position: absolute;
+    right: 32px;
 }
 
 .room-info span {
@@ -303,6 +294,21 @@ body::before {
 .video-container:hover {
     border-color: var(--secondary);
     box-shadow: 0 0 10px var(--secondary);
+}
+
+.video-container.speaking {
+    border-color: var(--secondary);
+    box-shadow: 0 0 20px var(--secondary), 0 0 40px var(--secondary), inset 0 0 10px rgba(0, 255, 255, 0.3);
+    animation: speakingPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes speakingPulse {
+    0% {
+        box-shadow: 0 0 15px var(--secondary), 0 0 30px var(--secondary);
+    }
+    100% {
+        box-shadow: 0 0 25px var(--secondary), 0 0 50px var(--secondary);
+    }
 }
 
 .video-container video {
@@ -535,7 +541,7 @@ body::before {
 /* Bottom Controls */
 .bottom-controls {
     position: absolute;
-    bottom: 24px;
+    bottom: 80px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
