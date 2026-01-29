@@ -168,6 +168,9 @@ class ConferenceClient {
                 this.joinScreen.style.display = 'none';
                 this.conferenceScreen.style.display = 'flex';
 
+                // Show control buttons in header
+                document.getElementById('bottomControls').style.display = 'flex';
+
                 // Create peer connections for existing users
                 for (const user of message.users) {
                     await this.createPeerConnection(user.id, user.username, true);
@@ -643,6 +646,7 @@ class ConferenceClient {
         this.joinScreen.style.display = 'flex';
         this.conferenceScreen.style.display = 'none';
         document.getElementById('roomInfo').style.display = 'none';
+        document.getElementById('bottomControls').style.display = 'none';
         this.chatMessages.innerHTML = '';
 
         this.updateStatus('Disconnected', 'error');
