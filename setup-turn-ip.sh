@@ -33,13 +33,20 @@ echo "Updating $CONFIG_FILE..."
 cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
 
 # Update the configuration
+# Replace any existing external-ip line
 sed -i "s/^external-ip=.*/external-ip=$PUBLIC_IP/" "$CONFIG_FILE"
 sed -i "s/^# external-ip=.*/external-ip=$PUBLIC_IP/" "$CONFIG_FILE"
-sed -i "s/^relay-ip=127.0.0.1/# relay-ip=127.0.0.1/" "$CONFIG_FILE"
 
-# If external-ip doesn't exist, add it
+# Make sure relay-ip is commented out or removed
+sed -i "s/^relay-ip=127.0.0.1/# relay-ip=127.0.0.1/" "$CONFIG_FILE"
+sed -i "s/^relay-ip=0.0.0.0/# relay-ip=0.0.0.0/" "$CONFIG_FILE"
+
+# Replace placeholder
+sed -i "s/YOUR_PUBLIC_IP_HERE/$PUBLIC_IP/" "$CONFIG_FILE"
+
+# If external-ip still doesn't exist, add it after the external-ip comment
 if ! grep -q "^external-ip=" "$CONFIG_FILE"; then
-    sed -i "/^# External IP/a external-ip=$PUBLIC_IP" "$CONFIG_FILE"
+    sed -i "/^# external-ip=/a external-ip=$PUBLIC_IP" "$CONFIG_FILE"
 fi
 
 echo ""
