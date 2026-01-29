@@ -18,7 +18,7 @@ class WebRTCClient {
                 { urls: 'stun:stun1.l.google.com:19302' },
                 // Local TURN server (configure after setup)
                 {
-                    urls: 'turn:localhost:3478',
+                    urls: 'turn:localhost:3479',
                     username: 'webrtc',
                     credential: 'webrtc123'
                 }
