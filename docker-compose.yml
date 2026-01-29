@@ -4,7 +4,10 @@ services:
   # TURN Server (Coturn)
   turn:
     image: coturn/coturn:latest
-    network_mode: host
+    ports:
+      - "3479:3479"
+      - "3479:3479/udp"
+      - "49152-49200:49152-49200/udp"
     volumes:
       - type: bind
         source: ./config/turnserver.conf
