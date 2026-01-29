@@ -543,7 +543,7 @@ body::before {
 /* Bottom Controls */
 .bottom-controls {
     position: absolute;
-    right: 16px;
+    left: 16px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
