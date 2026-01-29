@@ -7,6 +7,7 @@ Supports multiple users per room, password protection, and IRC chat bridge
 import asyncio
 import json
 import logging
+import ssl
 from typing import Dict, Set, Optional
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -342,10 +343,14 @@ async def main():
     host = "0.0.0.0"
     port = 8765
 
-    logger.info(f"Starting enhanced WebRTC signaling server on ws://{host}:{port}")
+    # SSL context for WSS
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
+
+    logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
     logger.info(f"Features: Multi-participant, IRC bridge, Password protection")
 
-    async with websockets.serve(handler, host, port):
+    async with websockets.serve(handler, host, port, ssl=ssl_context):
         await asyncio.Future()  # Run forever
 
 
