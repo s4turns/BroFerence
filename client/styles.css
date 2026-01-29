@@ -90,7 +90,7 @@ body::before {
     font-weight: 500;
     text-shadow: 0 0 5px var(--secondary);
     position: absolute;
-    right: 32px;
+    right: 280px;
     top: 50%;
     transform: translateY(-50%);
 }
@@ -542,16 +542,17 @@ body::before {
 
 /* Bottom Controls */
 .bottom-controls {
-    position: fixed;
-    top: 80px;
-    right: 20px;
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     gap: 12px;
-    z-index: 99;
-    background: rgba(0, 0, 0, 0.95);
-    border: 2px solid var(--primary);
-    padding: 12px 20px;
-    box-shadow: var(--glow-strong);
+    z-index: 101;
+    background: transparent;
+    border: none;
+    padding: 0;
+    box-shadow: none;
 }
 
 /* Status Bar */
