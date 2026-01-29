@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Docker
+.env
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+/var/log/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.bak
+.cache/
+
+# Local configuration (if you add any)
+config.local.yml
+.env.local

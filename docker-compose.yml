@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # TURN Server (Coturn)
+  turn:
+    image: coturn/coturn:latest
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./config/turnserver.conf
+        target: /etc/coturn/turnserver.conf
+        read_only: true
+    command: -c /etc/coturn/turnserver.conf
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # WebRTC Signaling Server
+  signaling:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Web Client Server
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,19 @@
+{
+  "name": "webrtc-server",
+  "version": "1.0.0",
+  "description": "WebRTC video chat server with TURN support",
+  "scripts": {
+    "start": "pm2 start ecosystem.config.js",
+    "stop": "pm2 stop ecosystem.config.js",
+    "restart": "pm2 restart ecosystem.config.js",
+    "logs": "pm2 logs",
+    "status": "pm2 status",
+    "monit": "pm2 monit",
+    "startup": "pm2 startup",
+    "save": "pm2 save",
+    "install-pm2": "npm install -g pm2"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

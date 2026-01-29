@@ -1,0 +1,13 @@
+[Unit]
+Description=Coturn TURN Server
+After=network.target
+
+[Service]
+Type=simple
+User=turnserver
+ExecStart=/usr/bin/turnserver -c /path/to/webrtc-server/config/turnserver.conf
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=WebRTC Signaling Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/webrtc-server/server
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/python3 signaling_server.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

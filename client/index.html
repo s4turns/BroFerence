@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Video Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #00d4ff;
+        }
+
+        .controls {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        input, button {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            max-width: 300px;
+            background: #0f3460;
+            color: #eee;
+        }
+
+        button {
+            background: #00d4ff;
+            color: #000;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 10px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #00b4d8;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .video-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .video-box {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px;
+            position: relative;
+        }
+
+        .video-label {
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #00d4ff;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+            display: block;
+        }
+
+        #status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .status-disconnected { background: #e74c3c; }
+        .status-connecting { background: #f39c12; }
+        .status-connected { background: #27ae60; }
+
+        .users-list {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-item {
+            padding: 8px;
+            background: #0f3460;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .call-button {
+            padding: 5px 15px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebRTC Video Chat</h1>
+
+        <div id="status" class="status-disconnected">Disconnected</div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="roomId">Room ID:</label>
+                <input type="text" id="roomId" placeholder="Enter room name" value="room1">
+            </div>
+
+            <div>
+                <button id="joinBtn">Join Room</button>
+                <button id="leaveBtn" disabled>Leave Room</button>
+                <button id="toggleAudioBtn" disabled>Mute Audio</button>
+                <button id="toggleVideoBtn" disabled>Stop Video</button>
+            </div>
+        </div>
+
+        <div class="users-list" id="usersList" style="display:none;">
+            <h3>Users in Room:</h3>
+            <div id="usersContainer"></div>
+        </div>
+
+        <div class="video-container">
+            <div class="video-box">
+                <div class="video-label">Local Video</div>
+                <video id="localVideo" autoplay muted playsinline></video>
+            </div>
+
+            <div class="video-box">
+                <div class="video-label">Remote Video</div>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+        </div>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>

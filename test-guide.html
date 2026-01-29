@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Testing Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .step {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        .step-number {
+            display: inline-block;
+            background: #00d4ff;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-right: 10px;
+        }
+        .important {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        button {
+            background: #00d4ff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #00b4d8;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎥 WebRTC Video Chat - Testing Guide</h1>
+
+    <div class="step">
+        <h2><span class="step-number">1</span>Open First Window</h2>
+        <p>Click this button to open the first chat window:</p>
+        <button onclick="window.open('http://localhost:8080', 'window1', 'width=800,height=900')">
+            Open Window 1
+        </button>
+
+        <div class="important">
+            <strong>⚠️ In Window 1:</strong>
+            <ol>
+                <li>Enter room name: <code>room1</code></li>
+                <li>Click "Join Room"</li>
+                <li>Click "Allow" when prompted for camera/microphone</li>
+                <li><strong>KEEP WINDOW OPEN</strong></li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">2</span>Open Second Window</h2>
+        <p>After Window 1 is in the room, click this button:</p>
+        <button onclick="window.open('http://localhost:8080', 'window2', 'width=800,height=900')">
+            Open Window 2
+        </button>
+
+        <div class="important">
+            <strong>⚠️ In Window 2:</strong>
+            <ol>
+                <li>Enter the SAME room name: <code>room1</code></li>
+                <li>Click "Join Room"</li>
+                <li>Click "Allow" when prompted for camera/microphone</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">3</span>Start the Call</h2>
+
+        <div class="success">
+            <strong>✅ You should now see:</strong>
+            <ul>
+                <li>Both windows show "In room: room1"</li>
+                <li>"Users in Room" section appears</li>
+                <li>One user listed with a "Call" button</li>
+            </ul>
+        </div>
+
+        <p><strong>In Window 1:</strong> Click the <code>Call</code> button next to the user</p>
+
+        <div class="success">
+            <strong>✅ Success indicators:</strong>
+            <ul>
+                <li>Remote video appears in both windows</li>
+                <li>You see yourself in "Local Video"</li>
+                <li>You see the other window in "Remote Video"</li>
+                <li>Browser console shows WebRTC connection logs</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="step">
+        <h2>🐛 Troubleshooting</h2>
+
+        <h3>No remote video?</h3>
+        <ul>
+            <li><strong>Check both windows are in the same room</strong> - Room name must match exactly</li>
+            <li><strong>Press F12</strong> in browser → Console tab → Look for errors</li>
+            <li><strong>Check "Users in Room"</strong> appears in both windows</li>
+            <li><strong>Did you click "Call"?</strong> The connection doesn't start automatically</li>
+        </ul>
+
+        <h3>Can't join room?</h3>
+        <ul>
+            <li>Check status shows "Connected" before joining room</li>
+            <li>Refresh the page and try again</li>
+            <li>Check signaling server is running: <code>docker compose ps</code></li>
+        </ul>
+
+        <h3>Camera/mic not working?</h3>
+        <ul>
+            <li>Check browser permissions (click lock icon in address bar)</li>
+            <li>Try a different browser (Chrome/Edge recommended)</li>
+            <li>Make sure camera/mic aren't being used by another app</li>
+        </ul>
+
+        <h3>View Server Logs</h3>
+        <p>Open command prompt and run:</p>
+        <code style="background: #f0f0f0; padding: 10px; display: block; margin: 10px 0;">
+            cd "G:\My Drive\vibe\webrtc-server"<br>
+            docker compose logs -f
+        </code>
+        <p>You should see messages about users joining rooms and WebRTC signaling</p>
+    </div>
+
+    <div class="step">
+        <h2>🎮 Quick Test Buttons</h2>
+        <button onclick="openBoth()">Open Both Windows at Once</button>
+        <button onclick="window.open('http://localhost:8080')">Open New Window</button>
+
+        <script>
+            function openBoth() {
+                setTimeout(() => {
+                    window.open('http://localhost:8080', 'window1', 'width=800,height=900,left=50,top=50');
+                }, 100);
+                setTimeout(() => {
+                    window.open('http://localhost:8080', 'window2', 'width=800,height=900,left=900,top=50');
+                }, 500);
+                alert('Two windows will open. Join BOTH to room "room1" then click Call in one window.');
+            }
+        </script>
+    </div>
+</body>
+</html>

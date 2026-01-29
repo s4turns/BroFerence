@@ -1,0 +1,14 @@
+[Unit]
+Description=WebRTC Web Client Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/webrtc-server/client
+ExecStart=/usr/bin/python3 -m http.server 8080
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

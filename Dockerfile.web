@@ -1,0 +1,8 @@
+FROM nginx:alpine
+
+# Copy client files directly into the image
+COPY client/ /usr/share/nginx/html/
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
