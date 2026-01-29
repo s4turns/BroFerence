@@ -7,6 +7,7 @@ Handles signaling between peers for WebRTC connections
 import asyncio
 import json
 import logging
+import ssl
 from typing import Dict, Set
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -199,9 +200,13 @@ async def main():
     host = "0.0.0.0"
     port = 8765
 
-    logger.info(f"Starting WebRTC signaling server on ws://{host}:{port}")
+    # SSL context for WSS
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
 
-    async with websockets.serve(handler, host, port):
+    logger.info(f"Starting WebRTC signaling server on wss://{host}:{port}")
+
+    async with websockets.serve(handler, host, port, ssl=ssl_context):
         await asyncio.Future()  # Run forever
 
 
