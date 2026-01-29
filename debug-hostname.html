@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Hostname Debug</title>
+</head>
+<body>
+    <h1>Hostname Detection Debug</h1>
+    <div id="info"></div>
+    <script>
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+        const protocol = isLocalhost ? 'ws' : 'wss';
+        const wsUrl = `${protocol}://${hostname}:8765`;
+
+        const info = document.getElementById('info');
+        info.innerHTML = `
+            <p><strong>window.location.hostname:</strong> ${hostname}</p>
+            <p><strong>window.location.href:</strong> ${window.location.href}</p>
+            <p><strong>isLocalhost:</strong> ${isLocalhost}</p>
+            <p><strong>WebSocket URL would be:</strong> ${wsUrl}</p>
+            <p><strong>Protocol (ws/wss):</strong> ${protocol}</p>
+        `;
+
+        console.log('Hostname:', hostname);
+        console.log('Full location:', window.location);
+        console.log('WebSocket URL:', wsUrl);
+    </script>
+</body>
+</html>
