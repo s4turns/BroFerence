@@ -4,8 +4,8 @@ FROM nginx:alpine
 COPY client/ /usr/share/nginx/html/
 
 # Copy SSL certificates
-COPY ssl/nginx-selfsigned.crt /etc/ssl/certs/nginx-selfsigned.crt
-COPY ssl/nginx-selfsigned.key /etc/ssl/private/nginx-selfsigned.key
+COPY ssl/fullchain.pem /etc/ssl/certs/fullchain.pem
+COPY ssl/privkey.pem /etc/ssl/private/privkey.pem
 
 # Set app.html as the default index with HTTP and HTTPS support
 RUN echo 'server { \
@@ -22,8 +22,8 @@ server { \
     server_name localhost; \
     root /usr/share/nginx/html; \
     index app.html index.html; \
-    ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt; \
-    ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key; \
+    ssl_certificate /etc/ssl/certs/fullchain.pem; \
+    ssl_certificate_key /etc/ssl/private/privkey.pem; \
     ssl_protocols TLSv1.2 TLSv1.3; \
     ssl_ciphers HIGH:!aNULL:!MD5; \
     location / { \
