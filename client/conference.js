@@ -45,7 +45,7 @@ class ConferenceClient {
                 {
                     urls: `turn:${turnServer}:3479`,
                     username: 'webrtc',
-                    credential: 'webrtc123'
+                    credential: 'vt*5JQ!InQ$qlKg'
                 }
             ]
         };
