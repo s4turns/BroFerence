@@ -42,3 +42,6 @@ npm-debug.log*
 # Local configuration (if you add any)
 config.local.yml
 .env.local
+
+# SSL certificates and keys
+ssl/
