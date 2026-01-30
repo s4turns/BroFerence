@@ -1429,6 +1429,12 @@ class ConferenceClient {
             this.screenStream = null;
         }
 
+        // Close WebSocket connection
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.close();
+            this.ws = null;
+        }
+
         this.localVideo.srcObject = null;
         this.currentRoom = null;
         this.isScreenSharing = false;
@@ -1439,7 +1445,6 @@ class ConferenceClient {
         document.getElementById('shareScreenBtn').classList.remove('active');
         document.getElementById('toggleAudioBtn').classList.remove('active');
         document.getElementById('toggleVideoBtn').classList.remove('active');
-        document.getElementById('fullscreenBtn').classList.remove('active');
 
         // Reset UI
         this.joinScreen.style.display = 'flex';
