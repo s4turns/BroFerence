@@ -1085,17 +1085,17 @@ class ConferenceClient {
     }
 
     toggleFullscreen() {
-        const conferenceScreen = this.conferenceScreen;
+        const videoGrid = this.videoGrid;
         const fullscreenBtn = document.getElementById('fullscreenBtn');
 
         if (!document.fullscreenElement) {
-            // Enter fullscreen
-            if (conferenceScreen.requestFullscreen) {
-                conferenceScreen.requestFullscreen();
-            } else if (conferenceScreen.webkitRequestFullscreen) {
-                conferenceScreen.webkitRequestFullscreen(); // Safari
-            } else if (conferenceScreen.msRequestFullscreen) {
-                conferenceScreen.msRequestFullscreen(); // IE11
+            // Enter fullscreen - just the video grid
+            if (videoGrid.requestFullscreen) {
+                videoGrid.requestFullscreen();
+            } else if (videoGrid.webkitRequestFullscreen) {
+                videoGrid.webkitRequestFullscreen(); // Safari
+            } else if (videoGrid.msRequestFullscreen) {
+                videoGrid.msRequestFullscreen(); // IE11
             }
             fullscreenBtn.classList.add('active');
             fullscreenBtn.querySelector('.icon').textContent = '⛶';
