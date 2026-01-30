@@ -7,9 +7,14 @@ class ConferenceClient {
         this.clientId = this.generateId();
         this.username = null;
         this.currentRoom = null;
+        this.isModerator = false;
+        this.moderatorId = null;
 
         // WebRTC - multiple peer connections
         this.peerConnections = new Map(); // Map<clientId, RTCPeerConnection>
+        this.pendingUsernames = new Map(); // Map<clientId, username> for users who haven't established peer connection yet
+        this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
+        this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.localStream = null;
         this.screenStream = null;
         this.isScreenSharing = false;
@@ -22,6 +27,12 @@ class ConferenceClient {
         this.audioEnabled = true;
         this.videoEnabled = true;
         this.chatVisible = false;
+        this.unreadMessageCount = 0;
+
+        // Prejoin state
+        this.prejoinStream = null;
+        this.prejoinAudioEnabled = true;
+        this.prejoinVideoEnabled = true;
 
         this.initUI();
     }
@@ -72,11 +83,19 @@ class ConferenceClient {
         this.chatInput = document.getElementById('chatInput');
 
         // Buttons
-        document.getElementById('joinBtn').addEventListener('click', () => this.joinRoom());
+        document.getElementById('joinBtn').addEventListener('click', () => this.showPrejoinScreen());
+        document.getElementById('changeNameBtn').addEventListener('click', () => this.changeName());
         document.getElementById('leaveRoomBtn').addEventListener('click', () => this.leaveRoom());
+
+        // Prejoin buttons
+        document.getElementById('prejoinToggleAudioBtn').addEventListener('click', () => this.prejoinToggleAudio());
+        document.getElementById('prejoinToggleVideoBtn').addEventListener('click', () => this.prejoinToggleVideo());
+        document.getElementById('prejoinBackBtn').addEventListener('click', () => this.hidePrejoinScreen());
+        document.getElementById('prejoinJoinBtn').addEventListener('click', () => this.joinRoom());
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn').addEventListener('click', () => this.toggleVideo());
         document.getElementById('shareScreenBtn').addEventListener('click', () => this.toggleScreenShare());
+        document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen());
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
@@ -162,6 +181,8 @@ class ConferenceClient {
         switch (message.type) {
             case 'room-joined':
                 this.currentRoom = message.roomId;
+                this.isModerator = message.isModerator || false;
+                this.moderatorId = message.moderatorId;
                 this.updateRoomInfo(message.users.length + 1);
 
                 // Show conference screen
@@ -181,9 +202,16 @@ class ConferenceClient {
                     document.getElementById('ircStatus').textContent =
                         `💬 Bridged to IRC: ${message.ircChannel}`;
                 }
+
+                // Show moderator status
+                if (this.isModerator) {
+                    this.addChatMessage('System', 'You are the moderator of this room', true);
+                }
                 break;
 
             case 'user-joined':
+                // Store the username for when we receive their offer
+                this.pendingUsernames.set(message.clientId, message.username);
                 this.addChatMessage('System', `${message.username} joined the room`, true);
                 // Wait for them to send offer
                 break;
@@ -192,6 +220,30 @@ class ConferenceClient {
                 this.removePeerConnection(message.clientId);
                 this.addChatMessage('System', `${message.username} left the room`, true);
                 this.updateRoomInfo(this.peerConnections.size + 1);
+                break;
+
+            case 'name-changed':
+                // Update the display name for a user
+                const peer = this.peerConnections.get(message.clientId);
+                if (peer) {
+                    peer.username = message.newUsername;
+                    // Update the video label
+                    const label = document.querySelector(`#video-${message.clientId} .video-label`);
+                    if (label) {
+                        if (message.clientId === this.moderatorId) {
+                            label.textContent = `👑 ${message.newUsername}`;
+                        } else {
+                            label.textContent = message.newUsername;
+                        }
+                    }
+                }
+                this.addChatMessage('System', `${message.oldUsername} changed their name to ${message.newUsername}`, true);
+                break;
+
+            case 'name-changed-by-moderator':
+                // Your name was changed by moderator
+                this.username = message.newUsername;
+                this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
 
             case 'offer':
@@ -222,6 +274,16 @@ class ConferenceClient {
                 }
                 break;
 
+            case 'kicked':
+                alert(message.message);
+                this.cleanup();
+                break;
+
+            case 'banned':
+                alert(message.message);
+                this.cleanup();
+                break;
+
             case 'error':
                 alert('Error: ' + message.message);
                 break;
@@ -231,18 +293,34 @@ class ConferenceClient {
     async getLocalStream() {
         if (!this.localStream) {
             try {
+                // Advanced audio constraints for crisp audio quality
                 this.localStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 }
                     },
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
+                        // Enable all browser-native noise suppression features
+                        echoCancellation: { ideal: true },
+                        noiseSuppression: { ideal: true },
+                        autoGainControl: { ideal: true },
+
+                        // Advanced audio settings for better quality
+                        sampleRate: { ideal: 48000 },  // Higher sample rate for better audio quality
+                        channelCount: { ideal: 1 },    // Mono for voice (reduces bandwidth)
+                        latency: { ideal: 0.01 },      // Low latency for real-time feel
+
+                        // Additional noise suppression settings (if supported by browser)
+                        googEchoCancellation: { ideal: true },
+                        googAutoGainControl: { ideal: true },
+                        googNoiseSuppression: { ideal: true },
+                        googHighpassFilter: { ideal: true },     // Remove low-frequency noise
+                        googTypingNoiseDetection: { ideal: true }, // Reduce keyboard noise
+                        googAudioMirroring: { ideal: false }
                     }
                 });
-                console.log('Audio enhancements enabled: echo cancellation, noise suppression, auto gain');
+                console.log('Advanced audio enhancements enabled: echo cancellation, noise suppression, auto gain, high-pass filter, typing noise detection');
                 this.localVideo.srcObject = this.localStream;
 
                 // Start monitoring for speaking indicator
@@ -297,11 +375,9 @@ class ConferenceClient {
         }
     }
 
-    async joinRoom() {
+    async showPrejoinScreen() {
         const username = this.usernameInput.value.trim();
         const roomId = this.roomInput.value.trim();
-        const password = this.passwordInput.value.trim() || null;
-        const ircChannel = this.ircChannelInput.value.trim() || null;
 
         if (!username || !roomId) {
             alert('Please enter your name and room name');
@@ -310,14 +386,110 @@ class ConferenceClient {
 
         this.username = username;
 
+        // Show prejoin screen
+        document.getElementById('joinScreen').style.display = 'none';
+        document.getElementById('prejoinScreen').style.display = 'flex';
+
+        // Get media for preview
         try {
+            // Use same advanced audio constraints as main stream
+            this.prejoinStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                },
+                audio: {
+                    echoCancellation: { ideal: true },
+                    noiseSuppression: { ideal: true },
+                    autoGainControl: { ideal: true },
+                    sampleRate: { ideal: 48000 },
+                    channelCount: { ideal: 1 },
+                    latency: { ideal: 0.01 },
+                    googEchoCancellation: { ideal: true },
+                    googAutoGainControl: { ideal: true },
+                    googNoiseSuppression: { ideal: true },
+                    googHighpassFilter: { ideal: true },
+                    googTypingNoiseDetection: { ideal: true },
+                    googAudioMirroring: { ideal: false }
+                }
+            });
+
+            document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
+        } catch (error) {
+            console.error('Error accessing media devices:', error);
+            alert('Could not access camera/microphone. You can still join but others will not see or hear you.');
+        }
+    }
+
+    hidePrejoinScreen() {
+        // Stop prejoin stream
+        if (this.prejoinStream) {
+            this.prejoinStream.getTracks().forEach(track => track.stop());
+            this.prejoinStream = null;
+        }
+
+        // Show join screen
+        document.getElementById('prejoinScreen').style.display = 'none';
+        document.getElementById('joinScreen').style.display = 'flex';
+    }
+
+    prejoinToggleAudio() {
+        if (this.prejoinStream) {
+            this.prejoinAudioEnabled = !this.prejoinAudioEnabled;
+            this.prejoinStream.getAudioTracks().forEach(track => {
+                track.enabled = this.prejoinAudioEnabled;
+            });
+
+            const btn = document.getElementById('prejoinToggleAudioBtn');
+            btn.classList.toggle('active', !this.prejoinAudioEnabled);
+            btn.querySelector('.icon').textContent = this.prejoinAudioEnabled ? '🎤' : '🔇';
+        }
+    }
+
+    prejoinToggleVideo() {
+        if (this.prejoinStream) {
+            this.prejoinVideoEnabled = !this.prejoinVideoEnabled;
+            this.prejoinStream.getVideoTracks().forEach(track => {
+                track.enabled = this.prejoinVideoEnabled;
+            });
+
+            const btn = document.getElementById('prejoinToggleVideoBtn');
+            btn.classList.toggle('active', !this.prejoinVideoEnabled);
+            btn.querySelector('.icon').textContent = this.prejoinVideoEnabled ? '📹' : '📷';
+        }
+    }
+
+    async joinRoom() {
+        const roomId = this.roomInput.value.trim();
+        const password = this.passwordInput.value.trim() || null;
+        const ircChannel = this.ircChannelInput.value.trim() || null;
+
+        try {
+            // Hide prejoin screen
+            document.getElementById('prejoinScreen').style.display = 'none';
+
             // Connect to signaling server
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
                 await this.connectSignalingServer();
             }
 
-            // Get local media
-            await this.getLocalStream();
+            // Use prejoin stream if available, otherwise get new stream
+            if (this.prejoinStream) {
+                this.localStream = this.prejoinStream;
+                this.audioEnabled = this.prejoinAudioEnabled;
+                this.videoEnabled = this.prejoinVideoEnabled;
+                this.localVideo.srcObject = this.localStream;
+
+                // Start monitoring for speaking indicator
+                this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
+
+                // Clear prejoin stream reference (now it's localStream)
+                this.prejoinStream = null;
+            } else {
+                // Get local media if not already obtained in prejoin
+                await this.getLocalStream();
+            }
 
             // Create or join room
             this.sendMessage({
@@ -342,9 +514,29 @@ class ConferenceClient {
             username: peerUsername
         });
 
-        // Add local stream tracks
+        // Add local stream tracks with optimized RTP parameters
         this.localStream.getTracks().forEach(track => {
-            pc.addTrack(track, this.localStream);
+            const sender = pc.addTrack(track, this.localStream);
+
+            // Optimize audio encoding parameters for voice
+            if (track.kind === 'audio' && sender.getParameters) {
+                const parameters = sender.getParameters();
+                if (parameters.encodings && parameters.encodings.length > 0) {
+                    // Optimize for voice: prioritize quality over bandwidth
+                    parameters.encodings[0].priority = 'high';
+                    parameters.encodings[0].networkPriority = 'high';
+
+                    // Enable DTX (Discontinuous Transmission) to save bandwidth during silence
+                    // This is especially useful with good noise suppression
+                    if ('dtx' in parameters.encodings[0]) {
+                        parameters.encodings[0].dtx = 'enabled';
+                    }
+
+                    sender.setParameters(parameters).catch(err => {
+                        console.warn('Could not set audio encoding parameters:', err);
+                    });
+                }
+            }
         });
 
         // Handle incoming tracks
@@ -374,10 +566,28 @@ class ConferenceClient {
 
         // Connection state changes
         pc.onconnectionstatechange = () => {
-            console.log(`Connection state with ${peerId}:`, pc.connectionState);
-            if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+            console.log(`Connection state with ${peerId} (${peerUsername}):`, pc.connectionState);
+
+            if (pc.connectionState === 'connected') {
+                console.log(`Successfully connected to ${peerUsername}`);
+            } else if (pc.connectionState === 'failed') {
+                console.error(`Connection failed with ${peerUsername}, attempting to remove and reconnect`);
                 this.removePeerConnection(peerId);
+            } else if (pc.connectionState === 'disconnected') {
+                console.warn(`Disconnected from ${peerUsername}`);
+                // Give it a moment to potentially reconnect before removing
+                setTimeout(() => {
+                    if (pc.connectionState === 'disconnected') {
+                        console.log(`Still disconnected from ${peerUsername}, removing connection`);
+                        this.removePeerConnection(peerId);
+                    }
+                }, 5000);
             }
+        };
+
+        // ICE connection state changes (more detailed than connection state)
+        pc.oniceconnectionstatechange = () => {
+            console.log(`ICE connection state with ${peerId} (${peerUsername}):`, pc.iceConnectionState);
         };
 
         // Create offer if we're the initiator
@@ -402,7 +612,10 @@ class ConferenceClient {
 
         // Create peer connection if it doesn't exist
         if (!this.peerConnections.has(senderId)) {
-            await this.createPeerConnection(senderId, 'User', false);
+            // Get username from pending usernames or use default
+            const username = this.pendingUsernames.get(senderId) || 'User';
+            this.pendingUsernames.delete(senderId); // Remove from pending
+            await this.createPeerConnection(senderId, username, false);
         }
 
         const peer = this.peerConnections.get(senderId);
@@ -410,6 +623,21 @@ class ConferenceClient {
 
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+            // Process any pending ICE candidates
+            if (this.pendingIceCandidates.has(senderId)) {
+                const candidates = this.pendingIceCandidates.get(senderId);
+                console.log(`Processing ${candidates.length} pending ICE candidates for ${senderId}`);
+                for (const candidate of candidates) {
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    } catch (err) {
+                        console.error('Error adding pending ICE candidate:', err);
+                    }
+                }
+                this.pendingIceCandidates.delete(senderId);
+            }
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
@@ -431,6 +659,20 @@ class ConferenceClient {
 
         try {
             await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
+
+            // Process any pending ICE candidates
+            if (this.pendingIceCandidates.has(senderId)) {
+                const candidates = this.pendingIceCandidates.get(senderId);
+                console.log(`Processing ${candidates.length} pending ICE candidates for ${senderId}`);
+                for (const candidate of candidates) {
+                    try {
+                        await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } catch (err) {
+                        console.error('Error adding pending ICE candidate:', err);
+                    }
+                }
+                this.pendingIceCandidates.delete(senderId);
+            }
         } catch (error) {
             console.error('Error handling answer:', error);
         }
@@ -438,12 +680,28 @@ class ConferenceClient {
 
     async handleIceCandidate(senderId, candidate) {
         const peer = this.peerConnections.get(senderId);
-        if (!peer) return;
+        if (!peer) {
+            console.warn(`Received ICE candidate for unknown peer ${senderId}, ignoring`);
+            return;
+        }
+
+        const pc = peer.connection;
+
+        // If remote description isn't set yet, queue the candidate
+        if (!pc.remoteDescription || !pc.remoteDescription.type) {
+            console.log(`Queueing ICE candidate for ${senderId} (remote description not set yet)`);
+            if (!this.pendingIceCandidates.has(senderId)) {
+                this.pendingIceCandidates.set(senderId, []);
+            }
+            this.pendingIceCandidates.get(senderId).push(candidate);
+            return;
+        }
 
         try {
-            await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log(`Added ICE candidate for ${senderId}`);
         } catch (error) {
-            console.error('Error adding ICE candidate:', error);
+            console.error(`Error adding ICE candidate for ${senderId}:`, error);
         }
     }
 
@@ -459,26 +717,246 @@ class ConferenceClient {
 
         const video = document.createElement('video');
         video.autoplay = true;
-        video.playsinline = true;
+        video.playsinline = true;  // Critical for iOS Safari
+        video.muted = false;  // We want to hear remote audio
+        video.setAttribute('playsinline', '');  // Additional attribute for iOS
+        video.setAttribute('webkit-playsinline', '');  // For older iOS versions
+
+        // Set srcObject
         video.srcObject = stream;
 
         const label = document.createElement('div');
         label.className = 'video-label';
-        label.textContent = username;
+        // Add moderator indicator if this user is the moderator
+        if (peerId === this.moderatorId) {
+            label.textContent = `👑 ${username}`;
+        } else {
+            label.textContent = username;
+        }
+
+        // Add audio controls for remote users
+        const audioControls = this.createAudioControls(peerId, stream);
+        container.appendChild(audioControls);
 
         container.appendChild(video);
         container.appendChild(label);
         this.videoGrid.appendChild(container);
 
-        // Try to play after adding to DOM
-        video.play().catch(err => {
-            console.warn('Video autoplay failed, user interaction required:', err);
-        });
+        // Set up Web Audio API for volume control
+        this.setupRemoteAudioControl(peerId, stream);
+
+        // Try to play after adding to DOM - required for mobile
+        // Use a slight delay to ensure DOM is ready
+        setTimeout(() => {
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise
+                    .then(() => {
+                        console.log(`Video playing for ${username}`);
+                    })
+                    .catch(err => {
+                        console.warn(`Video autoplay failed for ${username}:`, err);
+                        // On mobile, may need user interaction - add a play button overlay
+                        this.addPlayButtonOverlay(container, video, username);
+                    });
+            }
+        }, 100);
 
         // Start monitoring for speaking indicator
         this.monitorAudioLevel(stream, container);
 
         this.updateRoomInfo(this.peerConnections.size + 1);
+    }
+
+    createAudioControls(peerId, stream) {
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'remote-audio-controls';
+
+        // Mute button
+        const muteBtn = document.createElement('button');
+        muteBtn.textContent = '🔊';
+        muteBtn.title = 'Mute/Unmute';
+        muteBtn.onclick = () => this.toggleRemoteMute(peerId, muteBtn);
+
+        // Volume slider
+        const volumeSlider = document.createElement('input');
+        volumeSlider.type = 'range';
+        volumeSlider.min = '0';
+        volumeSlider.max = '100';
+        volumeSlider.value = '100';
+        volumeSlider.title = 'Volume';
+        volumeSlider.oninput = (e) => this.setRemoteVolume(peerId, e.target.value / 100);
+
+        controlsDiv.appendChild(muteBtn);
+        controlsDiv.appendChild(volumeSlider);
+
+        // Add moderator controls if user is moderator
+        if (this.isModerator) {
+            const renameBtn = document.createElement('button');
+            renameBtn.textContent = '✏️';
+            renameBtn.title = 'Change user name';
+            renameBtn.onclick = () => this.moderatorChangeName(peerId);
+
+            const kickBtn = document.createElement('button');
+            kickBtn.textContent = '👢';
+            kickBtn.title = 'Kick user';
+            kickBtn.onclick = () => this.kickUser(peerId);
+
+            const banBtn = document.createElement('button');
+            banBtn.textContent = '🚫';
+            banBtn.title = 'Ban user';
+            banBtn.onclick = () => this.banUser(peerId);
+
+            controlsDiv.appendChild(renameBtn);
+            controlsDiv.appendChild(kickBtn);
+            controlsDiv.appendChild(banBtn);
+        }
+
+        return controlsDiv;
+    }
+
+    kickUser(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can kick users');
+            return;
+        }
+
+        if (confirm('Are you sure you want to kick this user?')) {
+            this.sendMessage({
+                type: 'kick-user',
+                targetId: targetId
+            });
+        }
+    }
+
+    banUser(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can ban users');
+            return;
+        }
+
+        if (confirm('Are you sure you want to ban this user? They will not be able to rejoin this room.')) {
+            this.sendMessage({
+                type: 'ban-user',
+                targetId: targetId
+            });
+        }
+    }
+
+    moderatorChangeName(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can change user names');
+            return;
+        }
+
+        const peer = this.peerConnections.get(targetId);
+        if (!peer) return;
+
+        const currentName = peer.username;
+        const newName = prompt(`Change username for ${currentName}:`, currentName);
+
+        if (newName && newName.trim() && newName !== currentName) {
+            this.sendMessage({
+                type: 'moderator-change-name',
+                targetId: targetId,
+                newUsername: newName.trim()
+            });
+        }
+    }
+
+    setupRemoteAudioControl(peerId, stream) {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const gainNode = audioContext.createGain();
+            const destination = audioContext.createMediaStreamDestination();
+
+            source.connect(gainNode);
+            gainNode.connect(destination);
+
+            // Store audio control info
+            this.remoteAudioControls.set(peerId, {
+                audioContext,
+                gainNode,
+                destination,
+                isMuted: false
+            });
+
+            // Update the video element to use the processed stream
+            const videoElement = document.querySelector(`#video-${peerId} video`);
+            if (videoElement) {
+                // Create a new stream that combines the processed audio with the original video
+                const originalVideoTrack = stream.getVideoTracks()[0];
+                const processedAudioTrack = destination.stream.getAudioTracks()[0];
+
+                if (originalVideoTrack && processedAudioTrack) {
+                    const combinedStream = new MediaStream([originalVideoTrack, processedAudioTrack]);
+                    videoElement.srcObject = combinedStream;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not set up audio control for', peerId, ':', error);
+        }
+    }
+
+    toggleRemoteMute(peerId, button) {
+        const controls = this.remoteAudioControls.get(peerId);
+        if (!controls) return;
+
+        controls.isMuted = !controls.isMuted;
+
+        if (controls.isMuted) {
+            controls.gainNode.gain.value = 0;
+            button.textContent = '🔇';
+            button.classList.add('muted');
+        } else {
+            const slider = button.nextElementSibling;
+            controls.gainNode.gain.value = slider.value / 100;
+            button.textContent = '🔊';
+            button.classList.remove('muted');
+        }
+    }
+
+    setRemoteVolume(peerId, volume) {
+        const controls = this.remoteAudioControls.get(peerId);
+        if (!controls || controls.isMuted) return;
+
+        controls.gainNode.gain.value = volume;
+    }
+
+    addPlayButtonOverlay(container, video, username) {
+        // Check if overlay already exists
+        if (container.querySelector('.play-overlay')) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'play-overlay';
+        overlay.innerHTML = '▶️ Tap to play';
+        overlay.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 10;
+            font-size: 16px;
+        `;
+
+        overlay.onclick = async () => {
+            try {
+                await video.play();
+                overlay.remove();
+                console.log(`Video playing for ${username} after user interaction`);
+            } catch (err) {
+                console.error(`Still cannot play video for ${username}:`, err);
+            }
+        };
+
+        container.style.position = 'relative';
+        container.appendChild(overlay);
     }
 
     removePeerConnection(peerId) {
@@ -487,6 +965,17 @@ class ConferenceClient {
             peer.connection.close();
             this.peerConnections.delete(peerId);
         }
+
+        // Clean up audio controls
+        const audioControl = this.remoteAudioControls.get(peerId);
+        if (audioControl && audioControl.audioContext) {
+            audioControl.audioContext.close();
+            this.remoteAudioControls.delete(peerId);
+        }
+
+        // Clean up pending data
+        this.pendingUsernames.delete(peerId);
+        this.pendingIceCandidates.delete(peerId);
 
         const videoElement = document.getElementById(`video-${peerId}`);
         if (videoElement) {
@@ -499,33 +988,54 @@ class ConferenceClient {
     async toggleScreenShare() {
         if (!this.isScreenSharing) {
             try {
+                // Request screen sharing with system audio
                 this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true,
-                    audio: true
-                });
-
-                // Replace video track in all peer connections
-                const videoTrack = this.screenStream.getVideoTracks()[0];
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        sender.replaceTrack(videoTrack);
+                    video: {
+                        cursor: "always"
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 44100
                     }
                 });
 
-                // Update local video
+                // Replace video track in all peer connections
+                const screenVideoTrack = this.screenStream.getVideoTracks()[0];
+                this.peerConnections.forEach(peer => {
+                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) {
+                        sender.replaceTrack(screenVideoTrack);
+                    }
+                });
+
+                // If screen audio is available, add it as an additional audio track
+                const screenAudioTracks = this.screenStream.getAudioTracks();
+                if (screenAudioTracks.length > 0) {
+                    console.log('Screen audio available, adding as additional track');
+                    this.peerConnections.forEach(peer => {
+                        // Add screen audio track (doesn't replace mic audio)
+                        peer.connection.addTrack(screenAudioTracks[0], this.screenStream);
+                    });
+                } else {
+                    console.log('No screen audio available (user may have denied audio or system does not support it)');
+                }
+
+                // Update local video to show screen
                 this.localVideo.srcObject = this.screenStream;
 
-                // Handle stream end
-                videoTrack.onended = () => {
+                // Handle stream end (user clicks "Stop sharing" in browser UI)
+                screenVideoTrack.onended = () => {
                     this.toggleScreenShare();
                 };
 
                 this.isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('active');
+                console.log('Screen sharing started');
 
             } catch (error) {
                 console.error('Error sharing screen:', error);
+                alert('Could not start screen sharing. Please try again.');
             }
         } else {
             // Stop screen sharing
@@ -533,18 +1043,32 @@ class ConferenceClient {
                 this.screenStream.getTracks().forEach(track => track.stop());
             }
 
-            // Restore camera
-            const videoTrack = this.localStream.getVideoTracks()[0];
+            // Restore camera video track
+            const cameraVideoTrack = this.localStream.getVideoTracks()[0];
             this.peerConnections.forEach(peer => {
                 const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
                 if (sender) {
-                    sender.replaceTrack(videoTrack);
+                    sender.replaceTrack(cameraVideoTrack);
                 }
             });
+
+            // Note: We don't need to restore audio track since we kept the mic audio throughout
+            // We just need to remove any screen audio tracks that were added
+            if (this.screenStream && this.screenStream.getAudioTracks().length > 0) {
+                this.peerConnections.forEach(peer => {
+                    const senders = peer.connection.getSenders();
+                    senders.forEach(sender => {
+                        if (sender.track && sender.track.kind === 'audio' && sender.track.id === this.screenStream.getAudioTracks()[0].id) {
+                            peer.connection.removeTrack(sender);
+                        }
+                    });
+                });
+            }
 
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
+            console.log('Screen sharing stopped');
         }
     }
 
@@ -577,6 +1101,63 @@ class ConferenceClient {
     toggleChat() {
         this.chatVisible = !this.chatVisible;
         this.chatSidebar.classList.toggle('hidden', !this.chatVisible);
+
+        // Clear unread count when opening chat
+        if (this.chatVisible) {
+            this.unreadMessageCount = 0;
+            this.updateChatNotification();
+        }
+    }
+
+    updateChatNotification() {
+        const badge = document.getElementById('chatNotificationBadge');
+        if (this.unreadMessageCount > 0 && !this.chatVisible) {
+            badge.textContent = this.unreadMessageCount > 99 ? '99+' : this.unreadMessageCount;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    toggleFullscreen() {
+        const conferenceScreen = this.conferenceScreen;
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        if (!document.fullscreenElement) {
+            // Enter fullscreen
+            if (conferenceScreen.requestFullscreen) {
+                conferenceScreen.requestFullscreen();
+            } else if (conferenceScreen.webkitRequestFullscreen) {
+                conferenceScreen.webkitRequestFullscreen(); // Safari
+            } else if (conferenceScreen.msRequestFullscreen) {
+                conferenceScreen.msRequestFullscreen(); // IE11
+            }
+            fullscreenBtn.classList.add('active');
+            fullscreenBtn.querySelector('.icon').textContent = '⛶';
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen(); // Safari
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen(); // IE11
+            }
+            fullscreenBtn.classList.remove('active');
+            fullscreenBtn.querySelector('.icon').textContent = '⛶';
+        }
+
+        // Listen for fullscreen changes (for when user presses ESC)
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.classList.remove('active');
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            if (!document.webkitFullscreenElement) {
+                fullscreenBtn.classList.remove('active');
+            }
+        });
     }
 
     sendChatMessage() {
@@ -592,6 +1173,21 @@ class ConferenceClient {
         this.chatInput.value = '';
     }
 
+    linkifyText(text) {
+        // URL regex pattern that matches http://, https://, and www. URLs
+        const urlPattern = /(\b(https?:\/\/|www\.)[^\s<]+[^\s<.,:;"')\]])/gi;
+
+        // Replace URLs with anchor tags
+        return text.replace(urlPattern, (url) => {
+            let href = url;
+            // Add https:// if the URL starts with www.
+            if (url.startsWith('www.')) {
+                href = 'https://' + url;
+            }
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+        });
+    }
+
     addChatMessage(username, text, isSystem = false, isIRC = false, isOwn = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'chat-message';
@@ -605,7 +1201,13 @@ class ConferenceClient {
 
         const textSpan = document.createElement('div');
         textSpan.className = 'text';
-        textSpan.textContent = text;
+
+        // Linkify the text if it's not a system message
+        if (!isSystem) {
+            textSpan.innerHTML = this.linkifyText(text);
+        } else {
+            textSpan.textContent = text;
+        }
 
         const timestamp = document.createElement('div');
         timestamp.className = 'timestamp';
@@ -617,12 +1219,41 @@ class ConferenceClient {
 
         this.chatMessages.appendChild(messageDiv);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+
+        // Increment unread count if chat is hidden and not a system message from self
+        if (!this.chatVisible && !isOwn) {
+            this.unreadMessageCount++;
+            this.updateChatNotification();
+        }
     }
 
     updateRoomInfo(participantCount) {
         document.getElementById('roomName').textContent = `Room: ${this.currentRoom}`;
         document.getElementById('participantCount').textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
         document.getElementById('roomInfo').style.display = 'flex';
+    }
+
+    changeName() {
+        const newName = prompt('Enter your new name:', this.username);
+        if (newName && newName.trim() && newName !== this.username) {
+            const oldName = this.username;
+            this.username = newName.trim();
+
+            // Update local video label
+            const localLabel = document.querySelector('#localContainer .video-label');
+            if (localLabel) {
+                localLabel.textContent = 'You (Local)';
+            }
+
+            // Notify server and other users
+            this.sendMessage({
+                type: 'change-name',
+                newUsername: this.username,
+                oldUsername: oldName
+            });
+
+            this.addChatMessage('System', `You changed your name to ${this.username}`, true);
+        }
     }
 
     leaveRoom() {
@@ -640,6 +1271,16 @@ class ConferenceClient {
             if (videoElement) videoElement.remove();
         });
         this.peerConnections.clear();
+        this.pendingUsernames.clear();
+        this.pendingIceCandidates.clear();
+
+        // Clean up all audio controls
+        this.remoteAudioControls.forEach((controls) => {
+            if (controls.audioContext) {
+                controls.audioContext.close();
+            }
+        });
+        this.remoteAudioControls.clear();
 
         // Stop local streams
         if (this.localStream) {
@@ -655,6 +1296,14 @@ class ConferenceClient {
         this.localVideo.srcObject = null;
         this.currentRoom = null;
         this.isScreenSharing = false;
+        this.isModerator = false;
+        this.moderatorId = null;
+
+        // Reset button states
+        document.getElementById('shareScreenBtn').classList.remove('active');
+        document.getElementById('toggleAudioBtn').classList.remove('active');
+        document.getElementById('toggleVideoBtn').classList.remove('active');
+        document.getElementById('fullscreenBtn').classList.remove('active');
 
         // Reset UI
         this.joinScreen.style.display = 'flex';
@@ -662,6 +1311,10 @@ class ConferenceClient {
         document.getElementById('roomInfo').style.display = 'none';
         document.getElementById('bottomControls').style.display = 'none';
         this.chatMessages.innerHTML = '';
+
+        // Reset audio/video enabled states
+        this.audioEnabled = true;
+        this.videoEnabled = true;
 
         this.updateStatus('Disconnected', 'error');
     }

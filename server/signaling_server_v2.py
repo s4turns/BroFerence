@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Store connected clients: {websocket: {'id': str, 'room': str, 'username': str}}
 clients: Dict[WebSocketServerProtocol, dict] = {}
 
-# Store rooms: {room_id: {'users': Set[websocket], 'password': Optional[str], 'irc_channel': Optional[str]}}
+# Store rooms: {room_id: {'users': Set[websocket], 'password': Optional[str], 'irc_channel': Optional[str], 'moderator': Optional[str], 'banned': Set[str]}}
 rooms: Dict[str, dict] = {}
 
 # IRC bridge instance
@@ -93,13 +93,15 @@ async def unregister_client(websocket: WebSocketServerProtocol):
         logger.info(f"Client {client_id} disconnected. Total clients: {len(clients)}")
 
 
-async def create_room(room_id: str, password: Optional[str] = None, irc_channel: Optional[str] = None):
+async def create_room(room_id: str, password: Optional[str] = None, irc_channel: Optional[str] = None, moderator_id: Optional[str] = None):
     """Create a new room."""
     if room_id not in rooms:
         rooms[room_id] = {
             'users': set(),
             'password': hash_password(password) if password else None,
-            'irc_channel': irc_channel
+            'irc_channel': irc_channel,
+            'moderator': moderator_id,  # First user to create the room becomes moderator
+            'banned': set()  # Set of banned client IDs
         }
 
         # Join IRC channel if specified
@@ -131,6 +133,14 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         await websocket.send(json.dumps({
             'type': 'error',
             'message': 'Room does not exist'
+        }))
+        return False
+
+    # Check if user is banned
+    if client_id in rooms[room_id].get('banned', set()):
+        await websocket.send(json.dumps({
+            'type': 'error',
+            'message': 'You have been banned from this room'
         }))
         return False
 
@@ -170,12 +180,18 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
 
     logger.info(f"Client {client_id} ({username}) joined room {room_id}. Room size: {len(rooms[room_id]['users'])}")
 
+    # Check if user is moderator
+    is_moderator = (rooms[room_id]['moderator'] == client_id)
+
     # Send room info to joining client
     await websocket.send(json.dumps({
         'type': 'room-joined',
         'roomId': room_id,
         'users': other_users,
-        'hasPassword': rooms[room_id]['password'] is not None
+        'hasPassword': rooms[room_id]['password'] is not None,
+        'ircChannel': rooms[room_id].get('irc_channel'),
+        'isModerator': is_moderator,
+        'moderatorId': rooms[room_id]['moderator']
     }))
 
     # Notify others in room
@@ -262,7 +278,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             room_id = data.get('roomId')
             password = data.get('password')
             irc_channel = data.get('ircChannel')
-            await create_room(room_id, password, irc_channel)
+            client_id = clients[websocket]['id']
+            await create_room(room_id, password, irc_channel, client_id)
             await join_room(websocket, room_id, password)
 
         elif msg_type == 'join-room':
@@ -314,6 +331,124 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             success = await relay_to_peer(target_id, relay_message)
             if not success:
                 logger.warning(f"Could not relay {msg_type} to {target_id}")
+
+        elif msg_type == 'kick-user':
+            # Moderator kicking a user
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                target_id = data.get('targetId')
+
+                # Find and disconnect the target user
+                for ws, info in list(clients.items()):
+                    if info['id'] == target_id and info['room'] == room:
+                        await ws.send(json.dumps({
+                            'type': 'kicked',
+                            'message': 'You have been kicked from the room'
+                        }))
+                        await ws.close()
+                        break
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderator can kick users'
+                }))
+
+        elif msg_type == 'ban-user':
+            # Moderator banning a user
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                target_id = data.get('targetId')
+
+                # Add to banned list
+                rooms[room]['banned'].add(target_id)
+
+                # Find and disconnect the target user
+                for ws, info in list(clients.items()):
+                    if info['id'] == target_id and info['room'] == room:
+                        await ws.send(json.dumps({
+                            'type': 'banned',
+                            'message': 'You have been banned from this room'
+                        }))
+                        await ws.close()
+                        break
+
+                logger.info(f"User {target_id} banned from room {room}")
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderator can ban users'
+                }))
+
+        elif msg_type == 'change-name':
+            # User changing their name
+            client_info = clients[websocket]
+            room = client_info['room']
+            old_username = client_info['username']
+            new_username = data.get('newUsername', '').strip()
+
+            if new_username and room:
+                # Update username
+                client_info['username'] = new_username
+
+                # Broadcast name change to room
+                await broadcast_to_room(room, {
+                    'type': 'name-changed',
+                    'clientId': client_info['id'],
+                    'oldUsername': old_username,
+                    'newUsername': new_username
+                }, exclude=websocket)
+
+                # Send IRC notification if bridged
+                if irc_bridge and rooms[room].get('irc_channel'):
+                    await irc_bridge.send_message(room, "System", f"{old_username} changed their name to {new_username}")
+
+                logger.info(f"User {old_username} changed name to {new_username} in room {room}")
+
+        elif msg_type == 'moderator-change-name':
+            # Moderator changing another user's name
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                target_id = data.get('targetId')
+                new_username = data.get('newUsername', '').strip()
+
+                if new_username:
+                    # Find target user and update their name
+                    for ws, info in clients.items():
+                        if info['id'] == target_id and info['room'] == room:
+                            old_username = info['username']
+                            info['username'] = new_username
+
+                            # Notify the target user
+                            await ws.send(json.dumps({
+                                'type': 'name-changed-by-moderator',
+                                'newUsername': new_username
+                            }))
+
+                            # Broadcast to room
+                            await broadcast_to_room(room, {
+                                'type': 'name-changed',
+                                'clientId': target_id,
+                                'oldUsername': old_username,
+                                'newUsername': new_username
+                            })
+
+                            # Send IRC notification if bridged
+                            if irc_bridge and rooms[room].get('irc_channel'):
+                                await irc_bridge.send_message(room, "System", f"Moderator changed {old_username}'s name to {new_username}")
+
+                            logger.info(f"Moderator changed {old_username} to {new_username} in room {room}")
+                            break
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderator can change user names'
+                }))
 
         else:
             logger.warning(f"Unknown message type: {msg_type}")

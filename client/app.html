@@ -16,8 +16,12 @@
                 <span id="participantCount">0 participants</span>
             </div>
             <div class="bottom-controls" id="bottomControls" style="display:none;">
-                <button id="chatToggleBtn" class="btn btn-secondary">
+                <button id="changeNameBtn" class="btn btn-secondary">
+                    ✏️ Change Name
+                </button>
+                <button id="chatToggleBtn" class="btn btn-secondary" style="position: relative;">
                     💬 Chat
+                    <span id="chatNotificationBadge" class="notification-badge" style="display: none;"></span>
                 </button>
                 <button id="leaveRoomBtn" class="btn btn-danger">
                     Leave Room
@@ -52,7 +56,32 @@
                     <small>Set password to create protected room</small>
                 </div>
 
-                <button id="joinBtn" class="btn btn-primary">Join Room</button>
+                <button id="joinBtn" class="btn btn-primary">Continue</button>
+            </div>
+        </div>
+
+        <!-- Prejoin Screen -->
+        <div id="prejoinScreen" class="prejoin-screen" style="display:none;">
+            <div class="prejoin-card">
+                <h2>Setup Your Audio & Video</h2>
+
+                <div class="prejoin-preview">
+                    <video id="prejoinVideo" autoplay muted playsinline></video>
+                </div>
+
+                <div class="prejoin-controls">
+                    <button id="prejoinToggleAudioBtn" class="btn btn-secondary">
+                        <span class="icon">🎤</span> Microphone
+                    </button>
+                    <button id="prejoinToggleVideoBtn" class="btn btn-secondary">
+                        <span class="icon">📹</span> Camera
+                    </button>
+                </div>
+
+                <div class="prejoin-actions">
+                    <button id="prejoinBackBtn" class="btn btn-secondary">Back</button>
+                    <button id="prejoinJoinBtn" class="btn btn-primary">Join Room</button>
+                </div>
             </div>
         </div>
 
@@ -73,6 +102,9 @@
                         </button>
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
                             <span class="icon">🖥️</span>
+                        </button>
+                        <button id="fullscreenBtn" class="control-btn" title="Toggle Fullscreen">
+                            <span class="icon">⛶</span>
                         </button>
                     </div>
                 </div>

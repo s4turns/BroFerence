@@ -107,7 +107,7 @@ body::before {
 }
 
 /* Join Screen */
-.join-screen {
+.join-screen, .prejoin-screen {
     flex: 1;
     display: flex;
     align-items: center;
@@ -116,7 +116,7 @@ body::before {
     background: radial-gradient(circle at center, #001a00 0%, #000000 100%);
 }
 
-.join-card {
+.join-card, .prejoin-card {
     background: var(--darker);
     padding: 24px 32px;
     border: 2px solid var(--primary);
@@ -189,6 +189,44 @@ body::before {
     margin-top: 3px;
     color: var(--secondary);
     font-size: 10px;
+}
+
+/* Prejoin Screen */
+.prejoin-card {
+    max-width: 600px;
+}
+
+.prejoin-preview {
+    margin: 20px 0;
+    background: #000;
+    border: 2px solid var(--primary);
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    box-shadow: var(--glow);
+}
+
+.prejoin-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.prejoin-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.prejoin-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-top: 24px;
+}
+
+.prejoin-actions .btn {
+    flex: 1;
 }
 
 /* Buttons */
@@ -268,6 +306,37 @@ body::before {
     text-shadow: 0 0 5px var(--secondary);
 }
 
+/* Notification Badge */
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--danger);
+    color: white;
+    border-radius: 10px;
+    min-width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 6px;
+    box-shadow: 0 0 10px var(--danger);
+    animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.1);
+    }
+}
+
 /* Conference Screen */
 .conference-screen {
     flex: 1;
@@ -340,6 +409,75 @@ body::before {
     text-shadow: var(--glow);
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+.remote-audio-controls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid var(--primary);
+    padding: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 5;
+}
+
+.video-container:hover .remote-audio-controls {
+    opacity: 1;
+}
+
+.remote-audio-controls button {
+    background: none;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.remote-audio-controls button:hover {
+    background: var(--primary);
+    color: #000;
+}
+
+.remote-audio-controls button.muted {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.remote-audio-controls input[type="range"] {
+    width: 80px;
+    height: 4px;
+    background: var(--gray-light);
+    border: 1px solid var(--primary);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.remote-audio-controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--glow);
+}
+
+.remote-audio-controls input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--glow);
+    border: none;
 }
 
 .video-controls {
