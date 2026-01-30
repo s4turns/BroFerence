@@ -355,6 +355,39 @@ body::before {
     overflow-y: auto;
     background: #000000;
     align-content: start;
+    position: relative;
+}
+
+/* Spotlight Mode */
+.video-grid.spotlight-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.video-grid.spotlight-mode .spotlight-active {
+    flex: 1;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+}
+
+.video-grid.spotlight-mode .spotlight-hidden {
+    display: none;
+}
+
+.exit-spotlight-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+    padding: 12px 24px;
+    font-size: 14px;
+}
+
+.video-container {
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
 .video-container {

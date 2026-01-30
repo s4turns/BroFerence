@@ -28,6 +28,8 @@ class ConferenceClient {
         this.videoEnabled = true;
         this.chatVisible = false;
         this.unreadMessageCount = 0;
+        this.spotlightMode = false;
+        this.spotlightPeerId = null;
 
         // Prejoin state
         this.prejoinStream = null;
@@ -742,6 +744,14 @@ class ConferenceClient {
         container.appendChild(label);
         this.videoGrid.appendChild(container);
 
+        // Add click handler for spotlight mode
+        container.addEventListener('click', (e) => {
+            // Don't trigger spotlight if clicking on controls
+            if (e.target.closest('.remote-audio-controls')) return;
+            this.toggleSpotlight(peerId);
+        });
+        container.style.cursor = 'pointer';
+
         // Store video element reference for volume control
         this.remoteAudioControls.set(peerId, {
             videoElement: video,
@@ -1082,6 +1092,76 @@ class ConferenceClient {
         } else {
             badge.style.display = 'none';
         }
+    }
+
+    toggleSpotlight(peerId) {
+        if (this.spotlightMode && this.spotlightPeerId === peerId) {
+            // Exit spotlight mode
+            this.exitSpotlightMode();
+        } else {
+            // Enter spotlight mode for this peer
+            this.enterSpotlightMode(peerId);
+        }
+    }
+
+    enterSpotlightMode(peerId) {
+        this.spotlightMode = true;
+        this.spotlightPeerId = peerId;
+
+        // Hide all other video containers
+        const allContainers = this.videoGrid.querySelectorAll('.video-container');
+        allContainers.forEach(container => {
+            if (container.id === `video-${peerId}` || container.id === 'localContainer') {
+                container.classList.remove('spotlight-hidden');
+            } else {
+                container.classList.add('spotlight-hidden');
+            }
+        });
+
+        // Make the selected video larger
+        const spotlightContainer = document.getElementById(`video-${peerId}`);
+        if (spotlightContainer) {
+            spotlightContainer.classList.add('spotlight-active');
+        }
+
+        // Add exit spotlight button
+        this.addExitSpotlightButton();
+
+        // Change grid layout for spotlight
+        this.videoGrid.classList.add('spotlight-mode');
+    }
+
+    exitSpotlightMode() {
+        this.spotlightMode = false;
+        this.spotlightPeerId = null;
+
+        // Show all video containers
+        const allContainers = this.videoGrid.querySelectorAll('.video-container');
+        allContainers.forEach(container => {
+            container.classList.remove('spotlight-hidden');
+            container.classList.remove('spotlight-active');
+        });
+
+        // Remove exit button
+        const exitBtn = document.getElementById('exitSpotlightBtn');
+        if (exitBtn) exitBtn.remove();
+
+        // Restore grid layout
+        this.videoGrid.classList.remove('spotlight-mode');
+    }
+
+    addExitSpotlightButton() {
+        // Remove existing button if any
+        const existing = document.getElementById('exitSpotlightBtn');
+        if (existing) existing.remove();
+
+        const exitBtn = document.createElement('button');
+        exitBtn.id = 'exitSpotlightBtn';
+        exitBtn.className = 'btn btn-secondary exit-spotlight-btn';
+        exitBtn.innerHTML = '⬅️ Back to Grid';
+        exitBtn.onclick = () => this.exitSpotlightMode();
+
+        this.videoGrid.appendChild(exitBtn);
     }
 
     toggleFullscreen() {
