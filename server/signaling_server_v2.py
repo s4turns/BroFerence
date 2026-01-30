@@ -408,6 +408,41 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
 
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
 
+        elif msg_type == 'promote-moderator':
+            # Moderator promoting another user to moderator
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                target_id = data.get('targetId')
+
+                # Find target user
+                for ws, info in clients.items():
+                    if info['id'] == target_id and info['room'] == room:
+                        # Notify the target user
+                        await ws.send(json.dumps({
+                            'type': 'you-are-moderator'
+                        }))
+
+                        # Broadcast to room
+                        await broadcast_to_room(room, {
+                            'type': 'moderator-promoted',
+                            'moderatorId': target_id,
+                            'username': info['username']
+                        })
+
+                        # Send IRC notification if bridged
+                        if irc_bridge and rooms[room].get('irc_channel'):
+                            await irc_bridge.send_message(room, "System", f"{info['username']} is now a moderator")
+
+                        logger.info(f"User {target_id} promoted to moderator in room {room}")
+                        break
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderator can promote users'
+                }))
+
         elif msg_type == 'moderator-change-name':
             # Moderator changing another user's name
             client_info = clients[websocket]

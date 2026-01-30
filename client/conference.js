@@ -248,6 +248,41 @@ class ConferenceClient {
                 this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
 
+            case 'moderator-promoted':
+                // Update moderator status for a user
+                this.moderatorId = message.moderatorId;
+
+                // Update the video container to show moderator badge
+                const container = document.getElementById(`video-${message.moderatorId}`);
+                if (container) {
+                    // Remove existing badge if any
+                    const oldBadge = container.querySelector('.moderator-badge');
+                    if (oldBadge) oldBadge.remove();
+
+                    // Add new badge
+                    const modBadge = document.createElement('div');
+                    modBadge.className = 'moderator-badge';
+                    modBadge.innerHTML = '👑 MOD';
+                    modBadge.title = 'Moderator';
+                    container.appendChild(modBadge);
+                }
+
+                this.addChatMessage('System', `${message.username} is now a moderator`, true);
+                break;
+
+            case 'you-are-moderator':
+                // You have been promoted to moderator
+                this.isModerator = true;
+                this.addChatMessage('System', 'You are now a moderator!', true);
+
+                // Refresh the page to show moderator controls
+                // Or we could dynamically add controls, but refresh is simpler
+                setTimeout(() => {
+                    alert('You have been promoted to moderator! The page will refresh to show your new controls.');
+                    location.reload();
+                }, 1000);
+                break;
+
             case 'offer':
                 await this.handleOffer(message.senderId, message.data);
                 break;
@@ -729,11 +764,15 @@ class ConferenceClient {
 
         const label = document.createElement('div');
         label.className = 'video-label';
-        // Add moderator indicator if this user is the moderator
+        label.textContent = username;
+
+        // Add prominent moderator badge if this user is a moderator
         if (peerId === this.moderatorId) {
-            label.textContent = `👑 ${username}`;
-        } else {
-            label.textContent = username;
+            const modBadge = document.createElement('div');
+            modBadge.className = 'moderator-badge';
+            modBadge.innerHTML = '👑 MOD';
+            modBadge.title = 'Moderator';
+            container.appendChild(modBadge);
         }
 
         // Add audio controls for remote users
@@ -805,6 +844,15 @@ class ConferenceClient {
 
         // Add moderator controls if user is moderator
         if (this.isModerator) {
+            // Only show promote button if target is not already a moderator
+            if (peerId !== this.moderatorId) {
+                const promoteBtn = document.createElement('button');
+                promoteBtn.textContent = '👑';
+                promoteBtn.title = 'Promote to moderator';
+                promoteBtn.onclick = () => this.promoteToModerator(peerId);
+                controlsDiv.appendChild(promoteBtn);
+            }
+
             const renameBtn = document.createElement('button');
             renameBtn.textContent = '✏️';
             renameBtn.title = 'Change user name';
@@ -851,6 +899,23 @@ class ConferenceClient {
         if (confirm('Are you sure you want to ban this user? They will not be able to rejoin this room.')) {
             this.sendMessage({
                 type: 'ban-user',
+                targetId: targetId
+            });
+        }
+    }
+
+    promoteToModerator(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can promote users');
+            return;
+        }
+
+        const peer = this.peerConnections.get(targetId);
+        if (!peer) return;
+
+        if (confirm(`Promote ${peer.username} to moderator?`)) {
+            this.sendMessage({
+                type: 'promote-moderator',
                 targetId: targetId
             });
         }

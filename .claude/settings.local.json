@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nRebrand to BroFerence with retro terminal theme and add HTTPS support\n\n- Complete UI redesign with Matrix-style green-on-black CRT aesthetic\n- Added scanline effects, glow effects, and terminal animations\n- Changed branding from \"WebRTC Conference\" to \"BroFerence\"\n- Added HTTPS support to nginx with self-signed certificates\n- Updated .gitignore to exclude ssl/ directory\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(git pull:*)",
+      "Bash(gh repo:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git commit:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(tasklist:*)",
+      "Bash(git revert:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(chmod:*)",
+      "Bash(pip install:*)",
+      "Bash(python signaling_server_local.py:*)",
+      "Bash(python -m http.server:*)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(start http://localhost:8080/app.html)",
+      "Bash(dir:*)"
+    ]
+  }
+}

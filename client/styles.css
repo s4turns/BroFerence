@@ -444,6 +444,33 @@ body::before {
     letter-spacing: 1px;
 }
 
+.moderator-badge {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    color: #000;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), 0 0 30px rgba(255, 215, 0, 0.4);
+    border: 2px solid #ffd700;
+    z-index: 10;
+    animation: moderator-glow 2s ease-in-out infinite;
+}
+
+@keyframes moderator-glow {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), 0 0 30px rgba(255, 215, 0, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.6);
+    }
+}
+
 .remote-audio-controls {
     position: absolute;
     top: 12px;
