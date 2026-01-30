@@ -273,14 +273,48 @@ class ConferenceClient {
             case 'you-are-moderator':
                 // You have been promoted to moderator
                 this.isModerator = true;
-                this.addChatMessage('System', 'You are now a moderator!', true);
+                this.addChatMessage('System', 'You are now a moderator! Hover over users to see moderator controls.', true);
 
-                // Refresh the page to show moderator controls
-                // Or we could dynamically add controls, but refresh is simpler
-                setTimeout(() => {
-                    alert('You have been promoted to moderator! The page will refresh to show your new controls.');
-                    location.reload();
-                }, 1000);
+                // Add moderator controls to all existing remote videos
+                this.peerConnections.forEach((peer, peerId) => {
+                    const container = document.getElementById(`video-${peerId}`);
+                    if (container) {
+                        // Find the audio controls div
+                        const audioControls = container.querySelector('.remote-audio-controls');
+                        if (audioControls) {
+                            // Check if moderator controls already exist
+                            if (!audioControls.querySelector('[title="Promote to moderator"]')) {
+                                // Add moderator controls
+                                if (peerId !== this.moderatorId) {
+                                    const promoteBtn = document.createElement('button');
+                                    promoteBtn.textContent = '👑';
+                                    promoteBtn.title = 'Promote to moderator';
+                                    promoteBtn.onclick = () => this.promoteToModerator(peerId);
+                                    audioControls.appendChild(promoteBtn);
+                                }
+
+                                const renameBtn = document.createElement('button');
+                                renameBtn.textContent = '✏️';
+                                renameBtn.title = 'Change user name';
+                                renameBtn.onclick = () => this.moderatorChangeName(peerId);
+
+                                const kickBtn = document.createElement('button');
+                                kickBtn.textContent = '👢';
+                                kickBtn.title = 'Kick user';
+                                kickBtn.onclick = () => this.kickUser(peerId);
+
+                                const banBtn = document.createElement('button');
+                                banBtn.textContent = '🚫';
+                                banBtn.title = 'Ban user';
+                                banBtn.onclick = () => this.banUser(peerId);
+
+                                audioControls.appendChild(renameBtn);
+                                audioControls.appendChild(kickBtn);
+                                audioControls.appendChild(banBtn);
+                            }
+                        }
+                    }
+                });
                 break;
 
             case 'offer':
