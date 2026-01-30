@@ -348,11 +348,17 @@ class ConferenceClient {
         });
 
         // Handle incoming tracks
+        let streamAdded = false;
         pc.ontrack = (event) => {
             console.log('Received remote track from', peerId, 'kind:', event.track.kind);
-            console.log('Remote stream:', event.streams[0]);
-            console.log('Stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}: ${t.enabled}`));
-            this.addRemoteVideo(peerId, peerUsername, event.streams[0]);
+
+            // Only add video element once (ontrack fires for each track)
+            if (!streamAdded) {
+                streamAdded = true;
+                console.log('Remote stream:', event.streams[0]);
+                console.log('Stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}: ${t.enabled}`));
+                this.addRemoteVideo(peerId, peerUsername, event.streams[0]);
+            }
         };
 
         // Handle ICE candidates
