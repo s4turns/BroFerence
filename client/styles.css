@@ -118,10 +118,10 @@ body::before {
 
 .join-card {
     background: var(--darker);
-    padding: 48px;
+    padding: 24px 32px;
     border: 2px solid var(--primary);
     box-shadow: 0 0 20px var(--shadow-lg), inset 0 0 20px rgba(0, 255, 65, 0.1);
-    max-width: 520px;
+    max-width: 450px;
     width: 100%;
     animation: slideUp 0.4s ease-out;
 }
@@ -138,37 +138,37 @@ body::before {
 }
 
 .join-card h2 {
-    margin-bottom: 32px;
+    margin-bottom: 20px;
     color: var(--primary);
     text-align: center;
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 700;
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     text-transform: uppercase;
     text-shadow: var(--glow-strong);
 }
 
 .form-group {
-    margin-bottom: 24px;
+    margin-bottom: 14px;
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     font-weight: 700;
     color: var(--primary);
-    font-size: 14px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 
 .form-group input {
     width: 100%;
-    padding: 14px 16px;
+    padding: 10px 12px;
     border: 2px solid var(--primary);
     background: #000000;
     color: var(--primary);
-    font-size: 15px;
+    font-size: 14px;
     transition: all 0.3s ease;
     font-family: 'Courier New', monospace;
 }
@@ -186,9 +186,9 @@ body::before {
 
 .form-group small {
     display: block;
-    margin-top: 6px;
+    margin-top: 3px;
     color: var(--secondary);
-    font-size: 12px;
+    font-size: 10px;
 }
 
 /* Buttons */
