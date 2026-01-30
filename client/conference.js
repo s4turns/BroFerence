@@ -742,8 +742,11 @@ class ConferenceClient {
         container.appendChild(label);
         this.videoGrid.appendChild(container);
 
-        // Set up Web Audio API for volume control
-        this.setupRemoteAudioControl(peerId, stream);
+        // Store video element reference for volume control
+        this.remoteAudioControls.set(peerId, {
+            videoElement: video,
+            isMuted: false
+        });
 
         // Try to play after adding to DOM - required for mobile
         // Use a slight delay to ensure DOM is ready
@@ -864,54 +867,17 @@ class ConferenceClient {
         }
     }
 
-    setupRemoteAudioControl(peerId, stream) {
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(stream);
-            const gainNode = audioContext.createGain();
-            const destination = audioContext.createMediaStreamDestination();
-
-            source.connect(gainNode);
-            gainNode.connect(destination);
-
-            // Store audio control info
-            this.remoteAudioControls.set(peerId, {
-                audioContext,
-                gainNode,
-                destination,
-                isMuted: false
-            });
-
-            // Update the video element to use the processed stream
-            const videoElement = document.querySelector(`#video-${peerId} video`);
-            if (videoElement) {
-                // Create a new stream that combines the processed audio with the original video
-                const originalVideoTrack = stream.getVideoTracks()[0];
-                const processedAudioTrack = destination.stream.getAudioTracks()[0];
-
-                if (originalVideoTrack && processedAudioTrack) {
-                    const combinedStream = new MediaStream([originalVideoTrack, processedAudioTrack]);
-                    videoElement.srcObject = combinedStream;
-                }
-            }
-        } catch (error) {
-            console.warn('Could not set up audio control for', peerId, ':', error);
-        }
-    }
-
     toggleRemoteMute(peerId, button) {
         const controls = this.remoteAudioControls.get(peerId);
-        if (!controls) return;
+        if (!controls || !controls.videoElement) return;
 
         controls.isMuted = !controls.isMuted;
+        controls.videoElement.muted = controls.isMuted;
 
         if (controls.isMuted) {
-            controls.gainNode.gain.value = 0;
             button.textContent = '🔇';
             button.classList.add('muted');
         } else {
-            const slider = button.nextElementSibling;
-            controls.gainNode.gain.value = slider.value / 100;
             button.textContent = '🔊';
             button.classList.remove('muted');
         }
@@ -919,9 +885,12 @@ class ConferenceClient {
 
     setRemoteVolume(peerId, volume) {
         const controls = this.remoteAudioControls.get(peerId);
-        if (!controls || controls.isMuted) return;
+        if (!controls || !controls.videoElement) return;
 
-        controls.gainNode.gain.value = volume;
+        // Only set volume if not muted
+        if (!controls.isMuted) {
+            controls.videoElement.volume = volume;
+        }
     }
 
     addPlayButtonOverlay(container, video, username) {
@@ -967,11 +936,7 @@ class ConferenceClient {
         }
 
         // Clean up audio controls
-        const audioControl = this.remoteAudioControls.get(peerId);
-        if (audioControl && audioControl.audioContext) {
-            audioControl.audioContext.close();
-            this.remoteAudioControls.delete(peerId);
-        }
+        this.remoteAudioControls.delete(peerId);
 
         // Clean up pending data
         this.pendingUsernames.delete(peerId);
@@ -1273,13 +1238,6 @@ class ConferenceClient {
         this.peerConnections.clear();
         this.pendingUsernames.clear();
         this.pendingIceCandidates.clear();
-
-        // Clean up all audio controls
-        this.remoteAudioControls.forEach((controls) => {
-            if (controls.audioContext) {
-                controls.audioContext.close();
-            }
-        });
         this.remoteAudioControls.clear();
 
         // Stop local streams
