@@ -1,5 +1,7 @@
 # BroFerence - WebRTC Video Conferencing
 
+<img width="1915" height="912" alt="image" src="https://github.com/user-attachments/assets/86f93286-517a-49eb-b248-5be3c2a41111" />
+
 A complete multi-participant WebRTC video conferencing application with Python signaling server, TURN server, and IRC chat bridge.
 
 ## ✨ Features
