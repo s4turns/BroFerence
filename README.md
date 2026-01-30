@@ -4,20 +4,20 @@
 
 A complete multi-participant WebRTC video conferencing application with Python signaling server, TURN server, and IRC chat bridge.
 
-## ✨ Features
+## Features
 
-- 🎥 **Multi-participant video conferencing** - Unlimited users per room
-- 💬 **Real-time text chat** - In-app messaging with IRC bridge support
-- 🔒 **Password-protected rooms** - Secure your private meetings
-- 🎙️ **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
-- 🗣️ **Speaking indicator** - Glowing ring shows who's talking
-- 📺 **Screen sharing** - Share your screen with participants
-- 🌐 **Dynamic configuration** - Auto-detects localhost vs production
-- 🎨 **Retro terminal aesthetic** - Matrix-style green on black UI
-- 🔄 **IRC bridge** - Connect conference rooms to IRC channels
-- 🚀 **Easy deployment** - Docker support with one-command setup
+- **Multi-participant video conferencing** - Unlimited users per room
+- **Real-time text chat** - In-app messaging with IRC bridge support
+- **Password-protected rooms** - Secure your private meetings
+- **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
+- **Speaking indicator** - Glowing ring shows who's talking
+- **Screen sharing** - Share your screen with participants
+- **Dynamic configuration** - Auto-detects localhost vs production
+- **Retro terminal aesthetic** - Matrix-style green on black UI
+- **IRC bridge** - Connect conference rooms to IRC channels
+- **Easy deployment** - Docker support with one-command setup
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Local Development (Easiest)
 
@@ -72,7 +72,7 @@ chmod +x update-vps.sh
 
 Access at: **https://your-domain.com/app.html**
 
-## 📋 Components
+## Components
 
 1. **Signaling Server** (Python/WebSockets)
    - Handles WebRTC signaling between peers
@@ -91,7 +91,7 @@ Access at: **https://your-domain.com/app.html**
    - Real-time speaking indicators
    - Built-in audio enhancements
 
-## 🎮 Usage
+## Usage
 
 ### Joining a Room
 
@@ -105,10 +105,10 @@ Access at: **https://your-domain.com/app.html**
 
 ### Controls
 
-- **🎤 Mute/Unmute** - Toggle your microphone
-- **📹 Camera On/Off** - Toggle your video
-- **🖥️ Share Screen** - Share your entire screen
-- **💬 Chat** - Open/close text chat sidebar
+- **Mute/Unmute** - Toggle your microphone
+- **Camera On/Off** - Toggle your video
+- **Share Screen** - Share your entire screen
+- **Chat** - Open/close text chat sidebar
 - **Leave Room** - Exit the conference
 
 ### Speaking Indicator
@@ -122,11 +122,11 @@ All audio streams have built-in enhancements:
 - **Noise Suppression** - Filters background noise
 - **Auto Gain Control** - Normalizes volume levels
 
-## 🔧 Configuration
+## Configuration
 
 ### TURN Server Credentials
 
-**⚠️ IMPORTANT: Change default credentials in production!**
+**IMPORTANT: Change default credentials in production!**
 
 Edit `config/turnserver.conf`:
 ```conf
@@ -161,7 +161,7 @@ To bridge a room to IRC:
 3. When creating a room, enter IRC channel (e.g., `#mychannel`)
 4. Messages sync between WebRTC and IRC
 
-## 🛠️ Helper Scripts
+## Helper Scripts
 
 ### `setup-turn-ip.sh`
 Auto-configures TURN server with your public IP address.
@@ -178,7 +178,7 @@ Diagnostic tool to test TURN server connectivity.
 ### `debug-hostname.html`
 Debug tool to verify dynamic URL detection.
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### WebSocket won't connect
 ```bash
@@ -211,7 +211,7 @@ grep "external-ip" config/turnserver.conf
 Ctrl+Shift+N (or Cmd+Shift+N on Mac)
 
 # Or use DevTools disable cache
-F12 → Network tab → Check "Disable cache"
+F12 > Network tab > Check "Disable cache"
 ```
 
 ### Full rebuild needed
@@ -222,7 +222,7 @@ docker-compose build --no-cache --pull
 docker-compose up -d
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 BroFerence/
@@ -246,20 +246,20 @@ BroFerence/
 └── update-vps.sh             # VPS update script
 ```
 
-## 🔐 Security Notes
+## Security Notes
 
-**⚠️ Default configuration is for LOCAL TESTING ONLY**
+**Default configuration is for LOCAL TESTING ONLY**
 
 For production:
-1. ✅ Change TURN credentials (default: `webrtc:webrtc123`)
-2. ✅ Use HTTPS/WSS (not HTTP/WS)
-3. ✅ Set up proper firewall rules
-4. ✅ Configure `external-ip` in TURN server
-5. ✅ Implement user authentication
-6. ✅ Use secure room passwords
-7. ✅ Keep dependencies updated
+1. Change TURN credentials (default: `webrtc:webrtc123`)
+2. Use HTTPS/WSS (not HTTP/WS)
+3. Set up proper firewall rules
+4. Configure `external-ip` in TURN server
+5. Implement user authentication
+6. Use secure room passwords
+7. Keep dependencies updated
 
-## 🎨 UI Customization
+## UI Customization
 
 ### Speaking Threshold
 
@@ -279,7 +279,7 @@ Edit CSS variables in `styles.css`:
 }
 ```
 
-## 🚢 Production Deployment Checklist
+## Production Deployment Checklist
 
 - [ ] Clone repository on VPS
 - [ ] Install Docker and Docker Compose
@@ -292,7 +292,7 @@ Edit CSS variables in `styles.css`:
 - [ ] Test TURN server connectivity
 - [ ] Test from multiple networks
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Please:
 1. Fork the repository
@@ -301,11 +301,11 @@ Contributions welcome! Please:
 4. Test thoroughly
 5. Submit a pull request
 
-## 📝 License
+## License
 
 MIT License - feel free to use for personal or commercial projects!
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with [WebRTC](https://webrtc.org/)
 - [Coturn](https://github.com/coturn/coturn) TURN server
@@ -314,6 +314,6 @@ MIT License - feel free to use for personal or commercial projects!
 
 ---
 
-**Made with 💚 by the BroFerence team**
+**Made by the BroFerence team**
 
 For issues or questions: https://github.com/s4turns/BroFerence/issues
