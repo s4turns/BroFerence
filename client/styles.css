@@ -83,27 +83,27 @@ body::before {
 
 .room-info {
     display: flex;
-    gap: 24px;
+    gap: 16px;
     align-items: center;
-    font-size: 14px;
+    font-size: 12px;
     color: var(--secondary);
     font-weight: 500;
     text-shadow: 0 0 5px var(--secondary);
     position: absolute;
-    right: 280px;
+    right: 16px;
     top: 50%;
     transform: translateY(-50%);
 }
 
 .room-info span {
-    padding: 14px 28px;
+    padding: 8px 16px;
     background: var(--darker);
     border: 2px solid var(--secondary);
     font-family: 'Courier New', monospace;
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 }
 
 /* Join Screen */
@@ -752,12 +752,18 @@ body::before {
     top: 50%;
     transform: translateY(-50%);
     display: flex;
-    gap: 12px;
+    gap: 8px;
     z-index: 101;
     background: transparent;
     border: none;
     padding: 0;
     box-shadow: none;
+}
+
+.bottom-controls .btn {
+    padding: 8px 16px;
+    font-size: 13px;
+    border-width: 1px;
 }
 
 /* Status Bar */
