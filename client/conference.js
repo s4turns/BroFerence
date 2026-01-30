@@ -97,7 +97,6 @@ class ConferenceClient {
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn').addEventListener('click', () => this.toggleVideo());
         document.getElementById('shareScreenBtn').addEventListener('click', () => this.toggleScreenShare());
-        document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen());
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
