@@ -7,7 +7,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.enabled = true;
 
         // Noise gate parameters
-        this.threshold = 0.011;     // Noise floor threshold
+        this.threshold = 0.012;     // Noise floor threshold
         this.attack = 0.003;        // Attack time in seconds
         this.release = 0.25;        // Release time in seconds
         this.holdTime = 0.1;        // Hold time before release
