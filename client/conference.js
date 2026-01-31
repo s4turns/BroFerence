@@ -938,6 +938,15 @@ class ConferenceClient {
                 localContainer.classList.add('no-video');
             }
 
+            // Update main control buttons to match prejoin state
+            const audioBtn = document.getElementById('toggleAudioBtn');
+            audioBtn.classList.toggle('active', !this.audioEnabled);
+            audioBtn.querySelector('.icon').textContent = this.audioEnabled ? '🎤' : '🔇';
+
+            const videoBtn = document.getElementById('toggleVideoBtn');
+            videoBtn.classList.toggle('active', !this.videoEnabled);
+            videoBtn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
+
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
@@ -1274,6 +1283,16 @@ class ConferenceClient {
         } else {
             console.warn('Could not start stats monitoring - peer not found');
         }
+
+        // Re-broadcast our audio/video state so the new peer knows our current state
+        this.sendMessage({
+            type: 'audio-state',
+            audioEnabled: this.audioEnabled
+        });
+        this.sendMessage({
+            type: 'video-state',
+            videoEnabled: this.videoEnabled
+        });
 
         this.updateRoomInfo(this.peerConnections.size + 1);
     }
