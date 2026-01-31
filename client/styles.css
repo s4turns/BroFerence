@@ -707,22 +707,23 @@ body::before {
 
 .options-menu {
     position: fixed;
-    top: 0;
-    right: 0;
-    width: 280px;
-    height: 100vh;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 320px;
     background: var(--darker);
-    border-left: 2px solid var(--primary);
-    box-shadow: -4px 0 20px rgba(0, 255, 0, 0.2);
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    transform: translateX(0);
-    transition: transform 0.3s ease;
+    opacity: 1;
+    transition: opacity 0.2s ease;
 }
 
 .options-menu.hidden {
-    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
 }
 
 .options-header {
