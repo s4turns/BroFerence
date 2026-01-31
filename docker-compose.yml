@@ -10,7 +10,7 @@ services:
       - "49152-49200:49152-49200/udp"
     volumes:
       - type: bind
-        source: ./config/turnserver.conf
+        source: ./config/turnserver.production.conf
         target: /etc/coturn/turnserver.conf
         read_only: true
     command: -c /etc/coturn/turnserver.conf
