@@ -88,8 +88,8 @@ class ConferenceClient {
 
         // Buttons
         document.getElementById('joinBtn').addEventListener('click', () => this.showPrejoinScreen());
-        document.getElementById('changeNameBtn').addEventListener('click', () => this.changeName());
-        document.getElementById('leaveRoomBtn').addEventListener('click', () => this.leaveRoom());
+        document.getElementById('changeNameBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.changeName(); });
+        document.getElementById('leaveRoomBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.leaveRoom(); });
 
         // Prejoin buttons
         document.getElementById('prejoinToggleAudioBtn').addEventListener('click', () => this.prejoinToggleAudio());
@@ -102,7 +102,10 @@ class ConferenceClient {
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
-        document.getElementById('inviteLinkBtn').addEventListener('click', () => this.copyInviteLink());
+        document.getElementById('inviteLinkBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.copyInviteLink(); });
+        document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
+        document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
+        document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
 
         // Chat input enter key
         this.chatInput.addEventListener('keypress', (e) => {
@@ -1489,6 +1492,13 @@ class ConferenceClient {
             this.unreadMessageCount = 0;
             this.updateChatNotification();
         }
+    }
+
+    toggleOptionsMenu() {
+        const optionsMenu = document.getElementById('optionsMenu');
+        const optionsOverlay = document.getElementById('optionsOverlay');
+        optionsMenu.classList.toggle('hidden');
+        optionsOverlay.classList.toggle('hidden');
     }
 
     updateChatNotification() {

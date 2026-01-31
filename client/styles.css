@@ -690,6 +690,110 @@ body::before {
     filter: drop-shadow(0 0 3px currentColor);
 }
 
+/* Options Menu */
+.options-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.options-overlay.hidden {
+    display: none;
+}
+
+.options-menu {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 280px;
+    height: 100vh;
+    background: var(--darker);
+    border-left: 2px solid var(--primary);
+    box-shadow: -4px 0 20px rgba(0, 255, 0, 0.2);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(0);
+    transition: transform 0.3s ease;
+}
+
+.options-menu.hidden {
+    transform: translateX(100%);
+}
+
+.options-header {
+    padding: 20px 24px;
+    border-bottom: 2px solid var(--primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #000000;
+}
+
+.options-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: var(--glow);
+    margin: 0;
+}
+
+.options-header .close-btn {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.options-header .close-btn:hover {
+    background: var(--primary);
+    color: #000;
+}
+
+.options-list {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.options-item {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--text);
+    padding: 16px 20px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    transition: all 0.2s;
+}
+
+.options-item:hover {
+    background: var(--primary);
+    color: #000;
+}
+
+.options-item-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.options-item-danger:hover {
+    background: var(--danger);
+    color: #000;
+}
+
 /* Chat Sidebar */
 .chat-sidebar {
     width: 380px;

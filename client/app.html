@@ -16,19 +16,33 @@
                 <span id="participantCount">0 participants</span>
             </div>
             <div class="bottom-controls" id="bottomControls" style="display:none;">
-                <button id="changeNameBtn" class="btn btn-secondary">
-                    ✏️ Change Name
-                </button>
                 <button id="chatToggleBtn" class="btn btn-secondary" style="position: relative;">
                     💬 Chat
                     <span id="chatNotificationBadge" class="notification-badge" style="display: none;"></span>
                 </button>
-                <button id="inviteLinkBtn" class="btn btn-secondary">
-                    📋 Invite
+                <button id="optionsBtn" class="btn btn-secondary">
+                    ☰ Options
                 </button>
-                <button id="leaveRoomBtn" class="btn btn-danger">
-                    Leave Room
-                </button>
+            </div>
+
+            <!-- Options Side Menu -->
+            <div id="optionsOverlay" class="options-overlay hidden"></div>
+            <div id="optionsMenu" class="options-menu hidden">
+                <div class="options-header">
+                    <h3>Options</h3>
+                    <button id="closeOptionsBtn" class="close-btn">✕</button>
+                </div>
+                <div class="options-list">
+                    <button id="changeNameBtn" class="options-item">
+                        ✏️ Change Name
+                    </button>
+                    <button id="inviteLinkBtn" class="options-item">
+                        📋 Copy Invite Link
+                    </button>
+                    <button id="leaveRoomBtn" class="options-item options-item-danger">
+                        🚪 Leave Room
+                    </button>
+                </div>
             </div>
         </header>
 
