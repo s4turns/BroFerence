@@ -475,8 +475,8 @@ body::before {
 
 .muted-indicator {
     position: absolute;
-    top: 44px;
-    left: 12px;
+    bottom: 52px;
+    left: 16px;
     background: rgba(0, 0, 0, 0.8);
     border: 1px solid #ff4444;
     padding: 4px 8px;
