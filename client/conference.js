@@ -1748,12 +1748,11 @@ class ConferenceClient {
 
         if (!this.noiseSuppressionEnabled) {
             try {
-                // Initialize audio context at 48kHz (RNNoise requirement)
+                // Initialize audio context
                 if (!this.audioContext) {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                        sampleRate: 48000
-                    });
-                    await this.audioContext.audioWorklet.addModule('rnnoise-processor.js');
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    // Use simple noise gate processor (RNNoise WASM has loading issues in AudioWorklet)
+                    await this.audioContext.audioWorklet.addModule('noise-processor.js');
                 }
 
                 // Resume context if suspended
@@ -1761,8 +1760,8 @@ class ConferenceClient {
                     await this.audioContext.resume();
                 }
 
-                // Create the RNNoise processor node
-                this.noiseSuppressionNode = new AudioWorkletNode(this.audioContext, 'rnnoise-processor');
+                // Create the noise suppression processor node
+                this.noiseSuppressionNode = new AudioWorkletNode(this.audioContext, 'noise-suppression-processor');
 
                 // Get the current audio track
                 const audioTrack = this.localStream.getAudioTracks()[0];
