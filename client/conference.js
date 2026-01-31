@@ -959,6 +959,9 @@ class ConferenceClient {
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
+            // Enable AI noise suppression by default
+            this.toggleNoiseSuppression();
+
             // Create or join room
             this.sendMessage({
                 type: 'create-room',
