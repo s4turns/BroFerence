@@ -469,35 +469,44 @@ class ConferenceClient {
     async getLocalStream() {
         if (!this.localStream) {
             try {
-                // Advanced audio constraints for crisp audio quality
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+                // Simpler constraints for mobile, advanced for desktop
+                const audioConstraints = isMobile ? {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                } : {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: { ideal: 48000 },
+                    channelCount: { ideal: 1 },
+                    latency: { ideal: 0.01 },
+                    googEchoCancellation: true,
+                    googAutoGainControl: true,
+                    googNoiseSuppression: true,
+                    googHighpassFilter: true,
+                    googTypingNoiseDetection: true,
+                    googNoiseReduction: true,
+                    googAudioMirroring: false
+                };
+
+                const videoConstraints = isMobile ? {
+                    facingMode: 'user',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                } : {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                };
+
                 this.localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 30 }
-                    },
-                    audio: {
-                        // Enable all browser-native noise suppression features
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-
-                        // Advanced audio settings for better quality
-                        sampleRate: { ideal: 48000 },
-                        channelCount: { ideal: 1 },
-                        latency: { ideal: 0.01 },
-
-                        // Chrome/Chromium specific enhancements
-                        googEchoCancellation: true,
-                        googAutoGainControl: true,
-                        googNoiseSuppression: true,
-                        googHighpassFilter: true,
-                        googTypingNoiseDetection: true,
-                        googNoiseReduction: true,
-                        googAudioMirroring: false
-                    }
+                    video: videoConstraints,
+                    audio: audioConstraints
                 });
-                console.log('Advanced audio enhancements enabled: echo cancellation, noise suppression, auto gain, high-pass filter, typing noise detection');
+                console.log(`Media stream acquired (${isMobile ? 'mobile' : 'desktop'} mode)`);
                 this.localVideo.srcObject = this.localStream;
 
                 // Start monitoring for speaking indicator
@@ -835,28 +844,41 @@ class ConferenceClient {
 
         // Get media for preview
         try {
-            // Use same advanced audio constraints as main stream
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            const audioConstraints = isMobile ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } : {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: { ideal: 48000 },
+                channelCount: { ideal: 1 },
+                latency: { ideal: 0.01 },
+                googEchoCancellation: true,
+                googAutoGainControl: true,
+                googNoiseSuppression: true,
+                googHighpassFilter: true,
+                googTypingNoiseDetection: true,
+                googNoiseReduction: true,
+                googAudioMirroring: false
+            };
+
+            const videoConstraints = isMobile ? {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            } : {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 }
+            };
+
             this.prejoinStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 }
-                },
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: { ideal: 48000 },
-                    channelCount: { ideal: 1 },
-                    latency: { ideal: 0.01 },
-                    googEchoCancellation: true,
-                    googAutoGainControl: true,
-                    googNoiseSuppression: true,
-                    googHighpassFilter: true,
-                    googTypingNoiseDetection: true,
-                    googNoiseReduction: true,
-                    googAudioMirroring: false
-                }
+                video: videoConstraints,
+                audio: audioConstraints
             });
 
             document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
