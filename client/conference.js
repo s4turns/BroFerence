@@ -959,8 +959,13 @@ class ConferenceClient {
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
-            // Enable AI noise suppression by default
-            this.toggleNoiseSuppression();
+            // Enable AI noise suppression by default (desktop only - can cause issues on mobile)
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (!isMobile) {
+                this.toggleNoiseSuppression().catch(err => {
+                    console.warn('Noise suppression not available:', err);
+                });
+            }
 
             // Create or join room
             this.sendMessage({
@@ -1775,7 +1780,8 @@ class ConferenceClient {
 
             } catch (error) {
                 console.error('Error enabling noise suppression:', error);
-                alert('Could not enable noise suppression. Your browser may not support AudioWorklet.');
+                // Don't alert - just log the error. Noise suppression is optional.
+                throw error; // Re-throw so caller knows it failed
             }
         } else {
             // Disable noise suppression
