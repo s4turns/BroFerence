@@ -330,22 +330,6 @@ class ConferenceClient {
             case 'moderator-promoted':
                 // Update moderator status for a user
                 this.moderatorId = message.moderatorId;
-
-                // Update the video container to show moderator badge
-                const container = document.getElementById(`video-${message.moderatorId}`);
-                if (container) {
-                    // Remove existing badge if any
-                    const oldBadge = container.querySelector('.moderator-badge');
-                    if (oldBadge) oldBadge.remove();
-
-                    // Add new badge
-                    const modBadge = document.createElement('div');
-                    modBadge.className = 'moderator-badge';
-                    modBadge.innerHTML = '👑 MOD';
-                    modBadge.title = 'Moderator';
-                    container.appendChild(modBadge);
-                }
-
                 this.addChatMessage('System', `${message.username} is now a moderator`, true);
                 break;
 
@@ -1266,15 +1250,6 @@ class ConferenceClient {
             videoTrack.onended = () => container.classList.add('no-video');
         } else {
             container.classList.add('no-video');
-        }
-
-        // Add prominent moderator badge if this user is a moderator
-        if (peerId === this.moderatorId) {
-            const modBadge = document.createElement('div');
-            modBadge.className = 'moderator-badge';
-            modBadge.innerHTML = '👑 MOD';
-            modBadge.title = 'Moderator';
-            container.appendChild(modBadge);
         }
 
         // Add audio controls for remote users
