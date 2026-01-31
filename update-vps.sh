@@ -7,7 +7,7 @@ echo "========================================="
 echo ""
 
 # Pull latest code
-echo "[1/3] Pulling latest code from GitHub..."
+echo "[1/4] Pulling latest code from GitHub..."
 git pull origin main
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to pull from GitHub"
@@ -15,9 +15,23 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Generate random TURN password
+echo ""
+echo "[2/4] Generating random TURN server credentials..."
+TURN_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
+echo "New TURN password generated (32 chars)"
+
+# Update turnserver.production.conf
+sed -i "s/^user=webrtc:.*/user=webrtc:${TURN_PASSWORD}/" config/turnserver.production.conf
+echo "Updated config/turnserver.production.conf"
+
+# Update conference.js
+sed -i "s/credential: '[^']*'/credential: '${TURN_PASSWORD}'/" client/conference.js
+echo "Updated client/conference.js"
+
 # Rebuild and restart Docker containers
 echo ""
-echo "[2/3] Rebuilding Docker containers with latest code..."
+echo "[3/4] Rebuilding Docker containers with latest code..."
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
@@ -30,7 +44,7 @@ fi
 
 # Show container status
 echo ""
-echo "[3/3] Checking container status..."
+echo "[4/4] Checking container status..."
 docker-compose ps
 
 echo ""
