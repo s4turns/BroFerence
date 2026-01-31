@@ -701,6 +701,18 @@ class ConferenceClient {
                 await this.getLocalStream();
             }
 
+            // Set local avatar initial
+            const localAvatar = document.getElementById('localAvatar');
+            if (localAvatar && this.username) {
+                localAvatar.textContent = this.username.charAt(0).toUpperCase();
+            }
+
+            // Set initial video state for local container
+            const localContainer = document.getElementById('localContainer');
+            if (!this.videoEnabled) {
+                localContainer.classList.add('no-video');
+            }
+
             // Create or join room
             this.sendMessage({
                 type: 'create-room',
@@ -941,6 +953,28 @@ class ConferenceClient {
         const label = document.createElement('div');
         label.className = 'video-label';
         label.textContent = username;
+
+        // Add avatar for when video is off
+        const avatar = document.createElement('div');
+        avatar.className = 'video-avatar';
+        avatar.textContent = username.charAt(0).toUpperCase();
+        container.appendChild(avatar);
+
+        // Monitor video track to show/hide avatar
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+            // Check initial state
+            if (!videoTrack.enabled || videoTrack.muted) {
+                container.classList.add('no-video');
+            }
+
+            // Listen for track state changes
+            videoTrack.onmute = () => container.classList.add('no-video');
+            videoTrack.onunmute = () => container.classList.remove('no-video');
+            videoTrack.onended = () => container.classList.add('no-video');
+        } else {
+            container.classList.add('no-video');
+        }
 
         // Add prominent moderator badge if this user is a moderator
         if (peerId === this.moderatorId) {
@@ -1376,6 +1410,10 @@ class ConferenceClient {
             const btn = document.getElementById('toggleVideoBtn');
             btn.classList.toggle('active', !this.videoEnabled);
             btn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
+
+            // Show/hide avatar when video is toggled
+            const localContainer = document.getElementById('localContainer');
+            localContainer.classList.toggle('no-video', !this.videoEnabled);
         }
     }
 
