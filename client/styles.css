@@ -690,6 +690,43 @@ body::before {
     filter: drop-shadow(0 0 3px currentColor);
 }
 
+/* Connection Stats */
+.connection-stats {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 4px 8px;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    z-index: 5;
+    display: flex;
+    gap: 10px;
+    border-radius: 3px;
+}
+
+.connection-stats:empty {
+    display: none;
+}
+
+.connection-stats .stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.connection-stats .stat-good {
+    color: #00ff00;
+}
+
+.connection-stats .stat-warn {
+    color: #ffff00;
+}
+
+.connection-stats .stat-bad {
+    color: #ff4444;
+}
+
 /* Options Menu */
 .options-overlay {
     position: fixed;

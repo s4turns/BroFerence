@@ -17,6 +17,7 @@ class ConferenceClient {
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
+        this.localStatsInterval = null; // Interval for local connection stats
         this.localStream = null;
         this.screenStream = null;
         this.isScreenSharing = false;
@@ -655,6 +656,77 @@ class ConferenceClient {
         }
     }
 
+    startLocalStatsMonitoring() {
+        const localStatsEl = document.getElementById('localStats');
+        if (!localStatsEl) return;
+
+        const updateLocalStats = async () => {
+            if (this.peerConnections.size === 0) {
+                localStatsEl.innerHTML = '';
+                return;
+            }
+
+            let totalRtt = 0;
+            let rttCount = 0;
+            let totalPacketsSent = 0;
+            let totalPacketsLost = 0;
+
+            for (const [peerId, peer] of this.peerConnections) {
+                try {
+                    const stats = await peer.connection.getStats();
+                    stats.forEach(report => {
+                        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                            if (report.currentRoundTripTime !== undefined) {
+                                totalRtt += report.currentRoundTripTime * 1000;
+                                rttCount++;
+                            }
+                        }
+                        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                            totalPacketsSent += report.packetsSent || 0;
+                        }
+                        if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+                            totalPacketsLost += report.packetsLost || 0;
+                        }
+                    });
+                } catch (e) {
+                    // Peer connection might be closed
+                }
+            }
+
+            const avgRtt = rttCount > 0 ? Math.round(totalRtt / rttCount) : null;
+            const lossPercent = totalPacketsSent > 0 ? (totalPacketsLost / totalPacketsSent) * 100 : 0;
+
+            // Determine colors
+            let rttClass = 'stat-good';
+            if (avgRtt !== null) {
+                if (avgRtt >= 200) rttClass = 'stat-bad';
+                else if (avgRtt >= 100) rttClass = 'stat-warn';
+            }
+
+            let lossClass = 'stat-good';
+            if (lossPercent >= 5) lossClass = 'stat-bad';
+            else if (lossPercent >= 1) lossClass = 'stat-warn';
+
+            localStatsEl.innerHTML = `
+                <span class="stat"><span class="${rttClass}">${avgRtt !== null ? avgRtt + 'ms' : '--'}</span> ping</span>
+                <span class="stat"><span class="${lossClass}">${lossPercent.toFixed(1)}%</span> loss</span>
+            `;
+        };
+
+        // Poll every 2 seconds
+        this.localStatsInterval = setInterval(updateLocalStats, 2000);
+        updateLocalStats();
+    }
+
+    stopLocalStatsMonitoring() {
+        if (this.localStatsInterval) {
+            clearInterval(this.localStatsInterval);
+            this.localStatsInterval = null;
+        }
+        const localStatsEl = document.getElementById('localStats');
+        if (localStatsEl) localStatsEl.innerHTML = '';
+    }
+
     async showPrejoinScreen() {
         const username = this.usernameInput.value.trim();
         const roomId = this.roomInput.value.trim();
@@ -782,6 +854,9 @@ class ConferenceClient {
             if (!this.videoEnabled) {
                 localContainer.classList.add('no-video');
             }
+
+            // Start local connection stats monitoring
+            this.startLocalStatsMonitoring();
 
             // Create or join room
             this.sendMessage({
@@ -1754,6 +1829,7 @@ class ConferenceClient {
             clearInterval(intervalId);
         });
         this.statsIntervals.clear();
+        this.stopLocalStatsMonitoring();
 
         // Stop local streams
         if (this.localStream) {
