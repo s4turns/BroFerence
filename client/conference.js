@@ -471,22 +471,23 @@ class ConferenceClient {
                     },
                     audio: {
                         // Enable all browser-native noise suppression features
-                        echoCancellation: { ideal: true },
-                        noiseSuppression: { ideal: true },
-                        autoGainControl: { ideal: true },
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
 
                         // Advanced audio settings for better quality
-                        sampleRate: { ideal: 48000 },  // Higher sample rate for better audio quality
-                        channelCount: { ideal: 1 },    // Mono for voice (reduces bandwidth)
-                        latency: { ideal: 0.01 },      // Low latency for real-time feel
+                        sampleRate: { ideal: 48000 },
+                        channelCount: { ideal: 1 },
+                        latency: { ideal: 0.01 },
 
-                        // Additional noise suppression settings (if supported by browser)
-                        googEchoCancellation: { ideal: true },
-                        googAutoGainControl: { ideal: true },
-                        googNoiseSuppression: { ideal: true },
-                        googHighpassFilter: { ideal: true },     // Remove low-frequency noise
-                        googTypingNoiseDetection: { ideal: true }, // Reduce keyboard noise
-                        googAudioMirroring: { ideal: false }
+                        // Chrome/Chromium specific enhancements
+                        googEchoCancellation: true,
+                        googAutoGainControl: true,
+                        googNoiseSuppression: true,
+                        googHighpassFilter: true,
+                        googTypingNoiseDetection: true,
+                        googNoiseReduction: true,
+                        googAudioMirroring: false
                     }
                 });
                 console.log('Advanced audio enhancements enabled: echo cancellation, noise suppression, auto gain, high-pass filter, typing noise detection');
@@ -835,18 +836,19 @@ class ConferenceClient {
                     frameRate: { ideal: 30 }
                 },
                 audio: {
-                    echoCancellation: { ideal: true },
-                    noiseSuppression: { ideal: true },
-                    autoGainControl: { ideal: true },
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
                     sampleRate: { ideal: 48000 },
                     channelCount: { ideal: 1 },
                     latency: { ideal: 0.01 },
-                    googEchoCancellation: { ideal: true },
-                    googAutoGainControl: { ideal: true },
-                    googNoiseSuppression: { ideal: true },
-                    googHighpassFilter: { ideal: true },
-                    googTypingNoiseDetection: { ideal: true },
-                    googAudioMirroring: { ideal: false }
+                    googEchoCancellation: true,
+                    googAutoGainControl: true,
+                    googNoiseSuppression: true,
+                    googHighpassFilter: true,
+                    googTypingNoiseDetection: true,
+                    googNoiseReduction: true,
+                    googAudioMirroring: false
                 }
             });
 
@@ -1593,6 +1595,10 @@ class ConferenceClient {
 
                 this.isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('active');
+
+                // Hide avatar when screen sharing (screen is visible content)
+                document.getElementById('localContainer').classList.remove('no-video');
+
                 console.log('Screen sharing started');
 
             } catch (error) {
@@ -1630,6 +1636,12 @@ class ConferenceClient {
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
+
+            // Restore avatar if video is off
+            if (!this.videoEnabled) {
+                document.getElementById('localContainer').classList.add('no-video');
+            }
+
             console.log('Screen sharing stopped');
         }
     }
