@@ -1293,23 +1293,27 @@ class ConferenceClient {
 
         // Try to play after adding to DOM - required for mobile
         setTimeout(() => {
+            // On mobile, always add unmute overlay immediately since we start muted
+            if (isMobile) {
+                video.muted = true;
+                this.addUnmuteOverlay(container, video, username);
+            }
+
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise
                     .then(() => {
                         console.log(`Video playing for ${username}, muted: ${video.muted}`);
-                        // On mobile, add unmute overlay since we started muted
-                        if (isMobile && video.muted) {
-                            this.addUnmuteOverlay(container, video, username);
-                        }
                     })
                     .catch(err => {
                         console.warn(`Video autoplay failed for ${username}:`, err);
-                        // Autoplay blocked - try muted, then show appropriate overlay
+                        // Autoplay blocked - try muted
                         video.muted = true;
                         video.play().then(() => {
                             console.log(`Video playing muted for ${username} after retry`);
-                            this.addUnmuteOverlay(container, video, username);
+                            if (!isMobile) {
+                                this.addUnmuteOverlay(container, video, username);
+                            }
                         }).catch(err2 => {
                             console.error(`Video still cannot play for ${username}:`, err2);
                             this.addPlayButtonOverlay(container, video, username);
