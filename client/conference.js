@@ -330,6 +330,11 @@ class ConferenceClient {
             case 'moderator-promoted':
                 // Update moderator status for a user
                 this.moderatorId = message.moderatorId;
+                // Add crown to the moderator's label
+                const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
+                if (modLabel && !modLabel.querySelector('.mod-crown')) {
+                    modLabel.innerHTML = '<span class="mod-crown">👑</span> ' + message.username;
+                }
                 this.addChatMessage('System', `${message.username} is now a moderator`, true);
                 break;
 
@@ -1228,7 +1233,12 @@ class ConferenceClient {
 
         const label = document.createElement('div');
         label.className = 'video-label';
-        label.textContent = username;
+        // Add crown for moderator
+        if (peerId === this.moderatorId) {
+            label.innerHTML = '<span class="mod-crown">👑</span> ' + username;
+        } else {
+            label.textContent = username;
+        }
 
         // Add avatar for when video is off
         const avatar = document.createElement('div');
