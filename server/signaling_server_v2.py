@@ -331,6 +331,20 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'videoEnabled': video_enabled
                 }, exclude=websocket)
 
+        elif msg_type == 'audio-state':
+            # User toggled their audio - broadcast to room
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+            audio_enabled = data.get('audioEnabled', True)
+
+            if room:
+                await broadcast_to_room(room, {
+                    'type': 'audio-state',
+                    'clientId': client_id,
+                    'audioEnabled': audio_enabled
+                }, exclude=websocket)
+
         elif msg_type in ['offer', 'answer', 'ice-candidate']:
             # WebRTC signaling messages - relay to target peer
             target_id = data.get('targetId')

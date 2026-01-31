@@ -473,6 +473,18 @@ body::before {
     opacity: 1;
 }
 
+.muted-indicator {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #ff4444;
+    padding: 6px 10px;
+    font-size: 16px;
+    z-index: 10;
+    border-radius: 4px;
+}
+
 .signal-bars {
     position: absolute;
     bottom: 12px;

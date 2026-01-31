@@ -252,11 +252,15 @@ class ConferenceClient {
                     this.addChatMessage('System', 'You are the moderator of this room', true);
                 }
 
-                // Send initial video state to other users
+                // Send initial video and audio state to other users
                 setTimeout(() => {
                     this.sendMessage({
                         type: 'video-state',
                         videoEnabled: this.videoEnabled
+                    });
+                    this.sendMessage({
+                        type: 'audio-state',
+                        audioEnabled: this.audioEnabled
                     });
                 }, 500);
                 break;
@@ -428,6 +432,28 @@ class ConferenceClient {
                     remoteContainer.classList.toggle('no-video', !message.videoEnabled);
                 } else {
                     console.log('Container not found for', message.clientId);
+                }
+                break;
+
+            case 'audio-state':
+                // Show/hide muted indicator for remote user
+                const audioContainer = document.getElementById(`video-${message.clientId}`);
+                if (audioContainer) {
+                    let mutedIndicator = audioContainer.querySelector('.muted-indicator');
+                    if (!message.audioEnabled) {
+                        // Show muted indicator
+                        if (!mutedIndicator) {
+                            mutedIndicator = document.createElement('div');
+                            mutedIndicator.className = 'muted-indicator';
+                            mutedIndicator.textContent = '🔇';
+                            audioContainer.appendChild(mutedIndicator);
+                        }
+                    } else {
+                        // Hide muted indicator
+                        if (mutedIndicator) {
+                            mutedIndicator.remove();
+                        }
+                    }
                 }
                 break;
         }
@@ -1542,6 +1568,12 @@ class ConferenceClient {
             const btn = document.getElementById('toggleAudioBtn');
             btn.classList.toggle('active', !this.audioEnabled);
             btn.querySelector('.icon').textContent = this.audioEnabled ? '🎤' : '🔇';
+
+            // Notify other users of audio state change
+            this.sendMessage({
+                type: 'audio-state',
+                audioEnabled: this.audioEnabled
+            });
         }
     }
 
