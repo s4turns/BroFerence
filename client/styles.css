@@ -349,13 +349,28 @@ body::before {
 .video-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(500px, 100%), 1fr));
     gap: 16px;
-    padding: 16px;
+    padding: 24px;
     overflow-y: auto;
     background: #000000;
-    align-content: start;
+    align-content: center;
+    justify-content: center;
+    justify-items: center;
     position: relative;
+}
+
+/* Single video fills more space */
+.video-grid .video-container:only-child {
+    max-width: 90vw;
+    max-height: 80vh;
+}
+
+/* Two videos side by side */
+.video-grid .video-container:first-child:nth-last-child(2),
+.video-grid .video-container:first-child:nth-last-child(2) ~ .video-container {
+    max-width: 48vw;
+    max-height: 75vh;
 }
 
 /* Spotlight Mode */
