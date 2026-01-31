@@ -359,6 +359,14 @@ class ConferenceClient {
             case 'error':
                 alert('Error: ' + message.message);
                 break;
+
+            case 'video-state':
+                // Update remote user's video container based on their video state
+                const remoteContainer = document.getElementById(`video-${message.clientId}`);
+                if (remoteContainer) {
+                    remoteContainer.classList.toggle('no-video', !message.videoEnabled);
+                }
+                break;
         }
     }
 
@@ -1414,6 +1422,12 @@ class ConferenceClient {
             // Show/hide avatar when video is toggled
             const localContainer = document.getElementById('localContainer');
             localContainer.classList.toggle('no-video', !this.videoEnabled);
+
+            // Notify other users of video state change
+            this.sendMessage({
+                type: 'video-state',
+                videoEnabled: this.videoEnabled
+            });
         }
     }
 

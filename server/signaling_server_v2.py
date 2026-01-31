@@ -317,6 +317,20 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 if irc_bridge and rooms[room].get('irc_channel'):
                     await irc_bridge.send_message(room, username, msg_content)
 
+        elif msg_type == 'video-state':
+            # User toggled their video - broadcast to room
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+            video_enabled = data.get('videoEnabled', True)
+
+            if room:
+                await broadcast_to_room(room, {
+                    'type': 'video-state',
+                    'clientId': client_id,
+                    'videoEnabled': video_enabled
+                }, exclude=websocket)
+
         elif msg_type in ['offer', 'answer', 'ice-candidate']:
             # WebRTC signaling messages - relay to target peer
             target_id = data.get('targetId')
