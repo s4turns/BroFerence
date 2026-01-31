@@ -928,9 +928,12 @@ class ConferenceClient {
         const video = document.createElement('video');
         video.autoplay = true;
         video.playsinline = true;  // Critical for iOS Safari
-        video.muted = true;  // Start muted to allow autoplay, unmute on user interaction
         video.setAttribute('playsinline', '');  // Additional attribute for iOS
         video.setAttribute('webkit-playsinline', '');  // For older iOS versions
+
+        // On mobile, start muted to allow autoplay. On desktop, try unmuted first.
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        video.muted = isMobile;
 
         // Set srcObject
         video.srcObject = stream;
@@ -971,20 +974,28 @@ class ConferenceClient {
         });
 
         // Try to play after adding to DOM - required for mobile
-        // Video starts muted to allow autoplay, then we add unmute overlay
         setTimeout(() => {
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise
                     .then(() => {
-                        console.log(`Video playing (muted) for ${username}`);
-                        // Add unmute overlay since we started muted
-                        this.addUnmuteOverlay(container, video, username);
+                        console.log(`Video playing for ${username}, muted: ${video.muted}`);
+                        // On mobile, add unmute overlay since we started muted
+                        if (isMobile && video.muted) {
+                            this.addUnmuteOverlay(container, video, username);
+                        }
                     })
                     .catch(err => {
                         console.warn(`Video autoplay failed for ${username}:`, err);
-                        // On mobile, may need user interaction - add a play button overlay
-                        this.addPlayButtonOverlay(container, video, username);
+                        // Autoplay blocked - try muted, then show appropriate overlay
+                        video.muted = true;
+                        video.play().then(() => {
+                            console.log(`Video playing muted for ${username} after retry`);
+                            this.addUnmuteOverlay(container, video, username);
+                        }).catch(err2 => {
+                            console.error(`Video still cannot play for ${username}:`, err2);
+                            this.addPlayButtonOverlay(container, video, username);
+                        });
                     });
             }
         }, 100);
