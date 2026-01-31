@@ -113,7 +113,15 @@ class ConferenceClient {
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
-        document.getElementById('noiseSuppressionBtn').addEventListener('click', () => this.toggleNoiseSuppression());
+
+        // Hide noise suppression on mobile (causes issues)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const noiseBtn = document.getElementById('noiseSuppressionBtn');
+        if (isMobile) {
+            noiseBtn.style.display = 'none';
+        } else {
+            noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
+        }
 
         // Chat input enter key
         this.chatInput.addEventListener('keypress', (e) => {
