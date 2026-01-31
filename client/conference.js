@@ -287,6 +287,11 @@ class ConferenceClient {
                             label.textContent = message.newUsername;
                         }
                     }
+                    // Update the avatar
+                    const avatar = document.querySelector(`#video-${message.clientId} .video-avatar`);
+                    if (avatar) {
+                        avatar.textContent = message.newUsername.charAt(0).toUpperCase();
+                    }
                 }
                 this.addChatMessage('System', `${message.oldUsername} changed their name to ${message.newUsername}`, true);
                 break;
@@ -294,6 +299,11 @@ class ConferenceClient {
             case 'name-changed-by-moderator':
                 // Your name was changed by moderator
                 this.username = message.newUsername;
+                // Update local avatar
+                const localAvatarMod = document.getElementById('localAvatar');
+                if (localAvatarMod) {
+                    localAvatarMod.textContent = this.username.charAt(0).toUpperCase();
+                }
                 this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
 
@@ -1701,6 +1711,12 @@ class ConferenceClient {
             const localLabel = document.querySelector('#localContainer .video-label');
             if (localLabel) {
                 localLabel.textContent = 'You (Local)';
+            }
+
+            // Update local avatar
+            const localAvatar = document.getElementById('localAvatar');
+            if (localAvatar) {
+                localAvatar.textContent = this.username.charAt(0).toUpperCase();
             }
 
             // Notify server and other users
