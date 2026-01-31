@@ -928,7 +928,7 @@ class ConferenceClient {
         const video = document.createElement('video');
         video.autoplay = true;
         video.playsinline = true;  // Critical for iOS Safari
-        video.muted = false;  // We want to hear remote audio
+        video.muted = true;  // Start muted to allow autoplay, unmute on user interaction
         video.setAttribute('playsinline', '');  // Additional attribute for iOS
         video.setAttribute('webkit-playsinline', '');  // For older iOS versions
 
@@ -971,13 +971,15 @@ class ConferenceClient {
         });
 
         // Try to play after adding to DOM - required for mobile
-        // Use a slight delay to ensure DOM is ready
+        // Video starts muted to allow autoplay, then we add unmute overlay
         setTimeout(() => {
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise
                     .then(() => {
-                        console.log(`Video playing for ${username}`);
+                        console.log(`Video playing (muted) for ${username}`);
+                        // Add unmute overlay since we started muted
+                        this.addUnmuteOverlay(container, video, username);
                     })
                     .catch(err => {
                         console.warn(`Video autoplay failed for ${username}:`, err);
@@ -1174,11 +1176,53 @@ class ConferenceClient {
 
         overlay.onclick = async () => {
             try {
+                video.muted = false;
                 await video.play();
                 overlay.remove();
                 console.log(`Video playing for ${username} after user interaction`);
             } catch (err) {
                 console.error(`Still cannot play video for ${username}:`, err);
+            }
+        };
+
+        container.style.position = 'relative';
+        container.appendChild(overlay);
+    }
+
+    addUnmuteOverlay(container, video, username) {
+        // Check if overlay already exists
+        if (container.querySelector('.unmute-overlay')) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'unmute-overlay';
+        overlay.innerHTML = '🔇 Tap to unmute';
+        overlay.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff41;
+            padding: 15px 25px;
+            border: 2px solid #00ff41;
+            cursor: pointer;
+            z-index: 10;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        `;
+
+        overlay.onclick = () => {
+            video.muted = false;
+            overlay.remove();
+            console.log(`Audio unmuted for ${username}`);
+
+            // Update the mute button state in remote audio controls
+            const controls = container.querySelector('.remote-audio-controls button');
+            if (controls) {
+                controls.textContent = '🔊';
+                controls.classList.remove('muted');
             }
         };
 
