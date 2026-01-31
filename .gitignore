@@ -46,3 +46,4 @@ config.local.yml
 
 # SSL certificates and keys
 ssl/
+.claude/
