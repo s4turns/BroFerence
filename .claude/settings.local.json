@@ -20,7 +20,8 @@
       "Bash(python -m http.server:*)",
       "Bash(timeout /t 2 /nobreak)",
       "Bash(start http://localhost:8080/app.html)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git push:*)"
     ]
   }
 }
