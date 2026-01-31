@@ -683,14 +683,40 @@ class ConferenceClient {
     }
 
     startLocalStatsMonitoring() {
-        const localStatsEl = document.getElementById('localStats');
-        if (!localStatsEl) return;
+        const localContainer = document.getElementById('localContainer');
+        if (!localContainer) return;
+
+        // Create signal bars element for local
+        const signalBars = document.createElement('div');
+        signalBars.className = 'signal-bars';
+        signalBars.id = 'localSignalBars';
+        signalBars.innerHTML = `
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="signal-tooltip">
+                <div class="stat-row">
+                    <span class="stat-label">RTT:</span>
+                    <span class="stat-value rtt-value">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Loss:</span>
+                    <span class="stat-value loss-value">--</span>
+                </div>
+            </div>
+        `;
+        localContainer.appendChild(signalBars);
+
+        const rttSpan = signalBars.querySelector('.rtt-value');
+        const lossSpan = signalBars.querySelector('.loss-value');
 
         const updateLocalStats = async () => {
             if (this.peerConnections.size === 0) {
-                localStatsEl.innerHTML = '';
+                signalBars.style.display = 'none';
                 return;
             }
+            signalBars.style.display = 'flex';
 
             let totalRtt = 0;
             let rttCount = 0;
@@ -722,21 +748,52 @@ class ConferenceClient {
             const avgRtt = rttCount > 0 ? Math.round(totalRtt / rttCount) : null;
             const lossPercent = totalPacketsSent > 0 ? (totalPacketsLost / totalPacketsSent) * 100 : 0;
 
-            // Determine colors
-            let rttClass = 'stat-good';
+            // Determine signal quality
+            let signalQuality = 4;
+
             if (avgRtt !== null) {
-                if (avgRtt >= 200) rttClass = 'stat-bad';
-                else if (avgRtt >= 100) rttClass = 'stat-warn';
+                rttSpan.textContent = `${avgRtt}ms`;
+                rttSpan.className = 'stat-value rtt-value';
+                if (avgRtt < 100) {
+                    rttSpan.classList.add('stat-good');
+                } else if (avgRtt < 200) {
+                    rttSpan.classList.add('stat-warning');
+                    signalQuality = Math.min(signalQuality, 3);
+                } else if (avgRtt < 400) {
+                    rttSpan.classList.add('stat-warning');
+                    signalQuality = Math.min(signalQuality, 2);
+                } else {
+                    rttSpan.classList.add('stat-bad');
+                    signalQuality = Math.min(signalQuality, 1);
+                }
             }
 
-            let lossClass = 'stat-good';
-            if (lossPercent >= 5) lossClass = 'stat-bad';
-            else if (lossPercent >= 1) lossClass = 'stat-warn';
+            lossSpan.textContent = `${lossPercent.toFixed(1)}%`;
+            lossSpan.className = 'stat-value loss-value';
+            if (lossPercent < 1) {
+                lossSpan.classList.add('stat-good');
+            } else if (lossPercent < 3) {
+                lossSpan.classList.add('stat-warning');
+                signalQuality = Math.min(signalQuality, 3);
+            } else if (lossPercent < 8) {
+                lossSpan.classList.add('stat-warning');
+                signalQuality = Math.min(signalQuality, 2);
+            } else {
+                lossSpan.classList.add('stat-bad');
+                signalQuality = Math.min(signalQuality, 1);
+            }
 
-            localStatsEl.innerHTML = `
-                <span class="stat"><span class="${rttClass}">${avgRtt !== null ? avgRtt + 'ms' : '--'}</span> ping</span>
-                <span class="stat"><span class="${lossClass}">${lossPercent.toFixed(1)}%</span> loss</span>
-            `;
+            // Update signal bars
+            signalBars.className = 'signal-bars';
+            if (signalQuality === 4) {
+                signalBars.classList.add('signal-excellent');
+            } else if (signalQuality === 3) {
+                signalBars.classList.add('signal-good');
+            } else if (signalQuality === 2) {
+                signalBars.classList.add('signal-fair');
+            } else {
+                signalBars.classList.add('signal-poor');
+            }
         };
 
         // Poll every 2 seconds
@@ -749,8 +806,8 @@ class ConferenceClient {
             clearInterval(this.localStatsInterval);
             this.localStatsInterval = null;
         }
-        const localStatsEl = document.getElementById('localStats');
-        if (localStatsEl) localStatsEl.innerHTML = '';
+        const localSignalBars = document.getElementById('localSignalBars');
+        if (localSignalBars) localSignalBars.remove();
     }
 
     async showPrejoinScreen() {
