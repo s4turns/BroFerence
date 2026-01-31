@@ -102,6 +102,7 @@ class ConferenceClient {
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
+        document.getElementById('inviteLinkBtn').addEventListener('click', () => this.copyInviteLink());
 
         // Chat input enter key
         this.chatInput.addEventListener('keypress', (e) => {
@@ -110,6 +111,42 @@ class ConferenceClient {
 
         // Set default username
         this.usernameInput.value = `User_${this.clientId.substr(-4)}`;
+
+        // Check for URL parameters (invite links)
+        this.handleInviteLink();
+    }
+
+    handleInviteLink() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const room = urlParams.get('room');
+        const name = urlParams.get('name');
+
+        if (room) {
+            this.roomInput.value = room;
+            console.log(`Invite link detected - room: ${room}`);
+        }
+
+        if (name) {
+            this.usernameInput.value = name;
+        }
+    }
+
+    getInviteLink() {
+        if (!this.currentRoom) return null;
+        const baseUrl = window.location.origin + window.location.pathname;
+        return `${baseUrl}?room=${encodeURIComponent(this.currentRoom)}`;
+    }
+
+    copyInviteLink() {
+        const link = this.getInviteLink();
+        if (link) {
+            navigator.clipboard.writeText(link).then(() => {
+                this.addChatMessage('System', 'Invite link copied to clipboard!', true);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                prompt('Copy this invite link:', link);
+            });
+        }
     }
 
     updateStatus(message, type = 'info') {

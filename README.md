@@ -113,8 +113,23 @@ Access at: **https://your-domain.com/app.html**
 - **Camera On/Off** - Toggle your video
 - **Share Screen** - Share your entire screen
 - **Chat** - Open/close text chat sidebar
+- **Invite** - Copy invite link to clipboard
 - **Leave Room** - Exit the conference
 - **Spotlight** - Click any participant's video to fullscreen it
+
+### Invite Links
+
+Share a direct link to join a specific room:
+```
+https://your-domain.com/app.html?room=MyRoom
+```
+
+You can also include a suggested username:
+```
+https://your-domain.com/app.html?room=MyRoom&name=Guest
+```
+
+Click the **Invite** button in the header to copy the current room's invite link.
 
 ### Connection Quality
 
