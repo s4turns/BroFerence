@@ -39,6 +39,12 @@ class ConferenceClient {
         this.prejoinAudioEnabled = true;
         this.prejoinVideoEnabled = true;
 
+        // Noise suppression state
+        this.noiseSuppressionEnabled = false;
+        this.audioContext = null;
+        this.noiseSuppressionNode = null;
+        this.processedStream = null;
+
         this.initUI();
     }
 
@@ -107,6 +113,7 @@ class ConferenceClient {
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
+        document.getElementById('noiseSuppressionBtn').addEventListener('click', () => this.toggleNoiseSuppression());
 
         // Chat input enter key
         this.chatInput.addEventListener('keypress', (e) => {
@@ -1706,6 +1713,96 @@ class ConferenceClient {
         optionsOverlay.classList.toggle('hidden');
     }
 
+    async toggleNoiseSuppression() {
+        const btn = document.getElementById('noiseSuppressionBtn');
+
+        if (!this.noiseSuppressionEnabled) {
+            try {
+                // Initialize audio context if needed
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    await this.audioContext.audioWorklet.addModule('noise-processor.js');
+                }
+
+                // Resume context if suspended
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
+
+                // Create the noise suppression node
+                this.noiseSuppressionNode = new AudioWorkletNode(this.audioContext, 'noise-suppression-processor');
+
+                // Get the current audio track
+                const audioTrack = this.localStream.getAudioTracks()[0];
+                if (!audioTrack) {
+                    throw new Error('No audio track available');
+                }
+
+                // Create a new stream from the audio track
+                const sourceStream = new MediaStream([audioTrack]);
+                const source = this.audioContext.createMediaStreamSource(sourceStream);
+                const destination = this.audioContext.createMediaStreamDestination();
+
+                // Connect: source -> noise suppression -> destination
+                source.connect(this.noiseSuppressionNode);
+                this.noiseSuppressionNode.connect(destination);
+
+                // Get the processed audio track
+                const processedAudioTrack = destination.stream.getAudioTracks()[0];
+
+                // Replace audio track in all peer connections
+                this.peerConnections.forEach(peer => {
+                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    if (sender) {
+                        sender.replaceTrack(processedAudioTrack);
+                    }
+                });
+
+                // Store for later cleanup
+                this.processedStream = destination.stream;
+                this.originalAudioTrack = audioTrack;
+
+                this.noiseSuppressionEnabled = true;
+                btn.setAttribute('data-enabled', 'true');
+                btn.querySelector('.toggle-status').textContent = 'ON';
+
+                console.log('AI Noise Suppression enabled');
+
+            } catch (error) {
+                console.error('Error enabling noise suppression:', error);
+                alert('Could not enable noise suppression. Your browser may not support AudioWorklet.');
+            }
+        } else {
+            // Disable noise suppression
+            try {
+                // Restore original audio track in all peer connections
+                if (this.originalAudioTrack) {
+                    this.peerConnections.forEach(peer => {
+                        const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                        if (sender) {
+                            sender.replaceTrack(this.originalAudioTrack);
+                        }
+                    });
+                }
+
+                // Cleanup
+                if (this.noiseSuppressionNode) {
+                    this.noiseSuppressionNode.disconnect();
+                    this.noiseSuppressionNode = null;
+                }
+
+                this.noiseSuppressionEnabled = false;
+                btn.setAttribute('data-enabled', 'false');
+                btn.querySelector('.toggle-status').textContent = 'OFF';
+
+                console.log('AI Noise Suppression disabled');
+
+            } catch (error) {
+                console.error('Error disabling noise suppression:', error);
+            }
+        }
+    }
+
     updateChatNotification() {
         const badge = document.getElementById('chatNotificationBadge');
         if (this.unreadMessageCount > 0 && !this.chatVisible) {
@@ -1960,6 +2057,22 @@ class ConferenceClient {
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => track.stop());
             this.screenStream = null;
+        }
+
+        // Clean up noise suppression
+        if (this.noiseSuppressionNode) {
+            this.noiseSuppressionNode.disconnect();
+            this.noiseSuppressionNode = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        this.noiseSuppressionEnabled = false;
+        const noiseBtn = document.getElementById('noiseSuppressionBtn');
+        if (noiseBtn) {
+            noiseBtn.setAttribute('data-enabled', 'false');
+            noiseBtn.querySelector('.toggle-status').textContent = 'OFF';
         }
 
         // Close WebSocket connection

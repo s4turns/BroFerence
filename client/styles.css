@@ -807,6 +807,31 @@ body::before {
     color: #000;
 }
 
+.options-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.options-toggle .toggle-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(255, 68, 68, 0.2);
+    color: #ff4444;
+    border: 1px solid #ff4444;
+}
+
+.options-toggle[data-enabled="true"] .toggle-status {
+    background: rgba(0, 255, 0, 0.2);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.options-toggle:hover .toggle-status {
+    background: transparent;
+}
+
 /* Chat Sidebar */
 .chat-sidebar {
     width: 380px;
