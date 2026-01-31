@@ -11,7 +11,11 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Password-protected rooms** - Secure your private meetings
 - **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
 - **Speaking indicator** - Glowing ring shows who's talking
+- **Connection quality indicator** - Signal bars showing RTT and packet loss
+- **User avatars** - Shows user initial when video is off
+- **Spotlight mode** - Click any video to fullscreen it
 - **Screen sharing** - Share your screen with participants
+- **Mobile optimized** - Tap-to-unmute for mobile browsers
 - **Dynamic configuration** - Auto-detects localhost vs production
 - **Retro terminal aesthetic** - Matrix-style green on black UI
 - **IRC bridge** - Connect conference rooms to IRC channels
@@ -110,6 +114,21 @@ Access at: **https://your-domain.com/app.html**
 - **Share Screen** - Share your entire screen
 - **Chat** - Open/close text chat sidebar
 - **Leave Room** - Exit the conference
+- **Spotlight** - Click any participant's video to fullscreen it
+
+### Connection Quality
+
+Each participant's video shows a **signal bar indicator** (like cell phone reception) in the bottom-right corner:
+- **4 bars (green)** - Excellent connection (RTT < 100ms, loss < 1%)
+- **3 bars (green)** - Good connection
+- **2 bars (yellow)** - Fair connection
+- **1 bar (red)** - Poor connection
+
+Hover over the signal bars to see detailed stats (RTT in ms and packet loss %).
+
+### User Avatars
+
+When a participant turns off their camera, their video shows a **circular avatar** with their first initial instead of a black box.
 
 ### Speaking Indicator
 
