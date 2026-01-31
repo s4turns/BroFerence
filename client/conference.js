@@ -210,6 +210,14 @@ class ConferenceClient {
                 if (this.isModerator) {
                     this.addChatMessage('System', 'You are the moderator of this room', true);
                 }
+
+                // Send initial video state to other users
+                setTimeout(() => {
+                    this.sendMessage({
+                        type: 'video-state',
+                        videoEnabled: this.videoEnabled
+                    });
+                }, 500);
                 break;
 
             case 'user-joined':
@@ -362,9 +370,13 @@ class ConferenceClient {
 
             case 'video-state':
                 // Update remote user's video container based on their video state
+                console.log('Received video-state:', message.clientId, 'enabled:', message.videoEnabled);
                 const remoteContainer = document.getElementById(`video-${message.clientId}`);
                 if (remoteContainer) {
+                    console.log('Found container, toggling no-video class');
                     remoteContainer.classList.toggle('no-video', !message.videoEnabled);
+                } else {
+                    console.log('Container not found for', message.clientId);
                 }
                 break;
         }
@@ -1466,21 +1478,17 @@ class ConferenceClient {
         this.spotlightMode = true;
         this.spotlightPeerId = peerId;
 
-        // Hide all other video containers
+        // Hide all other video containers (including local)
         const allContainers = this.videoGrid.querySelectorAll('.video-container');
         allContainers.forEach(container => {
-            if (container.id === `video-${peerId}` || container.id === 'localContainer') {
+            if (container.id === `video-${peerId}`) {
                 container.classList.remove('spotlight-hidden');
+                container.classList.add('spotlight-active');
             } else {
                 container.classList.add('spotlight-hidden');
+                container.classList.remove('spotlight-active');
             }
         });
-
-        // Make the selected video larger
-        const spotlightContainer = document.getElementById(`video-${peerId}`);
-        if (spotlightContainer) {
-            spotlightContainer.classList.add('spotlight-active');
-        }
 
         // Add exit spotlight button
         this.addExitSpotlightButton();
