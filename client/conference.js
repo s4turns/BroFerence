@@ -1022,7 +1022,15 @@ class ConferenceClient {
 
         // Add local stream tracks with optimized RTP parameters
         this.localStream.getTracks().forEach(track => {
-            const sender = pc.addTrack(track, this.localStream);
+            // Use processed audio track if noise suppression is enabled
+            let trackToAdd = track;
+            if (track.kind === 'audio' && this.noiseSuppressionEnabled && this.processedStream) {
+                const processedAudioTrack = this.processedStream.getAudioTracks()[0];
+                if (processedAudioTrack) {
+                    trackToAdd = processedAudioTrack;
+                }
+            }
+            const sender = pc.addTrack(trackToAdd, this.localStream);
 
             // Optimize audio encoding parameters for voice
             if (track.kind === 'audio' && sender.getParameters) {
