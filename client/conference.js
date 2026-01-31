@@ -1,4 +1,5 @@
 // Multi-Participant WebRTC Conference Client with IRC Bridge
+// Version: 2.0 - Signal bars update
 
 class ConferenceClient {
     constructor() {
@@ -15,6 +16,7 @@ class ConferenceClient {
         this.pendingUsernames = new Map(); // Map<clientId, username> for users who haven't established peer connection yet
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
+        this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
         this.localStream = null;
         this.screenStream = null;
         this.isScreenSharing = false;
@@ -445,6 +447,144 @@ class ConferenceClient {
         }
     }
 
+    startStatsMonitoring(peerId, pc, container) {
+        console.log('Starting stats monitoring for peer:', peerId);
+
+        // Create signal bars element
+        const signalBars = document.createElement('div');
+        signalBars.className = 'signal-bars';
+        signalBars.innerHTML = `
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="signal-tooltip">
+                <div class="stat-row">
+                    <span class="stat-label">RTT:</span>
+                    <span class="stat-value rtt-value">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Loss:</span>
+                    <span class="stat-value loss-value">--</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(signalBars);
+
+        const rttSpan = signalBars.querySelector('.rtt-value');
+        const lossSpan = signalBars.querySelector('.loss-value');
+
+        // Track previous values for packet loss calculation
+        let prevPacketsReceived = 0;
+        let prevPacketsLost = 0;
+
+        const updateStats = async () => {
+            try {
+                const stats = await pc.getStats();
+                let rtt = null;
+                let packetsReceived = 0;
+                let packetsLost = 0;
+
+                stats.forEach(report => {
+                    // Get RTT from candidate-pair
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        if (report.currentRoundTripTime !== undefined) {
+                            rtt = report.currentRoundTripTime * 1000; // Convert to ms
+                        }
+                    }
+
+                    // Get packet loss from inbound-rtp
+                    if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                        packetsReceived = report.packetsReceived || 0;
+                        packetsLost = report.packetsLost || 0;
+                    }
+                });
+
+                // Calculate packet loss percentage (delta since last check)
+                const deltaReceived = packetsReceived - prevPacketsReceived;
+                const deltaLost = packetsLost - prevPacketsLost;
+                const totalDelta = deltaReceived + deltaLost;
+                let lossPercent = 0;
+
+                if (totalDelta > 0) {
+                    lossPercent = (deltaLost / totalDelta) * 100;
+                }
+
+                prevPacketsReceived = packetsReceived;
+                prevPacketsLost = packetsLost;
+
+                // Determine signal quality (4=excellent, 3=good, 2=fair, 1=poor)
+                let signalQuality = 4; // Start with excellent
+
+                if (rtt !== null) {
+                    const rttMs = Math.round(rtt);
+                    rttSpan.textContent = `${rttMs}ms`;
+
+                    // RTT color coding
+                    rttSpan.className = 'stat-value rtt-value';
+                    if (rttMs < 100) {
+                        rttSpan.classList.add('stat-good');
+                    } else if (rttMs < 200) {
+                        rttSpan.classList.add('stat-warning');
+                        signalQuality = Math.min(signalQuality, 3);
+                    } else if (rttMs < 400) {
+                        rttSpan.classList.add('stat-warning');
+                        signalQuality = Math.min(signalQuality, 2);
+                    } else {
+                        rttSpan.classList.add('stat-bad');
+                        signalQuality = Math.min(signalQuality, 1);
+                    }
+                }
+
+                // Update loss display
+                lossSpan.textContent = `${lossPercent.toFixed(1)}%`;
+                lossSpan.className = 'stat-value loss-value';
+                if (lossPercent < 1) {
+                    lossSpan.classList.add('stat-good');
+                } else if (lossPercent < 3) {
+                    lossSpan.classList.add('stat-warning');
+                    signalQuality = Math.min(signalQuality, 3);
+                } else if (lossPercent < 8) {
+                    lossSpan.classList.add('stat-warning');
+                    signalQuality = Math.min(signalQuality, 2);
+                } else {
+                    lossSpan.classList.add('stat-bad');
+                    signalQuality = Math.min(signalQuality, 1);
+                }
+
+                // Update signal bars appearance
+                signalBars.className = 'signal-bars';
+                if (signalQuality === 4) {
+                    signalBars.classList.add('signal-excellent');
+                } else if (signalQuality === 3) {
+                    signalBars.classList.add('signal-good');
+                } else if (signalQuality === 2) {
+                    signalBars.classList.add('signal-fair');
+                } else {
+                    signalBars.classList.add('signal-poor');
+                }
+
+            } catch (error) {
+                console.warn('Error getting stats:', error);
+            }
+        };
+
+        // Poll stats every 2 seconds
+        const intervalId = setInterval(updateStats, 2000);
+        this.statsIntervals.set(peerId, intervalId);
+
+        // Initial update
+        updateStats();
+    }
+
+    stopStatsMonitoring(peerId) {
+        const intervalId = this.statsIntervals.get(peerId);
+        if (intervalId) {
+            clearInterval(intervalId);
+            this.statsIntervals.delete(peerId);
+        }
+    }
+
     async showPrejoinScreen() {
         const username = this.usernameInput.value.trim();
         const roomId = this.roomInput.value.trim();
@@ -850,6 +990,16 @@ class ConferenceClient {
         // Start monitoring for speaking indicator
         this.monitorAudioLevel(stream, container);
 
+        // Start connection stats monitoring
+        console.log('About to start stats monitoring for:', peerId);
+        const peer = this.peerConnections.get(peerId);
+        console.log('Peer found:', !!peer, 'Connection:', peer ? !!peer.connection : 'N/A');
+        if (peer && peer.connection) {
+            this.startStatsMonitoring(peerId, peer.connection, container);
+        } else {
+            console.warn('Could not start stats monitoring - peer not found');
+        }
+
         this.updateRoomInfo(this.peerConnections.size + 1);
     }
 
@@ -1045,6 +1195,9 @@ class ConferenceClient {
 
         // Clean up audio controls
         this.remoteAudioControls.delete(peerId);
+
+        // Clean up stats monitoring
+        this.stopStatsMonitoring(peerId);
 
         // Clean up pending data
         this.pendingUsernames.delete(peerId);
@@ -1417,6 +1570,12 @@ class ConferenceClient {
         this.pendingUsernames.clear();
         this.pendingIceCandidates.clear();
         this.remoteAudioControls.clear();
+
+        // Clean up all stats monitoring intervals
+        this.statsIntervals.forEach((intervalId) => {
+            clearInterval(intervalId);
+        });
+        this.statsIntervals.clear();
 
         // Stop local streams
         if (this.localStream) {
