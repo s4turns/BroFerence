@@ -444,6 +444,10 @@ body::before {
     letter-spacing: 1px;
 }
 
+.mod-crown {
+    filter: drop-shadow(0 0 3px gold);
+}
+
 .video-avatar {
     position: absolute;
     top: 50%;
