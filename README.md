@@ -226,24 +226,24 @@ docker-compose up -d
 
 ```
 BroFerence/
-├── client/                    # Web client files
-│   ├── app.html              # Main conference UI
-│   ├── conference.js         # WebRTC logic
-│   ├── styles.css            # Retro terminal styling
-│   └── debug.html            # Debug tools
-├── server/                    # Python backend
-│   ├── signaling_server_v2.py    # Production server (WSS + IRC)
-│   ├── signaling_server_local.py # Local dev server (WS)
-│   └── irc_bridge.py         # IRC integration
-├── config/                    # Configuration
-│   └── turnserver.conf       # TURN server config
-├── ssl/                       # SSL certificates
+├── client/                        # Web client files
+│   ├── app.html                   # Main conference UI
+│   ├── conference.js              # WebRTC logic
+│   ├── styles.css                 # Retro terminal styling
+│   └── debug.html                 # Debug tools
+├── server/                        # Python backend
+│   ├── signaling_server_v2.py     # Production server (WSS + IRC)
+│   ├── signaling_server_local.py  # Local dev server (WS)
+│   └── irc_bridge.py              # IRC integration
+├── config/                        # Configuration
+│   └── turnserver.conf            # TURN server config
+├── ssl/                           # SSL certificates
 │   ├── fullchain.pem
 │   └── privkey.pem
-├── docker-compose.yml         # Docker orchestration
-├── start-local-dev.bat/.sh   # Local dev startup
-├── setup-turn-ip.sh          # TURN auto-config
-└── update-vps.sh             # VPS update script
+├── docker-compose.yml             # Docker orchestration
+├── start-local-dev.bat/.sh        # Local dev startup
+├── setup-turn-ip.sh               # TURN auto-config
+└── update-vps.sh                  # VPS update script
 ```
 
 ## Security Notes
