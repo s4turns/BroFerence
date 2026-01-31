@@ -29,6 +29,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.sublime-*
+.claude/
 
 # Node
 node_modules/
