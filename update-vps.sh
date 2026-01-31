@@ -21,14 +21,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Generate random TURN password
+# Generate random TURN password and detect external IP
 echo ""
-echo "[2/4] Generating random TURN server credentials..."
+echo "[2/4] Configuring TURN server..."
+
 TURN_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
 echo "New TURN password generated (32 chars)"
 
-# Update turnserver.production.conf
+EXTERNAL_IP=$(curl -4 -s ifconfig.me)
+echo "Detected external IP: ${EXTERNAL_IP}"
+
+# Update turnserver.production.conf - password
 sed -i "s/^user=webrtc:.*/user=webrtc:${TURN_PASSWORD}/" config/turnserver.production.conf
+
+# Update turnserver.production.conf - external IP (add or update)
+if grep -q "^external-ip=" config/turnserver.production.conf; then
+    sed -i "s/^external-ip=.*/external-ip=${EXTERNAL_IP}/" config/turnserver.production.conf
+else
+    # Add external-ip after listening-ip line
+    sed -i "/^listening-ip=/a external-ip=${EXTERNAL_IP}" config/turnserver.production.conf
+fi
 echo "Updated config/turnserver.production.conf"
 
 # Update conference.js
