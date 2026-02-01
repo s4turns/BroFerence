@@ -22,10 +22,9 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.noiseAdaptRate = 0.001;
 
         // Audio level reporting
-        this.levelReportInterval = 128; // Report every N samples (about 60fps at 48kHz with 128-sample blocks)
+        this.levelReportInterval = 3; // Report every N process calls (~60fps at 48kHz)
         this.sampleCounter = 0;
         this.peakLevel = 0;
-        this.gateOpen = false;
 
         // Listen for messages from main thread
         this.port.onmessage = (event) => {
