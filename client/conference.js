@@ -1847,6 +1847,9 @@ class ConferenceClient {
                 // Show noise gate settings
                 noiseGateSettings.classList.remove('hidden');
 
+                // Display the mic device name
+                this.updateMicDeviceName();
+
                 // Reset warning state
                 this.micConstantlyActiveCount = 0;
                 this.hideMicActiveWarning();
@@ -1904,6 +1907,11 @@ class ConferenceClient {
         const levelPercent = Math.min(100, level * 1000);
         micLevelIndicator.style.width = `${levelPercent}%`;
 
+        // Debug logging (every ~1 second)
+        if (Math.random() < 0.02) {
+            console.log('Audio level:', data.level.toFixed(4), 'Smoothed:', data.smoothedLevel.toFixed(4), 'Percent:', levelPercent.toFixed(1));
+        }
+
         // Track if mic is constantly active (gate always open)
         if (data.gateOpen) {
             this.micConstantlyActiveCount++;
@@ -1943,6 +1951,37 @@ class ConferenceClient {
                 type: 'setThreshold',
                 threshold: threshold
             });
+        }
+    }
+
+    async updateMicDeviceName() {
+        const micDeviceEl = document.getElementById('micDeviceName');
+        if (!micDeviceEl) return;
+
+        try {
+            // Get the current audio track's device ID
+            const audioTrack = this.localStream?.getAudioTracks()[0];
+            if (!audioTrack) {
+                micDeviceEl.textContent = 'No microphone';
+                return;
+            }
+
+            const settings = audioTrack.getSettings();
+            const deviceId = settings.deviceId;
+
+            // Get device list and find the matching device
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(d => d.kind === 'audioinput');
+            const currentDevice = audioInputs.find(d => d.deviceId === deviceId);
+
+            if (currentDevice && currentDevice.label) {
+                micDeviceEl.textContent = currentDevice.label;
+            } else {
+                micDeviceEl.textContent = `Microphone ${audioInputs.findIndex(d => d.deviceId === deviceId) + 1}`;
+            }
+        } catch (error) {
+            console.warn('Could not get mic device name:', error);
+            micDeviceEl.textContent = 'Unknown device';
         }
     }
 

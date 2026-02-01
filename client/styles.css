@@ -844,6 +844,32 @@ body::before {
     padding: 16px;
 }
 
+.mic-device-container {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: #001100;
+    border: 1px solid var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mic-device-container label {
+    font-size: 11px;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.mic-device-container span {
+    font-size: 11px;
+    color: var(--secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .mic-level-container {
     margin-bottom: 16px;
 }
@@ -871,9 +897,9 @@ body::before {
     top: 0;
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 50%, var(--warning) 75%, var(--danger) 100%);
+    background: var(--danger);
     transition: width 0.05s ease-out;
-    box-shadow: 0 0 10px var(--primary);
+    box-shadow: 0 0 10px var(--danger), 0 0 20px var(--danger);
 }
 
 .gate-threshold-line {
