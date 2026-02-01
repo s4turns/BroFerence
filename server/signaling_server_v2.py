@@ -33,9 +33,15 @@ irc_bridge: Optional[IRCBridge] = None
 
 
 async def init_irc_bridge():
-    """Initialize IRC bridge connection."""
+    """Initialize IRC bridge connection on-demand."""
     global irc_bridge
+
+    # Only initialize if not already connected
+    if irc_bridge is not None:
+        return True
+
     try:
+        logger.info("Initializing IRC bridge (on-demand)...")
         irc_bridge = IRCBridge(
             server="irc.blcknd.network",
             port=6697,
@@ -43,10 +49,12 @@ async def init_irc_bridge():
             use_ssl=True
         )
         await irc_bridge.connect()
-        logger.info("IRC bridge initialized")
+        logger.info("✓ IRC bridge connected successfully")
+        return True
     except Exception as e:
-        logger.error(f"Failed to initialize IRC bridge: {e}")
+        logger.error(f"✗ Failed to initialize IRC bridge: {e}")
         irc_bridge = None
+        return False
 
 
 def hash_password(password: str) -> str:
@@ -225,7 +233,13 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
             'banned': set()  # Set of banned client IDs
         }
 
-        # Join IRC channel if specified
+        # Initialize IRC bridge if channel specified and not already connected
+        if irc_channel:
+            if not irc_bridge:
+                logger.info(f"IRC channel specified ({irc_channel}), initializing IRC bridge...")
+                await init_irc_bridge()
+
+        # Join IRC channel if specified and bridge is available
         if irc_bridge and irc_channel:
             await irc_bridge.join_channel(irc_channel, room_id)
 
@@ -655,10 +669,7 @@ async def handler(websocket: WebSocketServerProtocol):
 
 
 async def main():
-    """Start the WebSocket server and IRC bridge."""
-    # Initialize IRC bridge
-    await init_irc_bridge()
-
+    """Start the WebSocket server."""
     host = "0.0.0.0"
     port = 8765
 
@@ -675,7 +686,7 @@ async def main():
         raise
 
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
-    logger.info(f"Features: Multi-participant, IRC bridge, Password protection")
+    logger.info(f"Features: Multi-participant, IRC bridge (on-demand), Password protection")
 
     async with websockets.serve(handler, host, port, ssl=ssl_context):
         await asyncio.Future()  # Run forever
