@@ -354,9 +354,9 @@ body::before {
     padding: 24px;
     overflow-y: auto;
     background: #000000;
-    align-content: center;
+    align-content: flex-start;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     position: relative;
 }
 
