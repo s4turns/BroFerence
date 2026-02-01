@@ -112,13 +112,17 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.sampleCounter++;
         if (this.sampleCounter >= this.levelReportInterval) {
             const dynamicThreshold = Math.max(this.threshold, this.noiseFloor * 3);
-            this.port.postMessage({
-                type: 'audioLevel',
-                level: this.peakLevel,
-                smoothedLevel: this.smoothedLevel,
-                threshold: dynamicThreshold,
-                gateOpen: this.envelope > 0.5
-            });
+            try {
+                this.port.postMessage({
+                    type: 'audioLevel',
+                    level: this.peakLevel,
+                    smoothedLevel: this.smoothedLevel,
+                    threshold: dynamicThreshold,
+                    gateOpen: this.envelope > 0.5
+                });
+            } catch (e) {
+                // Port may be closed
+            }
             this.peakLevel = 0;
             this.sampleCounter = 0;
         }

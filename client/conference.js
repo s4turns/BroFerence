@@ -1806,6 +1806,7 @@ class ConferenceClient {
                         this.handleAudioLevelUpdate(event.data);
                     }
                 };
+                console.log('Noise suppression node created, message handler attached');
 
                 // Apply saved threshold setting
                 this.updateNoiseGateThreshold(this.noiseGateThreshold);
@@ -1899,13 +1900,19 @@ class ConferenceClient {
     // Handle audio level updates from the noise processor
     handleAudioLevelUpdate(data) {
         const micLevelIndicator = document.getElementById('micLevelIndicator');
-        if (!micLevelIndicator) return;
+        const micLevelDebug = document.getElementById('micLevelDebug');
 
         // Use smoothedLevel for stable display, scale for visibility
         // Audio levels are typically 0-0.1 for normal speech, scale up significantly
         const level = Math.max(data.level, data.smoothedLevel);
         const levelPercent = Math.min(100, level * 1000);
-        micLevelIndicator.style.width = `${levelPercent}%`;
+
+        if (micLevelIndicator) {
+            micLevelIndicator.style.width = `${levelPercent}%`;
+        }
+        if (micLevelDebug) {
+            micLevelDebug.textContent = `${levelPercent.toFixed(0)}%`;
+        }
 
         // Debug logging (every ~1 second)
         if (Math.random() < 0.02) {
