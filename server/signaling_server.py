@@ -13,6 +13,9 @@ import websockets
 from websockets.server import WebSocketServerProtocol
 import os
 from pathlib import Path
+from datetime import datetime
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -197,6 +200,59 @@ async def handler(websocket: WebSocketServerProtocol):
         await unregister_client(websocket)
 
 
+def log_certificate_info(cert_path: str):
+    """Log detailed information about an SSL certificate."""
+    try:
+        with open(cert_path, 'rb') as f:
+            cert_data = f.read()
+            cert = x509.load_pem_x509_certificate(cert_data, default_backend())
+
+        # Extract domain names
+        domains = []
+        try:
+            # Get Common Name
+            cn = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
+            domains.append(cn)
+        except (IndexError, AttributeError):
+            pass
+
+        # Get Subject Alternative Names
+        try:
+            san_ext = cert.extensions.get_extension_for_oid(x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+            san_domains = [name.value for name in san_ext.value]
+            domains.extend([d for d in san_domains if d not in domains])
+        except x509.ExtensionNotFound:
+            pass
+
+        # Get issuer
+        try:
+            issuer = cert.issuer.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
+        except (IndexError, AttributeError):
+            issuer = "Unknown"
+
+        # Get expiration info
+        not_before = cert.not_valid_before_utc if hasattr(cert, 'not_valid_before_utc') else cert.not_valid_before
+        not_after = cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after
+        days_until_expiry = (not_after - datetime.now(not_after.tzinfo)).days
+
+        # Log certificate details
+        logger.info("=" * 70)
+        logger.info("SSL CERTIFICATE DETAILS:")
+        logger.info(f"  Issuer: {issuer}")
+        logger.info(f"  Domains covered ({len(domains)}):")
+        for domain in domains:
+            logger.info(f"    • {domain}")
+        logger.info(f"  Valid from: {not_before.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        logger.info(f"  Valid until: {not_after.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        logger.info(f"  Days until expiry: {days_until_expiry}")
+        if days_until_expiry < 30:
+            logger.warning(f"  ⚠️  Certificate expires soon! ({days_until_expiry} days)")
+        logger.info("=" * 70)
+
+    except Exception as e:
+        logger.warning(f"Could not parse certificate details: {e}")
+
+
 def find_ssl_certificates() -> Tuple[str, str]:
     """
     Find SSL certificate and key files by checking multiple locations.
@@ -226,6 +282,7 @@ def find_ssl_certificates() -> Tuple[str, str]:
                     key_path = ssl_dir / key_name
                     if cert_path.exists() and key_path.exists():
                         logger.info(f"✓ Found SSL certificates in {ssl_dir}: {cert_name}, {key_name}")
+                        log_certificate_info(str(cert_path.absolute()))
                         return (str(cert_path.absolute()), str(key_path.absolute()))
 
     # Location 2: Let's Encrypt directory - check all domain folders
@@ -238,7 +295,8 @@ def find_ssl_certificates() -> Tuple[str, str]:
                     cert_path = domain_dir / 'fullchain.pem'
                     key_path = domain_dir / 'privkey.pem'
                     if cert_path.exists() and key_path.exists():
-                        logger.info(f"Found Let's Encrypt certificates for domain: {domain_dir.name}")
+                        logger.info(f"✓ Found Let's Encrypt certificates for domain: {domain_dir.name}")
+                        log_certificate_info(str(cert_path))
                         return (str(cert_path), str(key_path))
         except PermissionError:
             logger.warning("Permission denied accessing /etc/letsencrypt/live")
@@ -249,7 +307,8 @@ def find_ssl_certificates() -> Tuple[str, str]:
             cert_path = Path(f'/etc/ssl/certs/{cert_name}')
             key_path = Path(f'/etc/ssl/private/{key_name}')
             if cert_path.exists() and key_path.exists():
-                logger.info(f"Found SSL certificates in /etc/ssl/: {cert_name}, {key_name}")
+                logger.info(f"✓ Found SSL certificates in /etc/ssl/: {cert_name}, {key_name}")
+                log_certificate_info(str(cert_path))
                 return (str(cert_path), str(key_path))
 
     # Fallback to hardcoded paths (original behavior)
