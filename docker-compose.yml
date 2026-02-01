@@ -29,8 +29,8 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ./ssl/fullchain.pem:/etc/ssl/certs/fullchain.pem:ro
-      - ./ssl/privkey.pem:/etc/ssl/private/privkey.pem:ro
+      - ./ssl:/app/ssl:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     restart: unless-stopped
     logging:
       driver: "json-file"
