@@ -1008,7 +1008,9 @@ body::before {
     background: var(--darker);
     color: var(--primary);
     padding: 10px 24px;
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     font-size: 13px;
     font-weight: 700;
     border-top: 2px solid var(--primary);
@@ -1029,6 +1031,40 @@ body::before {
     color: var(--danger);
     border-top-color: var(--danger);
     text-shadow: 0 0 5px var(--danger);
+}
+
+.status-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--primary);
+    opacity: 0.7;
+}
+
+.powered-by {
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.github-link {
+    display: flex;
+    align-items: center;
+    color: var(--primary);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 0 3px var(--primary));
+}
+
+.github-link:hover {
+    color: var(--secondary);
+    filter: drop-shadow(0 0 5px var(--secondary));
+    transform: scale(1.1);
+}
+
+.github-link svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* Responsive */
@@ -1079,6 +1115,17 @@ body::before {
         flex-direction: column;
         gap: 8px;
         font-size: 12px;
+    }
+
+    .status-bar {
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 16px;
+        font-size: 11px;
+    }
+
+    .status-footer {
+        font-size: 10px;
     }
 }
 
