@@ -1898,9 +1898,10 @@ class ConferenceClient {
         const micLevelIndicator = document.getElementById('micLevelIndicator');
         if (!micLevelIndicator) return;
 
-        // Convert level to percentage (0-100)
-        // Audio levels are typically 0-1, but we scale for visibility
-        const levelPercent = Math.min(100, data.level * 500);
+        // Use smoothedLevel for stable display, scale for visibility
+        // Audio levels are typically 0-0.1 for normal speech, scale up significantly
+        const level = Math.max(data.level, data.smoothedLevel);
+        const levelPercent = Math.min(100, level * 1000);
         micLevelIndicator.style.width = `${levelPercent}%`;
 
         // Track if mic is constantly active (gate always open)
