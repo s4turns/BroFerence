@@ -18,8 +18,10 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Mobile optimized** - Tap-to-unmute for mobile browsers
 - **Dynamic configuration** - Auto-detects localhost vs production
 - **Retro terminal aesthetic** - Matrix-style green on black UI
-- **IRC bridge** - Connect conference rooms to IRC channels
+- **IRC bridge (on-demand)** - Connect conference rooms to IRC channels when needed
+- **Multi-domain SSL support** - Auto-discovers certificates from multiple locations
 - **Easy deployment** - Docker support with one-command setup
+- **Portable configuration** - Uses system hostname, works anywhere
 
 ## Quick Start
 
@@ -158,6 +160,45 @@ All audio streams have built-in enhancements:
 
 ## Configuration
 
+### SSL Certificates
+
+The server automatically discovers SSL certificates from multiple locations (in priority order):
+
+1. **`./ssl/`** - Local certificates (for custom or development certs)
+2. **`/etc/letsencrypt/live/`** - Let's Encrypt certificates (scans all domains)
+3. **`/etc/ssl/`** - System certificates (fallback)
+
+**Supported certificate filenames:**
+- Certificate: `fullchain.pem`, `cert.pem`, `certificate.pem`
+- Key: `privkey.pem`, `key.pem`, `private.pem`
+
+**Wildcard certificates work perfectly!** The server will log all covered domains on startup.
+
+**Docker Setup:**
+```bash
+# Place your certificates in the ssl/ folder
+cp /path/to/your/fullchain.pem ssl/
+cp /path/to/your/privkey.pem ssl/
+```
+
+The Docker container mounts `./ssl/` to `/app/ssl/` and automatically uses those certificates.
+
+**Certificate Details in Logs:**
+```
+✓ Found SSL certificates in /app/ssl: fullchain.pem, privkey.pem
+======================================================================
+SSL CERTIFICATE DETAILS:
+  Issuer: Let's Encrypt Authority X3
+  Domains covered (3):
+    • *.yourdomain.com
+    • yourdomain.com
+    • www.yourdomain.com
+  Valid from: 2026-01-15 08:30:00 UTC
+  Valid until: 2026-04-15 08:30:00 UTC
+  Days until expiry: 73
+======================================================================
+```
+
 ### TURN Server Credentials
 
 **IMPORTANT: Change default credentials in production!**
@@ -187,13 +228,23 @@ sudo ufw allow 3479/udp
 sudo ufw allow 49152:49200/udp
 ```
 
-### IRC Bridge
+### IRC Bridge (On-Demand)
+
+The IRC bridge **only connects when you specify an IRC channel** - no automatic connections at startup.
 
 To bridge a room to IRC:
-1. Edit `server/signaling_server_v2.py`
-2. Configure IRC server settings (lines 34-38)
-3. When creating a room, enter IRC channel (e.g., `#mychannel`)
-4. Messages sync between WebRTC and IRC
+1. Edit `server/signaling_server_v2.py` to configure IRC server (lines 34-38)
+2. When creating a room, enter IRC channel (e.g., `#mychannel`)
+3. IRC bridge connects automatically when first channel is specified
+4. Messages sync bidirectionally between WebRTC and IRC
+
+**Server logs when IRC connects:**
+```
+IRC channel specified (#mychannel), initializing IRC bridge...
+✓ IRC bridge connected successfully
+```
+
+This saves resources - the IRC connection is only made when actually needed!
 
 ## Helper Scripts
 
@@ -202,9 +253,12 @@ Auto-configures TURN server with your public IP address.
 
 ### `update-vps.sh`
 One-command update script:
-- Pulls latest code
-- Rebuilds Docker containers
-- Restarts services
+- Pulls latest code from GitHub
+- Generates new TURN password
+- Auto-detects external IP and hostname
+- Rebuilds Docker containers with latest changes
+- Restarts all services
+- Shows service URLs with your actual hostname (portable for any deployment)
 
 ### `test-turn-server.sh`
 Diagnostic tool to test TURN server connectivity.
@@ -326,14 +380,46 @@ Edit CSS variables in `styles.css`:
 - [ ] Test TURN server connectivity
 - [ ] Test from multiple networks
 
+## Development
+
+### Code Quality
+
+All Python code is linted with **flake8** and follows PEP 8 style guidelines.
+
+**Run linting locally:**
+```bash
+cd server
+pip install flake8
+flake8 *.py --max-line-length=120
+```
+
+**JavaScript linting:**
+```bash
+cd client
+npm install --save-dev eslint
+npx eslint *.js
+```
+
+### Dependencies
+
+**Python (server/):**
+- `websockets>=12.0` - WebSocket server
+- `cryptography>=41.0.0` - SSL certificate parsing
+
+**Install:**
+```bash
+pip install -r server/requirements.txt
+```
+
 ## Contributing
 
 Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+4. Run linting checks
+5. Test thoroughly
+6. Submit a pull request
 
 ## License
 
@@ -346,8 +432,26 @@ MIT License - feel free to use for personal or commercial projects!
 - Matrix terminal aesthetic inspiration
 - IRC bridge for retro chat integration
 
+## Recent Updates
+
+### v2.0 (2026-02)
+- ✨ Multi-domain SSL certificate auto-discovery
+- ✨ On-demand IRC bridge (only connects when needed)
+- ✨ Verbose SSL certificate logging with domain info
+- ✨ Dynamic hostname detection in update script
+- 🎨 BLCKND branding in status footer
+- 🐛 Fixed all linting issues (flake8 clean)
+- 📝 Improved code documentation
+
+### v1.0 (2026-01)
+- 🎉 Initial release
+- Multi-participant video conferencing
+- TURN server integration
+- IRC chat bridge
+- Matrix-style retro UI
+
 ---
 
-**Made by the BroFerence team**
+**Powered by BLCKND** | [GitHub](https://github.com/s4turns/BroFerence)
 
 For issues or questions: https://github.com/s4turns/BroFerence/issues
