@@ -345,25 +345,71 @@ body::before {
     overflow: hidden;
 }
 
-/* Video Grid */
+/* Video Grid - Auto-scaling based on participant count */
 .video-grid {
     flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    padding: 24px;
-    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    overflow: hidden;
     background: #000000;
-    align-content: flex-start;
-    justify-content: center;
-    align-items: flex-start;
     position: relative;
+    /* Default: 1 participant - full size */
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    align-items: center;
+    justify-items: center;
+}
+
+/* 2 participants - side by side */
+.video-grid[data-participants="2"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
+}
+
+/* 3-4 participants - 2x2 grid */
+.video-grid[data-participants="3"],
+.video-grid[data-participants="4"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+/* 5-6 participants - 3x2 grid */
+.video-grid[data-participants="5"],
+.video-grid[data-participants="6"] {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+/* 7-9 participants - 3x3 grid */
+.video-grid[data-participants="7"],
+.video-grid[data-participants="8"],
+.video-grid[data-participants="9"] {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+}
+
+/* 10-12 participants - 4x3 grid */
+.video-grid[data-participants="10"],
+.video-grid[data-participants="11"],
+.video-grid[data-participants="12"] {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+}
+
+/* 13+ participants - 4x4 grid */
+.video-grid[data-participants="13"],
+.video-grid[data-participants="14"],
+.video-grid[data-participants="15"],
+.video-grid[data-participants="16"] {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
 }
 
 .video-grid .video-container {
-    flex: 0 1 calc(50% - 16px);
-    max-width: calc(50% - 8px);
-    min-width: min(400px, 100%);
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
 }
 
 /* Spotlight Mode */
@@ -405,8 +451,9 @@ body::before {
     overflow: hidden;
     box-shadow: var(--glow);
     transition: all 0.3s ease;
-    aspect-ratio: 16 / 9;
     width: 100%;
+    height: 100%;
+    min-height: 0;
 }
 
 .video-container:hover {

@@ -997,6 +997,9 @@ class ConferenceClient {
                 localContainer.classList.add('no-video');
             }
 
+            // Initialize video grid layout for 1 participant (local)
+            this.updateVideoGridLayout();
+
             // Update main control buttons to match prejoin state
             const audioBtn = document.getElementById('toggleAudioBtn');
             audioBtn.classList.toggle('active', !this.audioEnabled);
@@ -1300,6 +1303,9 @@ class ConferenceClient {
         container.appendChild(video);
         container.appendChild(label);
         this.videoGrid.appendChild(container);
+
+        // Update grid layout for new participant count
+        this.updateVideoGridLayout();
 
         // Add click handler for spotlight mode
         container.addEventListener('click', (e) => {
@@ -2202,6 +2208,14 @@ class ConferenceClient {
         document.getElementById('roomName').textContent = `Room: ${this.currentRoom}`;
         document.getElementById('participantCount').textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
         document.getElementById('roomInfo').style.display = 'flex';
+        this.updateVideoGridLayout();
+    }
+
+    updateVideoGridLayout() {
+        // Count actual video containers in the grid
+        const videoContainers = this.videoGrid.querySelectorAll('.video-container');
+        const count = videoContainers.length;
+        this.videoGrid.setAttribute('data-participants', Math.min(count, 16));
     }
 
     changeName() {
