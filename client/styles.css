@@ -932,20 +932,20 @@ body::before {
 }
 
 .chat-input-container {
-    padding: 20px;
+    padding: 10px;
     border-top: 2px solid var(--primary);
     display: flex;
-    gap: 12px;
+    gap: 8px;
     background: #000000;
 }
 
 .chat-input-container input {
     flex: 1;
-    padding: 12px 16px;
+    padding: 8px 10px;
     border: 2px solid var(--primary);
     background: var(--darker);
     color: var(--primary);
-    font-size: 14px;
+    font-size: 13px;
     font-family: 'Courier New', monospace;
     transition: all 0.3s;
 }
@@ -962,10 +962,10 @@ body::before {
 }
 
 .irc-status {
-    padding: 10px 20px;
+    padding: 6px 10px;
     background: #001a00;
     border-top: 2px solid var(--primary);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--primary);
     text-align: center;
