@@ -203,23 +203,27 @@ def find_ssl_certificates() -> Tuple[str, str]:
     Returns tuple of (cert_path, key_path).
 
     Search order:
-    1. ./ssl/ directory (local development/custom certs)
+    1. ../ssl/ directory (BroFerence/ssl folder - relative to server directory)
     2. /etc/letsencrypt/live/ directory (Let's Encrypt certs - checks all domains)
     3. /etc/ssl/ directory (system-wide certs)
     """
     cert_names = ['fullchain.pem', 'cert.pem', 'certificate.pem']
     key_names = ['privkey.pem', 'key.pem', 'private.pem']
 
-    # Location 1: Local ssl folder
-    ssl_dir = Path('./ssl')
+    # Location 1: BroFerence ssl folder (one directory up from server/)
+    script_dir = Path(__file__).parent
+    ssl_dir = script_dir.parent / 'ssl'
+
+    logger.info(f"Checking for SSL certificates in: {ssl_dir.absolute()}")
+
     if ssl_dir.exists():
         for cert_name in cert_names:
             for key_name in key_names:
                 cert_path = ssl_dir / cert_name
                 key_path = ssl_dir / key_name
                 if cert_path.exists() and key_path.exists():
-                    logger.info(f"Found SSL certificates in ./ssl/: {cert_name}, {key_name}")
-                    return (str(cert_path), str(key_path))
+                    logger.info(f"Found SSL certificates in {ssl_dir}: {cert_name}, {key_name}")
+                    return (str(cert_path.absolute()), str(key_path.absolute()))
 
     # Location 2: Let's Encrypt directory - check all domain folders
     letsencrypt_dir = Path('/etc/letsencrypt/live')
