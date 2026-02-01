@@ -948,6 +948,14 @@ body::before {
     font-size: 13px;
     font-family: 'Courier New', monospace;
     transition: all 0.3s;
+    min-width: 0;
+}
+
+.chat-input-container .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    width: auto;
+    flex-shrink: 0;
 }
 
 .chat-input-container input:focus {
