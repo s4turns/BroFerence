@@ -1802,11 +1802,17 @@ class ConferenceClient {
 
                 // Set up audio level reporting from the processor
                 this.noiseSuppressionNode.port.onmessage = (event) => {
-                    if (event.data.type === 'audioLevel') {
+                    console.log('Message from noise processor:', event.data.type);
+                    if (event.data.type === 'init') {
+                        console.log('Noise processor initialized:', event.data.message);
+                    } else if (event.data.type === 'audioLevel') {
                         this.handleAudioLevelUpdate(event.data);
                     }
                 };
-                console.log('Noise suppression node created, message handler attached');
+
+                // Start the port
+                this.noiseSuppressionNode.port.start();
+                console.log('Noise suppression node created, message handler attached, port started');
 
                 // Apply saved threshold setting
                 this.updateNoiseGateThreshold(this.noiseGateThreshold);
