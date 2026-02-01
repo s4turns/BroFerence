@@ -1966,7 +1966,6 @@ class ConferenceClient {
             message: message
         });
 
-        this.addChatMessage(this.username + ' (You)', message, false, false, true);
         this.chatInput.value = '';
     }
 
