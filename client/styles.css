@@ -360,19 +360,6 @@ body::before {
     position: relative;
 }
 
-/* Single video fills more space */
-.video-grid .video-container:only-child {
-    max-width: 90vw;
-    max-height: 80vh;
-}
-
-/* Two videos side by side */
-.video-grid .video-container:first-child:nth-last-child(2),
-.video-grid .video-container:first-child:nth-last-child(2) ~ .video-container {
-    max-width: 48vw;
-    max-height: 75vh;
-}
-
 /* Spotlight Mode */
 .video-grid.spotlight-mode {
     display: flex;
