@@ -348,16 +348,22 @@ body::before {
 /* Video Grid */
 .video-grid {
     flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(500px, 100%), 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     padding: 24px;
     overflow-y: auto;
     background: #000000;
     align-content: center;
     justify-content: center;
-    justify-items: center;
+    align-items: center;
     position: relative;
+}
+
+.video-grid .video-container {
+    flex: 1 1 400px;
+    max-width: 100%;
+    min-width: 0;
 }
 
 /* Spotlight Mode */
