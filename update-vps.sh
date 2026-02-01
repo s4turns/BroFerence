@@ -65,14 +65,19 @@ echo ""
 echo "[4/4] Checking container status..."
 docker-compose ps
 
+# Get system hostname
+HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+
 echo ""
 echo "========================================="
 echo "Update Complete!"
 echo "========================================="
 echo ""
 echo "Services should be running at:"
-echo "  - Web:      https://ts.interdo.me"
-echo "  - WebSocket: wss://ts.interdo.me:8765"
+echo "  - Web:       https://${HOSTNAME}"
+echo "  - WebSocket: wss://${HOSTNAME}:8765"
+echo "  - TURN:      ${HOSTNAME}:3479"
 echo ""
+echo "External IP: ${EXTERNAL_IP}"
 echo "Check logs with: docker-compose logs -f signaling"
 echo ""
