@@ -1017,12 +1017,6 @@ body::before {
     text-transform: uppercase;
     letter-spacing: 2px;
     text-shadow: 0 0 5px var(--primary);
-    position: relative;
-}
-
-#statusText {
-    flex: 1;
-    text-align: center;
 }
 
 .status-bar.connected {
