@@ -25,6 +25,10 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.levelReportInterval = 3; // Report every N process calls (~60fps at 48kHz)
         this.sampleCounter = 0;
         this.peakLevel = 0;
+        this.processCallCount = 0;
+
+        // Send a test message immediately
+        this.port.postMessage({ type: 'init', message: 'NoiseSuppressionProcessor initialized' });
 
         // Listen for messages from main thread
         this.port.onmessage = (event) => {
