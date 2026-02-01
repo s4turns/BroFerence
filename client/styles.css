@@ -361,9 +361,9 @@ body::before {
 }
 
 .video-grid .video-container {
-    flex: 1 1 400px;
-    max-width: 100%;
-    min-width: 0;
+    flex: 0 1 calc(50% - 16px);
+    max-width: calc(50% - 8px);
+    min-width: min(400px, 100%);
 }
 
 /* Spotlight Mode */
