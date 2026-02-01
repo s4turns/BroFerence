@@ -21,6 +21,12 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.noiseFloor = 0.005;
         this.noiseAdaptRate = 0.001;
 
+        // Audio level reporting
+        this.levelReportInterval = 128; // Report every N samples (about 60fps at 48kHz with 128-sample blocks)
+        this.sampleCounter = 0;
+        this.peakLevel = 0;
+        this.gateOpen = false;
+
         // Listen for messages from main thread
         this.port.onmessage = (event) => {
             if (event.data.type === 'setEnabled') {
@@ -95,7 +101,27 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 
                 // Output with gain applied
                 outputChannel[i] = sample * gain;
+
+                // Track peak level for reporting
+                if (absSample > this.peakLevel) {
+                    this.peakLevel = absSample;
+                }
             }
+        }
+
+        // Report audio level to main thread periodically
+        this.sampleCounter++;
+        if (this.sampleCounter >= this.levelReportInterval) {
+            const dynamicThreshold = Math.max(this.threshold, this.noiseFloor * 3);
+            this.port.postMessage({
+                type: 'audioLevel',
+                level: this.peakLevel,
+                smoothedLevel: this.smoothedLevel,
+                threshold: dynamicThreshold,
+                gateOpen: this.envelope > 0.5
+            });
+            this.peakLevel = 0;
+            this.sampleCounter = 0;
         }
 
         return true;

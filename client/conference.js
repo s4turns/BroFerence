@@ -45,6 +45,12 @@ class ConferenceClient {
         this.noiseSuppressionNode = null;
         this.processedStream = null;
 
+        // Noise gate configuration
+        this.noiseGateThreshold = this.loadNoiseGateSetting('threshold', 5); // Default 5%
+        this.micConstantlyActiveCount = 0;
+        this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
+        this.micActiveWarningShown = false;
+
         this.initUI();
     }
 
@@ -117,10 +123,35 @@ class ConferenceClient {
         // Hide noise suppression on mobile (causes issues)
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const noiseBtn = document.getElementById('noiseSuppressionBtn');
+        const noiseGateSettings = document.getElementById('noiseGateSettings');
         if (isMobile) {
             noiseBtn.style.display = 'none';
+            noiseGateSettings.style.display = 'none';
         } else {
             noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
+
+            // Noise gate threshold slider
+            const gateSlider = document.getElementById('gateThresholdSlider');
+            const gateValue = document.getElementById('gateThresholdValue');
+            const thresholdLine = document.getElementById('gateThresholdLine');
+
+            // Initialize from saved setting
+            gateSlider.value = this.noiseGateThreshold;
+            gateValue.textContent = `${this.noiseGateThreshold}%`;
+            thresholdLine.style.left = `${this.noiseGateThreshold}%`;
+
+            gateSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.noiseGateThreshold = value;
+                gateValue.textContent = `${value}%`;
+                thresholdLine.style.left = `${value}%`;
+                this.saveNoiseGateSetting('threshold', value);
+                this.updateNoiseGateThreshold(value);
+
+                // Reset warning state when user adjusts threshold
+                this.micConstantlyActiveCount = 0;
+                this.hideMicActiveWarning();
+            });
         }
 
         // Chat input enter key
@@ -1750,6 +1781,7 @@ class ConferenceClient {
 
     async toggleNoiseSuppression() {
         const btn = document.getElementById('noiseSuppressionBtn');
+        const noiseGateSettings = document.getElementById('noiseGateSettings');
 
         if (!this.noiseSuppressionEnabled) {
             try {
@@ -1767,6 +1799,16 @@ class ConferenceClient {
 
                 // Create the noise suppression processor node
                 this.noiseSuppressionNode = new AudioWorkletNode(this.audioContext, 'noise-suppression-processor');
+
+                // Set up audio level reporting from the processor
+                this.noiseSuppressionNode.port.onmessage = (event) => {
+                    if (event.data.type === 'audioLevel') {
+                        this.handleAudioLevelUpdate(event.data);
+                    }
+                };
+
+                // Apply saved threshold setting
+                this.updateNoiseGateThreshold(this.noiseGateThreshold);
 
                 // Get the current audio track
                 const audioTrack = this.localStream.getAudioTracks()[0];
@@ -1802,6 +1844,13 @@ class ConferenceClient {
                 btn.setAttribute('data-enabled', 'true');
                 btn.querySelector('.toggle-status').textContent = 'ON';
 
+                // Show noise gate settings
+                noiseGateSettings.classList.remove('hidden');
+
+                // Reset warning state
+                this.micConstantlyActiveCount = 0;
+                this.hideMicActiveWarning();
+
                 console.log('AI Noise Suppression enabled');
 
             } catch (error) {
@@ -1832,11 +1881,84 @@ class ConferenceClient {
                 btn.setAttribute('data-enabled', 'false');
                 btn.querySelector('.toggle-status').textContent = 'OFF';
 
+                // Hide noise gate settings
+                noiseGateSettings.classList.add('hidden');
+                this.hideMicActiveWarning();
+
                 console.log('AI Noise Suppression disabled');
 
             } catch (error) {
                 console.error('Error disabling noise suppression:', error);
             }
+        }
+    }
+
+    // Handle audio level updates from the noise processor
+    handleAudioLevelUpdate(data) {
+        const micLevelIndicator = document.getElementById('micLevelIndicator');
+        if (!micLevelIndicator) return;
+
+        // Convert level to percentage (0-100)
+        // Audio levels are typically 0-1, but we scale for visibility
+        const levelPercent = Math.min(100, data.level * 500);
+        micLevelIndicator.style.width = `${levelPercent}%`;
+
+        // Track if mic is constantly active (gate always open)
+        if (data.gateOpen) {
+            this.micConstantlyActiveCount++;
+            if (this.micConstantlyActiveCount > this.micConstantlyActiveThreshold && !this.micActiveWarningShown) {
+                this.showMicActiveWarning();
+            }
+        } else {
+            // Reset counter when gate closes
+            this.micConstantlyActiveCount = 0;
+            if (this.micActiveWarningShown) {
+                this.hideMicActiveWarning();
+            }
+        }
+    }
+
+    showMicActiveWarning() {
+        const warning = document.getElementById('micActiveWarning');
+        if (warning) {
+            warning.classList.remove('hidden');
+            this.micActiveWarningShown = true;
+        }
+    }
+
+    hideMicActiveWarning() {
+        const warning = document.getElementById('micActiveWarning');
+        if (warning) {
+            warning.classList.add('hidden');
+            this.micActiveWarningShown = false;
+        }
+    }
+
+    updateNoiseGateThreshold(percentValue) {
+        if (this.noiseSuppressionNode) {
+            // Convert percentage (1-30) to actual threshold value (0.002 - 0.06)
+            const threshold = (percentValue / 100) * 0.2;
+            this.noiseSuppressionNode.port.postMessage({
+                type: 'setThreshold',
+                threshold: threshold
+            });
+        }
+    }
+
+    loadNoiseGateSetting(key, defaultValue) {
+        try {
+            const stored = localStorage.getItem(`noiseGate_${key}`);
+            return stored !== null ? JSON.parse(stored) : defaultValue;
+        } catch {
+            return defaultValue;
+        }
+    }
+
+    saveNoiseGateSetting(key, value) {
+        try {
+            localStorage.setItem(`noiseGate_${key}`, JSON.stringify(value));
+        } catch {
+            // localStorage not available
         }
     }
 

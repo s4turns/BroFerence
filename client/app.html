@@ -43,6 +43,28 @@
                         <span class="toggle-label">🎙️ AI Noise Suppression</span>
                         <span class="toggle-status">OFF</span>
                     </button>
+                    <div id="noiseGateSettings" class="noise-gate-settings hidden">
+                        <div class="noise-gate-header">
+                            <span>🎚️ Noise Gate Settings</span>
+                        </div>
+                        <div class="noise-gate-content">
+                            <div class="mic-level-container">
+                                <label>Mic Input Level</label>
+                                <div class="mic-level-bar">
+                                    <div id="micLevelIndicator" class="mic-level-indicator"></div>
+                                    <div id="gateThresholdLine" class="gate-threshold-line"></div>
+                                </div>
+                            </div>
+                            <div class="gate-threshold-container">
+                                <label for="gateThresholdSlider">Gate Threshold: <span id="gateThresholdValue">5%</span></label>
+                                <input type="range" id="gateThresholdSlider" min="1" max="30" value="5" class="gate-slider">
+                                <small>Audio below this level will be muted</small>
+                            </div>
+                        </div>
+                        <div id="micActiveWarning" class="mic-active-warning hidden">
+                            ⚠️ Your mic is constantly active! Adjust the threshold higher.
+                        </div>
+                    </div>
                     <button id="leaveRoomBtn" class="options-item options-item-danger">
                         🚪 Leave Room
                     </button>
