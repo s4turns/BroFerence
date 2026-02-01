@@ -7,7 +7,7 @@ For local testing without SSL certificates
 import asyncio
 import json
 import logging
-from typing import Dict, Set, Optional
+from typing import Dict, Optional
 import websockets
 from websockets.server import WebSocketServerProtocol
 

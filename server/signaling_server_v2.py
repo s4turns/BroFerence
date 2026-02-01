@@ -8,12 +8,11 @@ import asyncio
 import json
 import logging
 import ssl
-from typing import Dict, Set, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
 from irc_bridge import IRCBridge
 import hashlib
-import os
 from pathlib import Path
 from datetime import datetime
 from cryptography import x509
@@ -686,7 +685,7 @@ async def main():
         raise
 
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
-    logger.info(f"Features: Multi-participant, IRC bridge (on-demand), Password protection")
+    logger.info("Features: Multi-participant, IRC bridge (on-demand), Password protection")
 
     async with websockets.serve(handler, host, port, ssl=ssl_context):
         await asyncio.Future()  # Run forever

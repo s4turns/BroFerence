@@ -11,7 +11,6 @@ import ssl
 from typing import Dict, Set, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
-import os
 from pathlib import Path
 from datetime import datetime
 from cryptography import x509
