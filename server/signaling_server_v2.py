@@ -8,11 +8,13 @@ import asyncio
 import json
 import logging
 import ssl
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
 from irc_bridge import IRCBridge
 import hashlib
+import os
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,6 +49,59 @@ async def init_irc_bridge():
 def hash_password(password: str) -> str:
     """Hash password for storage."""
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def find_ssl_certificates() -> Tuple[str, str]:
+    """
+    Find SSL certificate and key files by checking multiple locations.
+    Returns tuple of (cert_path, key_path).
+
+    Search order:
+    1. ./ssl/ directory (local development/custom certs)
+    2. /etc/letsencrypt/live/ directory (Let's Encrypt certs - checks all domains)
+    3. /etc/ssl/ directory (system-wide certs)
+    """
+    cert_names = ['fullchain.pem', 'cert.pem', 'certificate.pem']
+    key_names = ['privkey.pem', 'key.pem', 'private.pem']
+
+    # Location 1: Local ssl folder
+    ssl_dir = Path('./ssl')
+    if ssl_dir.exists():
+        for cert_name in cert_names:
+            for key_name in key_names:
+                cert_path = ssl_dir / cert_name
+                key_path = ssl_dir / key_name
+                if cert_path.exists() and key_path.exists():
+                    logger.info(f"Found SSL certificates in ./ssl/: {cert_name}, {key_name}")
+                    return (str(cert_path), str(key_path))
+
+    # Location 2: Let's Encrypt directory - check all domain folders
+    letsencrypt_dir = Path('/etc/letsencrypt/live')
+    if letsencrypt_dir.exists():
+        # Find all domain directories
+        try:
+            for domain_dir in letsencrypt_dir.iterdir():
+                if domain_dir.is_dir():
+                    cert_path = domain_dir / 'fullchain.pem'
+                    key_path = domain_dir / 'privkey.pem'
+                    if cert_path.exists() and key_path.exists():
+                        logger.info(f"Found Let's Encrypt certificates for domain: {domain_dir.name}")
+                        return (str(cert_path), str(key_path))
+        except PermissionError:
+            logger.warning("Permission denied accessing /etc/letsencrypt/live")
+
+    # Location 3: System SSL directory
+    for cert_name in cert_names:
+        for key_name in key_names:
+            cert_path = Path(f'/etc/ssl/certs/{cert_name}')
+            key_path = Path(f'/etc/ssl/private/{key_name}')
+            if cert_path.exists() and key_path.exists():
+                logger.info(f"Found SSL certificates in /etc/ssl/: {cert_name}, {key_name}")
+                return (str(cert_path), str(key_path))
+
+    # Fallback to hardcoded paths (original behavior)
+    logger.warning("No SSL certificates found in standard locations, using fallback paths")
+    return ('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
 
 
 async def register_client(websocket: WebSocketServerProtocol, client_id: str, username: str = None):
@@ -541,9 +596,17 @@ async def main():
     host = "0.0.0.0"
     port = 8765
 
+    # Find SSL certificates
+    cert_path, key_path = find_ssl_certificates()
+
     # SSL context for WSS
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
+    try:
+        ssl_context.load_cert_chain(cert_path, key_path)
+        logger.info(f"Loaded SSL certificates: {cert_path}, {key_path}")
+    except Exception as e:
+        logger.error(f"Failed to load SSL certificates: {e}")
+        raise
 
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
     logger.info(f"Features: Multi-participant, IRC bridge, Password protection")
