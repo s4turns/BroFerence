@@ -2093,6 +2093,22 @@ class ConferenceClient {
     }
 
     stopVideoStream() {
+        // Find senders BEFORE stopping tracks
+        const senderUpdates = [];
+        const cameraTrack = this.localStream.getVideoTracks()[0];
+        // Use processed audio if noise suppression is on, otherwise use raw mic
+        const micTrack = (this.noiseSuppressionEnabled && this.processedStream)
+            ? this.processedStream.getAudioTracks()[0]
+            : this.localStream.getAudioTracks()[0];
+
+        this.peerConnections.forEach(peer => {
+            const senders = peer.connection.getSenders();
+            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+            const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+            senderUpdates.push({ videoSender, audioSender });
+        });
+
+        // Now stop the stream tracks
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => track.stop());
         }
@@ -2101,15 +2117,12 @@ class ConferenceClient {
             this.streamSourceElement = null;
         }
 
-        // Restore camera and mic
-        const cameraTrack = this.localStream.getVideoTracks()[0];
-        const micTrack = this.localStream.getAudioTracks()[0];
-        this.peerConnections.forEach(peer => {
-            const videoSender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-            if (videoSender) videoSender.replaceTrack(cameraTrack);
-            const audioSender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+        // Restore camera and mic using cached senders
+        senderUpdates.forEach(({ videoSender, audioSender }) => {
+            if (videoSender && cameraTrack) videoSender.replaceTrack(cameraTrack);
             if (audioSender && micTrack) audioSender.replaceTrack(micTrack);
         });
+        console.log('Restored camera and mic tracks');
 
         this.localVideo.srcObject = this.localStream;
         this.isScreenSharing = false;
@@ -2139,14 +2152,14 @@ class ConferenceClient {
         const controls = document.createElement('div');
         controls.id = 'streamVolumeControls';
         controls.innerHTML = `
-            <label>🔊 Stream Volume:</label>
+            <span>🔊</span>
             <input type="range" id="streamVolumeSlider" min="0" max="100" value="100">
             <span id="streamVolumeValue">100%</span>
         `;
 
-        // Insert after local video container
+        // Insert inside local video container
         const localContainer = document.getElementById('localContainer');
-        localContainer.parentNode.insertBefore(controls, localContainer.nextSibling);
+        localContainer.appendChild(controls);
 
         // Wire up slider
         const slider = document.getElementById('streamVolumeSlider');
