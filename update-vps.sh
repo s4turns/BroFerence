@@ -17,6 +17,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Ensure update script stays executable after pull
+chmod +x update-vps.sh
+
 # Generate random TURN password and detect external IP
 echo ""
 echo "[2/4] Configuring TURN server..."
