@@ -43,6 +43,9 @@ services:
       dockerfile: Dockerfile.youtube
     ports:
       - "8766:8766"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
     logging:
       driver: "json-file"
