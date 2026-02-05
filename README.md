@@ -74,7 +74,7 @@ chmod +x setup-turn-ip.sh
 
 **3. Start services:**
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **4. Update deployment:**
@@ -278,10 +278,10 @@ Debug tool to verify dynamic URL detection.
 ### WebSocket won't connect
 ```bash
 # Check signaling server logs
-docker-compose logs signaling
+docker compose logs signaling
 
 # Verify server is running
-docker-compose ps
+docker compose ps
 ```
 
 ### Video/audio not working
@@ -312,9 +312,9 @@ F12 > Network tab > Check "Disable cache"
 ### Full rebuild needed
 ```bash
 # Nuclear option - rebuilds everything
-docker-compose down -v
-docker-compose build --no-cache --pull
-docker-compose up -d
+docker compose down -v
+docker compose build --no-cache --pull
+docker compose up -d
 ```
 
 ## Project Structure
@@ -335,7 +335,7 @@ BroFerence/
 ├── ssl/                           # SSL certificates
 │   ├── fullchain.pem
 │   └── privkey.pem
-├── docker-compose.yml             # Docker orchestration
+├── docker compose.yml             # Docker orchestration
 ├── start-local-dev.bat/.sh        # Local dev startup
 ├── setup-turn-ip.sh               # TURN auto-config
 └── update-vps.sh                  # VPS update script
@@ -382,8 +382,8 @@ Edit CSS variables in `styles.css`:
 - [ ] Run `./setup-turn-ip.sh`
 - [ ] Change TURN credentials
 - [ ] Configure firewall rules
-- [ ] Update `docker-compose.yml` with your domain
-- [ ] Start services: `docker-compose up -d`
+- [ ] Update `docker compose.yml` with your domain
+- [ ] Start services: `docker compose up -d`
 - [ ] Test TURN server connectivity
 - [ ] Test from multiple networks
 
