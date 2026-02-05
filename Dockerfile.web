@@ -6,9 +6,8 @@ RUN apk add --no-cache openssl
 # Copy client files directly into the image
 COPY client/ /usr/share/nginx/html/
 
-# Copy SSL certificates if they exist (using wildcard to make it optional)
-COPY ssl/fullchain.pem* /etc/ssl/certs/
-COPY ssl/privkey.pem* /etc/ssl/private/
+# Create SSL directories (certs handled by entrypoint)
+RUN mkdir -p /etc/ssl/certs /etc/ssl/private
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
