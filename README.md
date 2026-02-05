@@ -448,27 +448,34 @@ MIT License - feel free to use for personal or commercial projects!
 
 ## Recent Updates
 
+### v2.1.1 (2026-02-05)
+- **Firefox Compatibility** - Fixed remote video autoplay issues on Firefox
+- **IRC Bridge Reconnection** - Auto-reconnect when connection drops or server restarts
+- **IRC Bridge DNS Fix** - Added DNS servers to Docker container for hostname resolution
+- **IRC Status Logging** - Real-time connection status in chat and detailed server logs
+- **Video Autoplay Fix** - All remote videos start muted with unmute overlay for browser compatibility
+
 ### v2.1 (2026-02)
-- ✨ **YouTube/Video Streaming** - Share YouTube videos with participants via built-in proxy
-- ✨ **AI Noise Suppression** - Adjustable noise gate (1-80%) with real-time mic level visualization
-- ✨ **Per-user Volume Controls** - Adjust volume for each remote participant
-- ✨ **Theme Selector** - 5 color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
-- ✨ **Stop Streaming Button** - Easy return to camera after sharing
-- ✨ **Screen Share with Audio** - Share system audio along with screen
-- 🐛 Fixed audio track handling during video streaming
-- 🐛 Fixed new users joining during active stream
+- **YouTube/Video Streaming** - Share YouTube videos with participants via built-in proxy
+- **AI Noise Suppression** - Adjustable noise gate (1-80%) with real-time mic level visualization
+- **Per-user Volume Controls** - Adjust volume for each remote participant
+- **Theme Selector** - 5 color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
+- **Stop Streaming Button** - Easy return to camera after sharing
+- **Screen Share with Audio** - Share system audio along with screen
+- Fixed audio track handling during video streaming
+- Fixed new users joining during active stream
 
 ### v2.0 (2026-02)
-- ✨ Multi-domain SSL certificate auto-discovery
-- ✨ On-demand IRC bridge (only connects when needed)
-- ✨ Verbose SSL certificate logging with domain info
-- ✨ Dynamic hostname detection in update script
-- 🎨 BLCKND branding in status footer
-- 🐛 Fixed all linting issues (flake8 clean)
-- 📝 Improved code documentation
+- Multi-domain SSL certificate auto-discovery
+- On-demand IRC bridge (only connects when needed)
+- Verbose SSL certificate logging with domain info
+- Dynamic hostname detection in update script
+- BLCKND branding in status footer
+- Fixed all linting issues (flake8 clean)
+- Improved code documentation
 
 ### v1.0 (2026-01)
-- 🎉 Initial release
+- Initial release
 - Multi-participant video conferencing
 - TURN server integration
 - IRC chat bridge
