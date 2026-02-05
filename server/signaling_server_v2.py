@@ -36,7 +36,8 @@ async def init_irc_bridge():
     global irc_bridge
 
     # Only initialize if not already connected
-    if irc_bridge is not None:
+    # Check both existence AND connection status
+    if irc_bridge is not None and irc_bridge.connected:
         return True
 
     try:
@@ -207,12 +208,12 @@ async def unregister_client(websocket: WebSocketServerProtocol):
             }, exclude=websocket)
 
             # Send IRC notification
-            if irc_bridge and rooms[room].get('irc_channel'):
+            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                 await irc_bridge.send_message(room, "System", f"{username} left the room")
 
             # Clean up empty rooms
             if not rooms[room]['users']:
-                if irc_bridge and rooms[room].get('irc_channel'):
+                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                     await irc_bridge.leave_channel(room)
                 del rooms[room]
                 logger.info(f"Room {room} deleted (empty)")
@@ -234,12 +235,12 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
 
         # Initialize IRC bridge if channel specified and not already connected
         if irc_channel:
-            if not irc_bridge:
+            if not irc_bridge or not irc_bridge.connected:
                 logger.info(f"IRC channel specified ({irc_channel}), initializing IRC bridge...")
                 await init_irc_bridge()
 
         # Join IRC channel if specified and bridge is available
-        if irc_bridge and irc_channel:
+        if irc_bridge and irc_bridge.connected and irc_channel:
             await irc_bridge.join_channel(irc_channel, room_id)
 
             # Register callback for IRC messages
@@ -298,6 +299,28 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     if client_info['room']:
         await leave_room(websocket)
 
+    # Initialize IRC bridge if room has IRC channel and bridge is not connected
+    irc_channel = rooms[room_id].get('irc_channel')
+    if irc_channel:
+        if not irc_bridge or not irc_bridge.connected:
+            logger.info(f"Room has IRC channel ({irc_channel}), ensuring IRC bridge is connected...")
+            await init_irc_bridge()
+
+        # Join IRC channel if bridge is available and we're not already in it
+        if irc_bridge and irc_bridge.connected and room_id not in irc_bridge.room_channels:
+            await irc_bridge.join_channel(irc_channel, room_id)
+
+            # Register callback for IRC messages
+            async def irc_message_callback(nick: str, message: str):
+                await broadcast_to_room(room_id, {
+                    'type': 'chat-message',
+                    'username': f"{nick} (IRC)",
+                    'message': message,
+                    'timestamp': asyncio.get_event_loop().time()
+                })
+
+            irc_bridge.register_message_callback(room_id, irc_message_callback)
+
     # Join new room
     rooms[room_id]['users'].add(websocket)
     client_info['room'] = room_id
@@ -336,7 +359,7 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     }, exclude=websocket)
 
     # Send IRC notification
-    if irc_bridge and rooms[room_id].get('irc_channel'):
+    if irc_bridge and irc_bridge.connected and rooms[room_id].get('irc_channel'):
         await irc_bridge.send_message(room_id, "System", f"{username} joined the room")
 
     return True
@@ -360,7 +383,7 @@ async def leave_room(websocket: WebSocketServerProtocol):
 
         # Clean up empty rooms
         if not rooms[room]['users']:
-            if irc_bridge and rooms[room].get('irc_channel'):
+            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                 await irc_bridge.leave_channel(room)
             del rooms[room]
 
@@ -448,7 +471,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 })
 
                 # Send to IRC if bridged
-                if irc_bridge and rooms[room].get('irc_channel'):
+                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                     await irc_bridge.send_message(room, username, msg_content)
 
         elif msg_type == 'watch-video':
@@ -578,7 +601,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 }, exclude=websocket)
 
                 # Send IRC notification if bridged
-                if irc_bridge and rooms[room].get('irc_channel'):
+                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                     await irc_bridge.send_message(room, "System", f"{old_username} changed their name to {new_username}")
 
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
@@ -607,7 +630,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         })
 
                         # Send IRC notification if bridged
-                        if irc_bridge and rooms[room].get('irc_channel'):
+                        if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                             await irc_bridge.send_message(room, "System", f"{info['username']} is now a moderator")
 
                         logger.info(f"User {target_id} promoted to moderator in room {room}")
@@ -649,7 +672,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                             })
 
                             # Send IRC notification if bridged
-                            if irc_bridge and rooms[room].get('irc_channel'):
+                            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                                 await irc_bridge.send_message(room, "System", f"Moderator changed {old_username}'s name to {new_username}")
 
                             logger.info(f"Moderator changed {old_username} to {new_username} in room {room}")
