@@ -1,22 +1,29 @@
 #!/bin/bash
-# Script to configure TURN server with your public IP
+# Script to configure TURN server with your public IP or hostname
 
 echo "========================================="
 echo "TURN Server IP Configuration"
 echo "========================================="
 echo ""
 
-# Detect public IP
-echo "Detecting your public IP address..."
-PUBLIC_IP=$(curl -4 -s ifconfig.me)
+# Check for hostname argument
+if [ -n "$1" ]; then
+    PUBLIC_IP="$1"
+    echo "Using provided hostname/IP: $PUBLIC_IP"
+else
+    # Detect public IP
+    echo "Detecting your public IP address..."
+    PUBLIC_IP=$(curl -4 -s ifconfig.me)
 
-if [ -z "$PUBLIC_IP" ]; then
-    echo "ERROR: Could not detect public IP"
-    echo "Please set it manually in config/turnserver.conf"
-    exit 1
+    if [ -z "$PUBLIC_IP" ]; then
+        echo "ERROR: Could not detect public IP"
+        echo "Usage: $0 [hostname]"
+        echo "Example: $0 ts.interdo.me"
+        exit 1
+    fi
+
+    echo "Detected public IP: $PUBLIC_IP"
 fi
-
-echo "Detected public IP: $PUBLIC_IP"
 echo ""
 
 # Update turnserver.conf
@@ -54,7 +61,7 @@ echo "========================================="
 echo "Configuration Updated!"
 echo "========================================="
 echo ""
-echo "External IP set to: $PUBLIC_IP"
+echo "External IP/Hostname set to: $PUBLIC_IP"
 echo "Backup saved to: $CONFIG_FILE.backup"
 echo ""
 echo "Next steps:"
