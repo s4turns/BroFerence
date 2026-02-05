@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-YouTube Video Proxy - Extracts direct video URLs using yt-dlp
+YouTube Video Proxy - Extracts and streams video using yt-dlp
 Runs alongside the signaling server on port 8766
 """
 
-import asyncio
-import json
 import subprocess
 import logging
+import aiohttp
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
@@ -25,76 +24,86 @@ async def get_video_url(request):
 
         logger.info(f"Extracting video URL for: {url}")
 
-        # Use yt-dlp to get direct URL
-        # -f: format selection - prefer 720p or best available
-        # -g: get URL only, don't download
-        # --no-warnings: suppress warnings
         result = subprocess.run(
-            [
-                'yt-dlp',
-                '-f', 'best[height<=720]/best',
-                '-g',
-                '--no-warnings',
-                '--no-playlist',
-                url
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30
+            ['yt-dlp', '-f', 'best[height<=720]/best', '-g', '--no-warnings', '--no-playlist', url],
+            capture_output=True, text=True, timeout=30
         )
 
         if result.returncode != 0:
             logger.error(f"yt-dlp error: {result.stderr}")
-            return web.json_response({
-                'error': 'Failed to extract video URL',
-                'details': result.stderr
-            }, status=500)
+            return web.json_response({'error': 'Failed to extract video URL'}, status=500)
 
         video_url = result.stdout.strip()
-
         if not video_url:
             return web.json_response({'error': 'No video URL found'}, status=404)
 
-        logger.info(f"Extracted URL successfully")
-        return web.json_response({'url': video_url})
+        logger.info("Extracted URL successfully")
+        return web.json_response({'url': f'/stream?url={video_url}'})
 
     except subprocess.TimeoutExpired:
         return web.json_response({'error': 'Request timed out'}, status=504)
-    except FileNotFoundError:
-        return web.json_response({
-            'error': 'yt-dlp not installed',
-            'install': 'pip install yt-dlp'
-        }, status=500)
     except Exception as e:
         logger.error(f"Error: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def stream_video(request):
+    """Proxy the video stream to add CORS headers"""
+    video_url = request.query.get('url', '')
+    if not video_url:
+        return web.Response(status=400, text='No URL')
+
+    logger.info("Starting video stream proxy")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(video_url) as resp:
+                if resp.status != 200:
+                    return web.Response(status=resp.status)
+
+                response = web.StreamResponse(
+                    status=200,
+                    headers={
+                        'Content-Type': resp.headers.get('Content-Type', 'video/mp4'),
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'no-cache',
+                    }
+                )
+                await response.prepare(request)
+
+                async for chunk in resp.content.iter_chunked(65536):
+                    await response.write(chunk)
+
+                await response.write_eof()
+                return response
+
+    except Exception as e:
+        logger.error(f"Stream error: {e}")
+        return web.Response(status=500, text=str(e))
+
+
 async def health_check(request):
-    """Health check endpoint"""
     return web.json_response({'status': 'ok'})
 
 
 def create_app():
-    app = web.Application()
+    app = web.Application(client_max_size=0)
 
-    # CORS middleware
     async def cors_middleware(app, handler):
         async def middleware_handler(request):
             if request.method == 'OPTIONS':
                 response = web.Response()
             else:
                 response = await handler(request)
-
             response.headers['Access-Control-Allow-Origin'] = '*'
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Range'
             return response
         return middleware_handler
 
     app.middlewares.append(cors_middleware)
-
     app.router.add_post('/extract', get_video_url)
+    app.router.add_get('/stream', stream_video)
     app.router.add_get('/health', health_check)
 
     return app
@@ -104,9 +113,5 @@ if __name__ == '__main__':
     app = create_app()
     print("=" * 60)
     print("YouTube Proxy Server")
-    print("=" * 60)
-    print("Endpoints:")
-    print("  POST /extract  - Extract direct video URL")
-    print("  GET  /health   - Health check")
     print("=" * 60)
     web.run_app(app, host='0.0.0.0', port=8766)

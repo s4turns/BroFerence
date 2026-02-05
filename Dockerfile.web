@@ -26,7 +26,12 @@ RUN echo 'server { \
         proxy_pass http://youtube-proxy:8766/extract; \
         proxy_http_version 1.1; \
         proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
+    } \
+    location /api/stream { \
+        proxy_pass http://youtube-proxy:8766/stream; \
+        proxy_http_version 1.1; \
+        proxy_buffering off; \
+        proxy_set_header Host $host; \
     } \
 } \
 server { \
@@ -45,7 +50,12 @@ server { \
         proxy_pass http://youtube-proxy:8766/extract; \
         proxy_http_version 1.1; \
         proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
+    } \
+    location /api/stream { \
+        proxy_pass http://youtube-proxy:8766/stream; \
+        proxy_http_version 1.1; \
+        proxy_buffering off; \
+        proxy_set_header Host $host; \
     } \
 }' > /etc/nginx/conf.d/default.conf
 

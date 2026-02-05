@@ -1970,11 +1970,11 @@ class ConferenceClient {
             // Create hidden video element
             const video = document.createElement('video');
             video.src = url;
-            video.crossOrigin = 'anonymous';
             video.loop = true;
-            video.muted = false;
+            video.muted = true; // Start muted to allow autoplay
 
             await video.play();
+            video.muted = false; // Unmute after playing
 
             // Capture stream from video element
             const stream = video.captureStream();
@@ -2008,8 +2008,9 @@ class ConferenceClient {
                 return;
             }
 
-            // Got direct URL, stream it
-            await this.streamDirectVideo(data.url);
+            // Got proxied URL, stream it through nginx
+            const streamUrl = data.url.replace('/stream?', '/api/stream?');
+            await this.streamDirectVideo(streamUrl);
 
         } catch (error) {
             console.error('Error fetching video:', error);
