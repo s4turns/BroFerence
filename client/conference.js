@@ -462,10 +462,6 @@ class ConferenceClient {
                 this.addChatMessage(message.username, message.message, false, isIRC);
                 break;
 
-            case 'watch-video':
-                this.handleWatchVideo(message.url, message.username);
-                break;
-
             case 'password-required':
                 const password = prompt('This room requires a password:');
                 if (password) {
@@ -1939,30 +1935,171 @@ class ConferenceClient {
         btn.classList.toggle('active');
     }
 
-    loadWatchVideo() {
+    async loadWatchVideo() {
         const urlInput = document.getElementById('videoUrlInput');
         const url = urlInput.value.trim();
 
         if (!url) return;
 
-        // Open locally
-        window.open(url, '_blank');
+        // Check if it's a YouTube URL - need to convert to embed
+        const youtubeId = this.extractYouTubeId(url);
 
-        // Send to everyone in room
-        this.sendMessage({
-            type: 'watch-video',
-            url: url
-        });
-
-        this.addChatMessage('System', `📺 Shared video: ${url}`, true);
-        this.toggleWatchTogether();
-        urlInput.value = '';
+        if (youtubeId) {
+            // For YouTube, we need to use an iframe in a hidden container and capture via canvas
+            this.streamYouTubeVideo(youtubeId);
+        } else {
+            // Direct video URL - load in video element and capture
+            this.streamDirectVideo(url);
+        }
     }
 
-    handleWatchVideo(url, username) {
-        // Open the video in a new tab
-        window.open(url, '_blank');
-        this.addChatMessage('System', `📺 ${username} shared a video`, true);
+    extractYouTubeId(url) {
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/,
+            /youtube\.com\/shorts\/([^&\s?]+)/
+        ];
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+
+    async streamDirectVideo(url) {
+        try {
+            // Create hidden video element
+            const video = document.createElement('video');
+            video.src = url;
+            video.crossOrigin = 'anonymous';
+            video.loop = true;
+            video.muted = false;
+
+            await video.play();
+
+            // Capture stream from video element
+            const stream = video.captureStream();
+
+            this.startVideoStream(stream, video);
+            this.toggleWatchTogether();
+            this.addChatMessage('System', '📺 Streaming video to room', true);
+
+        } catch (error) {
+            console.error('Error streaming video:', error);
+            this.updateWatchStatus('Failed - try a direct video URL (mp4, webm)');
+        }
+    }
+
+    async streamYouTubeVideo(videoId) {
+        // Create container for YouTube player
+        let container = document.getElementById('ytStreamContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'ytStreamContainer';
+            container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:720px;';
+            document.body.appendChild(container);
+        }
+
+        // Create iframe
+        container.innerHTML = `<iframe id="ytFrame"
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1"
+            width="1280" height="720" frameborder="0"
+            allow="autoplay; encrypted-media">
+        </iframe>`;
+
+        // For YouTube, we need screen capture - prompt user
+        this.updateWatchStatus('For YouTube: Use Screen Share and select the YouTube tab');
+
+        setTimeout(() => {
+            this.promptScreenShare();
+        }, 500);
+    }
+
+    async promptScreenShare() {
+        try {
+            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: 'browser' },
+                audio: true
+            });
+
+            this.startVideoStream(this.screenStream);
+            this.toggleWatchTogether();
+            document.getElementById('videoUrlInput').value = '';
+            this.addChatMessage('System', '📺 Streaming to room', true);
+
+        } catch (error) {
+            if (error.name !== 'NotAllowedError') {
+                this.updateWatchStatus('Screen share failed');
+            }
+        }
+    }
+
+    startVideoStream(stream, sourceElement = null) {
+        // Store for cleanup
+        this.streamSourceElement = sourceElement;
+        this.screenStream = stream;
+
+        // Replace video track in all peer connections
+        const videoTrack = stream.getVideoTracks()[0];
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) {
+                sender.replaceTrack(videoTrack);
+            }
+        });
+
+        // Add audio track if present
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+            this.peerConnections.forEach(async (peer, peerId) => {
+                peer.connection.addTrack(audioTracks[0], stream);
+                try {
+                    const offer = await peer.connection.createOffer();
+                    await peer.connection.setLocalDescription(offer);
+                    this.sendMessage({ type: 'offer', targetId: peerId, data: offer });
+                } catch (err) {
+                    console.error('Renegotiation failed:', err);
+                }
+            });
+        }
+
+        // Update local video
+        this.localVideo.srcObject = stream;
+        this.isScreenSharing = true;
+        document.getElementById('watchTogetherBtn').classList.add('active');
+        document.getElementById('localContainer').classList.remove('no-video');
+
+        // Handle stream end
+        videoTrack.onended = () => this.stopVideoStream();
+    }
+
+    stopVideoStream() {
+        if (this.screenStream) {
+            this.screenStream.getTracks().forEach(track => track.stop());
+        }
+        if (this.streamSourceElement) {
+            this.streamSourceElement.pause();
+            this.streamSourceElement = null;
+        }
+
+        // Restore camera
+        const cameraTrack = this.localStream.getVideoTracks()[0];
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) sender.replaceTrack(cameraTrack);
+        });
+
+        this.localVideo.srcObject = this.localStream;
+        this.isScreenSharing = false;
+        this.screenStream = null;
+        document.getElementById('watchTogetherBtn').classList.remove('active');
+
+        if (!this.videoEnabled) {
+            document.getElementById('localContainer').classList.add('no-video');
+        }
+
+        // Clean up YouTube container
+        const ytContainer = document.getElementById('ytStreamContainer');
+        if (ytContainer) ytContainer.remove();
     }
 
     updateWatchStatus(msg) {
