@@ -115,7 +115,6 @@ class ConferenceClient {
         document.getElementById('watchTogetherBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('closeWatchBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('loadVideoBtn').addEventListener('click', () => this.loadWatchVideo());
-        document.getElementById('syncVideoBtn').addEventListener('click', () => this.syncWatchVideo());
         document.getElementById('videoUrlInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.loadWatchVideo();
         });
@@ -461,13 +460,6 @@ class ConferenceClient {
             case 'chat-message':
                 const isIRC = message.username.includes('(IRC)');
                 this.addChatMessage(message.username, message.message, false, isIRC);
-                break;
-
-            case 'watch-together':
-                this.handleWatchTogether({
-                    ...message,
-                    senderName: message.username || message.senderId
-                });
                 break;
 
             case 'password-required':
@@ -1943,94 +1935,138 @@ class ConferenceClient {
         btn.classList.toggle('active');
     }
 
-    loadWatchVideo() {
+    async loadWatchVideo() {
         const urlInput = document.getElementById('videoUrlInput');
         const url = urlInput.value.trim();
 
         if (!url) return;
 
-        const videoId = this.extractYouTubeId(url);
-        if (!videoId) {
-            this.updateWatchStatus('Invalid YouTube URL');
+        // Open YouTube in a popup window
+        const popup = window.open(url, 'YouTubeStream', 'width=1280,height=720');
+
+        if (!popup) {
+            this.updateWatchStatus('Popup blocked - allow popups and try again');
             return;
         }
 
-        this.embedYouTubeVideo(videoId);
+        this.updateWatchStatus('YouTube opened - now sharing tab...');
 
-        // Broadcast to all peers
-        this.sendMessage({
-            type: 'watch-together',
-            action: 'load',
-            videoId: videoId,
-            url: url
-        });
+        // Give popup time to load, then prompt to share it
+        setTimeout(async () => {
+            try {
+                // Request to share the popup tab with audio
+                this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        displaySurface: 'browser',
+                        cursor: 'never'
+                    },
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    },
+                    preferCurrentTab: false,
+                    selfBrowserSurface: 'exclude',
+                    systemAudio: 'include'
+                });
 
-        this.updateWatchStatus('Video loaded - shared with room');
-    }
+                // Check if we got audio
+                const audioTracks = this.screenStream.getAudioTracks();
+                if (audioTracks.length === 0) {
+                    this.addChatMessage('System', '⚠️ No audio - make sure to check "Share tab audio" when selecting the YouTube tab', true);
+                }
 
-    extractYouTubeId(url) {
-        // Handle various YouTube URL formats
-        const patterns = [
-            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/,
-            /youtube\.com\/shorts\/([^&\s?]+)/
-        ];
+                // Replace video track in all peer connections
+                const screenVideoTrack = this.screenStream.getVideoTracks()[0];
+                this.peerConnections.forEach(peer => {
+                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) {
+                        sender.replaceTrack(screenVideoTrack);
+                    }
+                });
 
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match) return match[1];
-        }
-        return null;
-    }
+                // Add audio track and renegotiate
+                if (audioTracks.length > 0) {
+                    for (const [peerId, peer] of this.peerConnections) {
+                        peer.connection.addTrack(audioTracks[0], this.screenStream);
+                        try {
+                            const offer = await peer.connection.createOffer();
+                            await peer.connection.setLocalDescription(offer);
+                            this.sendMessage({
+                                type: 'offer',
+                                targetId: peerId,
+                                data: offer
+                            });
+                        } catch (err) {
+                            console.error(`Failed to renegotiate with ${peerId}:`, err);
+                        }
+                    }
+                }
 
-    embedYouTubeVideo(videoId) {
-        const player = document.getElementById('watchPlayer');
-        // Use youtube-nocookie.com for privacy mode and fewer restrictions
-        player.innerHTML = `<iframe
-            src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowfullscreen
-            referrerpolicy="strict-origin-when-cross-origin">
-        </iframe>`;
-    }
+                // Update local video
+                this.localVideo.srcObject = this.screenStream;
 
-    syncWatchVideo() {
-        const iframe = document.querySelector('#watchPlayer iframe');
-        if (!iframe) {
-            this.updateWatchStatus('No video loaded');
-            return;
-        }
+                // Handle stream end
+                screenVideoTrack.onended = () => {
+                    this.stopStreamingVideo();
+                };
 
-        // Broadcast sync request
-        this.sendMessage({
-            type: 'watch-together',
-            action: 'sync',
-            videoId: this.extractYouTubeId(document.getElementById('videoUrlInput').value)
-        });
+                this.isScreenSharing = true;
+                document.getElementById('watchTogetherBtn').classList.add('active');
+                document.getElementById('localContainer').classList.remove('no-video');
 
-        this.updateWatchStatus('Sync request sent');
-    }
+                this.updateWatchStatus('Streaming YouTube to room');
+                this.addChatMessage('System', '📺 Now streaming video to everyone', true);
 
-    handleWatchTogether(data) {
-        if (data.action === 'load' && data.videoId) {
-            // Another user loaded a video
-            document.getElementById('videoUrlInput').value = data.url || '';
-            this.embedYouTubeVideo(data.videoId);
-
-            // Show the panel
-            const panel = document.getElementById('watchTogetherPanel');
-            if (panel.classList.contains('hidden')) {
+                // Close the panel
                 this.toggleWatchTogether();
-            }
 
-            this.updateWatchStatus(`Video loaded by ${data.senderName || 'peer'}`);
-            this.addChatMessage('System', `📺 ${data.senderName || 'Someone'} started Watch Together`, true);
-        } else if (data.action === 'sync') {
-            // Sync request - just reload the video to restart
-            if (data.videoId) {
-                this.embedYouTubeVideo(data.videoId);
-                this.updateWatchStatus('Synced');
+            } catch (error) {
+                console.error('Error sharing YouTube:', error);
+                if (error.name !== 'NotAllowedError') {
+                    this.updateWatchStatus('Failed to share - try again');
+                }
+            }
+        }, 1000);
+    }
+
+    stopStreamingVideo() {
+        if (this.screenStream) {
+            this.screenStream.getTracks().forEach(track => track.stop());
+        }
+
+        // Restore camera
+        const cameraVideoTrack = this.localStream.getVideoTracks()[0];
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) {
+                sender.replaceTrack(cameraVideoTrack);
+            }
+        });
+
+        // Remove screen audio tracks
+        if (this.screenStream && this.screenStream.getAudioTracks().length > 0) {
+            const screenAudioTrackId = this.screenStream.getAudioTracks()[0].id;
+            for (const [peerId, peer] of this.peerConnections) {
+                const senders = peer.connection.getSenders();
+                senders.forEach(sender => {
+                    if (sender.track && sender.track.kind === 'audio' && sender.track.id === screenAudioTrackId) {
+                        peer.connection.removeTrack(sender);
+                    }
+                });
             }
         }
+
+        this.localVideo.srcObject = this.localStream;
+        this.isScreenSharing = false;
+        this.screenStream = null;
+        document.getElementById('watchTogetherBtn').classList.remove('active');
+
+        if (!this.videoEnabled) {
+            document.getElementById('localContainer').classList.add('no-video');
+        }
+
+        this.addChatMessage('System', '📺 Video streaming stopped', true);
     }
 
     updateWatchStatus(msg) {
