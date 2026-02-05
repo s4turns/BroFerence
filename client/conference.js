@@ -1998,9 +1998,20 @@ class ConferenceClient {
 
             await video.play();
             video.muted = false; // Unmute after playing
+            video.volume = 1.0; // Full volume
 
             // Capture stream from video element
             const stream = video.captureStream();
+
+            // Debug: log what tracks we captured
+            const videoTracks = stream.getVideoTracks();
+            const audioTracks = stream.getAudioTracks();
+            console.log('Captured stream - Video tracks:', videoTracks.length, 'Audio tracks:', audioTracks.length);
+            if (audioTracks.length > 0) {
+                console.log('Audio track:', audioTracks[0].label, 'enabled:', audioTracks[0].enabled, 'muted:', audioTracks[0].muted);
+            } else {
+                console.warn('NO AUDIO TRACK CAPTURED! Video might not have audio or CORS issue.');
+            }
 
             this.startVideoStream(stream, video);
             this.toggleWatchTogether();
@@ -2147,27 +2158,38 @@ class ConferenceClient {
         // Remove existing controls
         this.hideStreamVolumeControls();
 
-        if (!sourceElement) return;
+        if (!sourceElement) {
+            console.warn('No source element for volume controls');
+            return;
+        }
+
+        // Store reference
+        this.streamVolumeElement = sourceElement;
+        console.log('Setting up volume controls for:', sourceElement.tagName, 'current volume:', sourceElement.volume);
 
         const controls = document.createElement('div');
         controls.id = 'streamVolumeControls';
         controls.innerHTML = `
             <span>🔊</span>
-            <input type="range" id="streamVolumeSlider" min="0" max="100" value="100">
-            <span id="streamVolumeValue">100%</span>
+            <input type="range" id="streamVolumeSlider" min="0" max="100" value="${Math.round(sourceElement.volume * 100)}">
+            <span id="streamVolumeValue">${Math.round(sourceElement.volume * 100)}%</span>
         `;
 
         // Insert inside local video container
         const localContainer = document.getElementById('localContainer');
         localContainer.appendChild(controls);
 
-        // Wire up slider
+        // Wire up slider with stored reference
         const slider = document.getElementById('streamVolumeSlider');
         const valueDisplay = document.getElementById('streamVolumeValue');
-        slider.oninput = () => {
-            const volume = slider.value / 100;
-            sourceElement.volume = volume;
-            valueDisplay.textContent = slider.value + '%';
+        const self = this;
+        slider.oninput = function() {
+            const volume = this.value / 100;
+            if (self.streamVolumeElement) {
+                self.streamVolumeElement.volume = volume;
+                console.log('Volume set to:', volume);
+            }
+            valueDisplay.textContent = this.value + '%';
         };
     }
 
