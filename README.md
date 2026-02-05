@@ -16,15 +16,19 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Multi-participant video conferencing** - Unlimited users per room
 - **Real-time text chat** - In-app messaging with IRC bridge support
 - **Password-protected rooms** - Secure your private meetings
+- **YouTube/Video streaming** - Share YouTube videos or direct video URLs with participants (Watch Together)
+- **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization
 - **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
 - **Speaking indicator** - Glowing ring shows who's talking
 - **Connection quality indicator** - Signal bars showing RTT and packet loss
+- **Per-user volume controls** - Adjust volume for each participant individually
 - **User avatars** - Shows user initial when video is off
 - **Spotlight mode** - Click any video to fullscreen it
-- **Screen sharing** - Share your screen with participants
+- **Screen sharing** - Share your screen with audio support
+- **Theme selector** - Multiple color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
 - **Mobile optimized** - Tap-to-unmute for mobile browsers
 - **Dynamic configuration** - Auto-detects localhost vs production
-- **Retro terminal aesthetic** - Matrix-style green on black UI
+- **Retro terminal aesthetic** - Customizable color themes
 - **IRC bridge (on-demand)** - Connect conference rooms to IRC channels when needed
 - **Multi-domain SSL support** - Auto-discovers certificates from multiple locations
 - **Easy deployment** - Docker support with one-command setup
@@ -120,11 +124,14 @@ Access at: **https://your-domain.com/app.html**
 
 - **Mute/Unmute** - Toggle your microphone
 - **Camera On/Off** - Toggle your video
-- **Share Screen** - Share your entire screen
+- **Share Screen** - Share your entire screen with optional audio
+- **Watch Together** - Stream YouTube videos or direct video URLs to all participants
+- **Stop Streaming** - Stop sharing video/screen and return to camera
 - **Chat** - Open/close text chat sidebar
 - **Invite** - Copy invite link to clipboard
-- **Leave Room** - Exit the conference
+- **Settings** - Access noise suppression, theme selector, and leave room
 - **Spotlight** - Click any participant's video to fullscreen it
+- **Volume Control** - Hover over any participant to adjust their volume
 
 ### Invite Links
 
@@ -440,6 +447,16 @@ MIT License - feel free to use for personal or commercial projects!
 - IRC bridge for retro chat integration
 
 ## Recent Updates
+
+### v2.1 (2026-02)
+- ✨ **YouTube/Video Streaming** - Share YouTube videos with participants via built-in proxy
+- ✨ **AI Noise Suppression** - Adjustable noise gate (1-80%) with real-time mic level visualization
+- ✨ **Per-user Volume Controls** - Adjust volume for each remote participant
+- ✨ **Theme Selector** - 5 color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
+- ✨ **Stop Streaming Button** - Easy return to camera after sharing
+- ✨ **Screen Share with Audio** - Share system audio along with screen
+- 🐛 Fixed audio track handling during video streaming
+- 🐛 Fixed new users joining during active stream
 
 ### v2.0 (2026-02)
 - ✨ Multi-domain SSL certificate auto-discovery
