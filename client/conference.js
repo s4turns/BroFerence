@@ -2049,6 +2049,9 @@ class ConferenceClient {
         this.streamSourceElement = sourceElement;
         this.screenStream = stream;
 
+        // Log stream tracks for debugging
+        console.log('Starting video stream with tracks:', stream.getTracks().map(t => `${t.kind}: ${t.label}, enabled: ${t.enabled}`));
+
         // Replace video track in all peer connections
         const videoTrack = stream.getVideoTracks()[0];
         this.peerConnections.forEach(peer => {
@@ -2061,12 +2064,18 @@ class ConferenceClient {
         // Replace audio track if stream has audio
         const audioTrack = stream.getAudioTracks()[0];
         if (audioTrack) {
+            console.log('Stream has audio track, replacing in peers');
             this.peerConnections.forEach(peer => {
                 const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
                 if (sender) {
                     sender.replaceTrack(audioTrack);
+                    console.log('Replaced audio track for peer');
+                } else {
+                    console.warn('No audio sender found for peer');
                 }
             });
+        } else {
+            console.warn('Stream has no audio track!');
         }
 
         // Update local video
@@ -2075,6 +2084,9 @@ class ConferenceClient {
         document.getElementById('watchTogetherBtn').classList.add('active');
         document.getElementById('localContainer').classList.remove('no-video');
         document.getElementById('stopStreamBtn').classList.remove('hidden');
+
+        // Show volume controls for sharer
+        this.showStreamVolumeControls(sourceElement);
 
         // Handle stream end
         videoTrack.onended = () => this.stopVideoStream();
@@ -2110,11 +2122,45 @@ class ConferenceClient {
             document.getElementById('localContainer').classList.add('no-video');
         }
 
-        // Clean up video containers
+        // Clean up video containers and volume controls
         const ytContainer = document.getElementById('ytStreamContainer');
         if (ytContainer) ytContainer.remove();
         const streamContainer = document.getElementById('streamVideoContainer');
         if (streamContainer) streamContainer.remove();
+        this.hideStreamVolumeControls();
+    }
+
+    showStreamVolumeControls(sourceElement) {
+        // Remove existing controls
+        this.hideStreamVolumeControls();
+
+        if (!sourceElement) return;
+
+        const controls = document.createElement('div');
+        controls.id = 'streamVolumeControls';
+        controls.innerHTML = `
+            <label>🔊 Stream Volume:</label>
+            <input type="range" id="streamVolumeSlider" min="0" max="100" value="100">
+            <span id="streamVolumeValue">100%</span>
+        `;
+
+        // Insert after local video container
+        const localContainer = document.getElementById('localContainer');
+        localContainer.parentNode.insertBefore(controls, localContainer.nextSibling);
+
+        // Wire up slider
+        const slider = document.getElementById('streamVolumeSlider');
+        const valueDisplay = document.getElementById('streamVolumeValue');
+        slider.oninput = () => {
+            const volume = slider.value / 100;
+            sourceElement.volume = volume;
+            valueDisplay.textContent = slider.value + '%';
+        };
+    }
+
+    hideStreamVolumeControls() {
+        const controls = document.getElementById('streamVolumeControls');
+        if (controls) controls.remove();
     }
 
     updateWatchStatus(msg) {

@@ -1538,6 +1538,62 @@ body::before {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Stream volume controls */
+#streamVolumeControls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    margin: 8px;
+}
+
+#streamVolumeControls label {
+    color: var(--primary);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+#streamVolumeSlider {
+    flex: 1;
+    min-width: 100px;
+    height: 6px;
+    background: var(--gray-light);
+    border: 1px solid var(--primary);
+    border-radius: 3px;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+#streamVolumeSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--glow);
+}
+
+#streamVolumeSlider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--glow);
+    border: none;
+}
+
+#streamVolumeValue {
+    color: var(--text);
+    font-size: 14px;
+    min-width: 40px;
+    text-align: right;
+}
+
 /* Utility classes */
 .hidden {
     display: none !important;
