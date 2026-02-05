@@ -1993,13 +1993,8 @@ class ConferenceClient {
         this.updateWatchStatus('Fetching video stream...');
 
         try {
-            // Call backend to get direct video URL
-            const hostname = window.location.hostname;
-            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
-            const protocol = isLocalhost ? 'http' : 'https';
-            const proxyUrl = `${protocol}://${hostname}:8766/extract`;
-
-            const response = await fetch(proxyUrl, {
+            // Call backend proxy through nginx
+            const response = await fetch('/api/youtube', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}` })
@@ -2009,9 +2004,7 @@ class ConferenceClient {
 
             if (data.error) {
                 console.error('Proxy error:', data.error);
-                this.updateWatchStatus('Failed: ' + data.error);
-                // Fallback to screen share
-                this.promptScreenShare();
+                this.updateWatchStatus('Error: ' + data.error);
                 return;
             }
 
@@ -2020,27 +2013,7 @@ class ConferenceClient {
 
         } catch (error) {
             console.error('Error fetching video:', error);
-            this.updateWatchStatus('Proxy unavailable - using screen share');
-            this.promptScreenShare();
-        }
-    }
-
-    async promptScreenShare() {
-        try {
-            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { displaySurface: 'browser' },
-                audio: true
-            });
-
-            this.startVideoStream(this.screenStream);
-            this.toggleWatchTogether();
-            document.getElementById('videoUrlInput').value = '';
-            this.addChatMessage('System', '📺 Streaming to room', true);
-
-        } catch (error) {
-            if (error.name !== 'NotAllowedError') {
-                this.updateWatchStatus('Screen share failed');
-            }
+            this.updateWatchStatus('Failed to fetch video');
         }
     }
 
