@@ -462,6 +462,10 @@ class ConferenceClient {
                 this.addChatMessage(message.username, message.message, false, isIRC);
                 break;
 
+            case 'watch-video':
+                this.handleWatchVideo(message.url, message.username);
+                break;
+
             case 'password-required':
                 const password = prompt('This room requires a password:');
                 if (password) {
@@ -1935,138 +1939,30 @@ class ConferenceClient {
         btn.classList.toggle('active');
     }
 
-    async loadWatchVideo() {
+    loadWatchVideo() {
         const urlInput = document.getElementById('videoUrlInput');
         const url = urlInput.value.trim();
 
         if (!url) return;
 
-        // Open YouTube in a popup window
-        const popup = window.open(url, 'YouTubeStream', 'width=1280,height=720');
+        // Open locally
+        window.open(url, '_blank');
 
-        if (!popup) {
-            this.updateWatchStatus('Popup blocked - allow popups and try again');
-            return;
-        }
-
-        this.updateWatchStatus('YouTube opened - now sharing tab...');
-
-        // Give popup time to load, then prompt to share it
-        setTimeout(async () => {
-            try {
-                // Request to share the popup tab with audio
-                this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        displaySurface: 'browser',
-                        cursor: 'never'
-                    },
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    },
-                    preferCurrentTab: false,
-                    selfBrowserSurface: 'exclude',
-                    systemAudio: 'include'
-                });
-
-                // Check if we got audio
-                const audioTracks = this.screenStream.getAudioTracks();
-                if (audioTracks.length === 0) {
-                    this.addChatMessage('System', '⚠️ No audio - make sure to check "Share tab audio" when selecting the YouTube tab', true);
-                }
-
-                // Replace video track in all peer connections
-                const screenVideoTrack = this.screenStream.getVideoTracks()[0];
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        sender.replaceTrack(screenVideoTrack);
-                    }
-                });
-
-                // Add audio track and renegotiate
-                if (audioTracks.length > 0) {
-                    for (const [peerId, peer] of this.peerConnections) {
-                        peer.connection.addTrack(audioTracks[0], this.screenStream);
-                        try {
-                            const offer = await peer.connection.createOffer();
-                            await peer.connection.setLocalDescription(offer);
-                            this.sendMessage({
-                                type: 'offer',
-                                targetId: peerId,
-                                data: offer
-                            });
-                        } catch (err) {
-                            console.error(`Failed to renegotiate with ${peerId}:`, err);
-                        }
-                    }
-                }
-
-                // Update local video
-                this.localVideo.srcObject = this.screenStream;
-
-                // Handle stream end
-                screenVideoTrack.onended = () => {
-                    this.stopStreamingVideo();
-                };
-
-                this.isScreenSharing = true;
-                document.getElementById('watchTogetherBtn').classList.add('active');
-                document.getElementById('localContainer').classList.remove('no-video');
-
-                this.updateWatchStatus('Streaming YouTube to room');
-                this.addChatMessage('System', '📺 Now streaming video to everyone', true);
-
-                // Close the panel
-                this.toggleWatchTogether();
-
-            } catch (error) {
-                console.error('Error sharing YouTube:', error);
-                if (error.name !== 'NotAllowedError') {
-                    this.updateWatchStatus('Failed to share - try again');
-                }
-            }
-        }, 1000);
-    }
-
-    stopStreamingVideo() {
-        if (this.screenStream) {
-            this.screenStream.getTracks().forEach(track => track.stop());
-        }
-
-        // Restore camera
-        const cameraVideoTrack = this.localStream.getVideoTracks()[0];
-        this.peerConnections.forEach(peer => {
-            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-            if (sender) {
-                sender.replaceTrack(cameraVideoTrack);
-            }
+        // Send to everyone in room
+        this.sendMessage({
+            type: 'watch-video',
+            url: url
         });
 
-        // Remove screen audio tracks
-        if (this.screenStream && this.screenStream.getAudioTracks().length > 0) {
-            const screenAudioTrackId = this.screenStream.getAudioTracks()[0].id;
-            for (const [peerId, peer] of this.peerConnections) {
-                const senders = peer.connection.getSenders();
-                senders.forEach(sender => {
-                    if (sender.track && sender.track.kind === 'audio' && sender.track.id === screenAudioTrackId) {
-                        peer.connection.removeTrack(sender);
-                    }
-                });
-            }
-        }
+        this.addChatMessage('System', `📺 Shared video: ${url}`, true);
+        this.toggleWatchTogether();
+        urlInput.value = '';
+    }
 
-        this.localVideo.srcObject = this.localStream;
-        this.isScreenSharing = false;
-        this.screenStream = null;
-        document.getElementById('watchTogetherBtn').classList.remove('active');
-
-        if (!this.videoEnabled) {
-            document.getElementById('localContainer').classList.add('no-video');
-        }
-
-        this.addChatMessage('System', '📺 Video streaming stopped', true);
+    handleWatchVideo(url, username) {
+        // Open the video in a new tab
+        window.open(url, '_blank');
+        this.addChatMessage('System', `📺 ${username} shared a video`, true);
     }
 
     updateWatchStatus(msg) {
