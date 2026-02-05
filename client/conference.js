@@ -46,7 +46,7 @@ class ConferenceClient {
         this.processedStream = null;
 
         // Noise gate configuration
-        this.noiseGateThreshold = this.loadNoiseGateSetting('threshold', 5); // Default 5%
+        this.noiseGateThreshold = this.loadNoiseGateSetting('threshold', 15); // Default 15% (half of max 30)
         this.micConstantlyActiveCount = 0;
         this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
         this.micActiveWarningShown = false;
@@ -112,6 +112,7 @@ class ConferenceClient {
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn').addEventListener('click', () => this.toggleVideo());
         document.getElementById('shareScreenBtn').addEventListener('click', () => this.toggleScreenShare());
+        document.getElementById('shareTabBtn').addEventListener('click', () => this.shareTabWithAudio());
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
@@ -159,6 +160,20 @@ class ConferenceClient {
             if (e.key === 'Enter') this.sendChatMessage();
         });
 
+        // Theme selector
+        const themeSelect = document.getElementById('themeSelect');
+        if (themeSelect) {
+            // Load saved theme
+            const savedTheme = localStorage.getItem('broference-theme') || 'matrix';
+            this.setTheme(savedTheme);
+            themeSelect.value = savedTheme;
+
+            themeSelect.addEventListener('change', (e) => {
+                this.setTheme(e.target.value);
+                localStorage.setItem('broference-theme', e.target.value);
+            });
+        }
+
         // Set default username
         this.usernameInput.value = `User_${this.clientId.substr(-4)}`;
 
@@ -197,6 +212,15 @@ class ConferenceClient {
                 prompt('Copy this invite link:', link);
             });
         }
+    }
+
+    setTheme(themeName) {
+        if (themeName === 'matrix') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', themeName);
+        }
+        console.log(`Theme set to: ${themeName}`);
     }
 
     updateStatus(message, type = 'info') {
@@ -1289,9 +1313,38 @@ class ConferenceClient {
             }
 
             // Listen for track state changes
-            videoTrack.onmute = () => container.classList.add('no-video');
-            videoTrack.onunmute = () => container.classList.remove('no-video');
-            videoTrack.onended = () => container.classList.add('no-video');
+            videoTrack.onmute = () => {
+                console.log(`Video track muted for ${username}`);
+                container.classList.add('no-video');
+            };
+            videoTrack.onunmute = () => {
+                console.log(`Video track unmuted for ${username}`);
+                container.classList.remove('no-video');
+            };
+            videoTrack.onended = () => {
+                console.warn(`Video track ended for ${username}, attempting ICE restart`);
+                container.classList.add('no-video');
+                // Attempt ICE restart to recover connection
+                this.attemptIceRestart(peerId);
+            };
+
+            // Periodic health check for frozen video
+            const healthCheckInterval = setInterval(() => {
+                const peer = this.peerConnections.get(peerId);
+                if (!peer) {
+                    clearInterval(healthCheckInterval);
+                    return;
+                }
+
+                // Check if video element is actually receiving frames
+                if (video.videoWidth === 0 && video.videoHeight === 0 && !container.classList.contains('no-video')) {
+                    console.warn(`Video frozen for ${username}, no frames received`);
+                    // Don't immediately show avatar, peer might have camera off intentionally
+                }
+            }, 5000);
+
+            // Store interval for cleanup
+            container.dataset.healthCheckInterval = healthCheckInterval;
         } else {
             container.classList.add('no-video');
         }
@@ -1620,12 +1673,38 @@ class ConferenceClient {
         this.pendingUsernames.delete(peerId);
         this.pendingIceCandidates.delete(peerId);
 
-        const videoElement = document.getElementById(`video-${peerId}`);
-        if (videoElement) {
-            videoElement.remove();
+        const container = document.getElementById(`video-${peerId}`);
+        if (container) {
+            // Clean up health check interval
+            if (container.dataset.healthCheckInterval) {
+                clearInterval(parseInt(container.dataset.healthCheckInterval));
+            }
+            container.remove();
         }
 
         this.updateRoomInfo(this.peerConnections.size + 1);
+    }
+
+    async attemptIceRestart(peerId) {
+        const peer = this.peerConnections.get(peerId);
+        if (!peer) {
+            console.warn(`Cannot restart ICE for ${peerId} - peer not found`);
+            return;
+        }
+
+        console.log(`Attempting ICE restart for ${peerId}`);
+        try {
+            const offer = await peer.connection.createOffer({ iceRestart: true });
+            await peer.connection.setLocalDescription(offer);
+            this.sendMessage({
+                type: 'offer',
+                targetId: peerId,
+                data: offer
+            });
+            console.log(`ICE restart offer sent to ${peerId}`);
+        } catch (err) {
+            console.error(`ICE restart failed for ${peerId}:`, err);
+        }
     }
 
     async toggleScreenShare() {
@@ -1656,10 +1735,23 @@ class ConferenceClient {
                 const screenAudioTracks = this.screenStream.getAudioTracks();
                 if (screenAudioTracks.length > 0) {
                     console.log('Screen audio available, adding as additional track');
-                    this.peerConnections.forEach(peer => {
-                        // Add screen audio track (doesn't replace mic audio)
+                    // Add screen audio track to all peers and trigger renegotiation
+                    for (const [peerId, peer] of this.peerConnections) {
                         peer.connection.addTrack(screenAudioTracks[0], this.screenStream);
-                    });
+                        // Trigger renegotiation to inform peer about new track
+                        try {
+                            const offer = await peer.connection.createOffer();
+                            await peer.connection.setLocalDescription(offer);
+                            this.sendMessage({
+                                type: 'offer',
+                                targetId: peerId,
+                                data: offer
+                            });
+                            console.log(`Renegotiation offer sent to ${peerId} for screen audio`);
+                        } catch (err) {
+                            console.error(`Failed to renegotiate with ${peerId}:`, err);
+                        }
+                    }
                 } else {
                     console.log('No screen audio available (user may have denied audio or system does not support it)');
                 }
@@ -1702,19 +1794,38 @@ class ConferenceClient {
             // Note: We don't need to restore audio track since we kept the mic audio throughout
             // We just need to remove any screen audio tracks that were added
             if (this.screenStream && this.screenStream.getAudioTracks().length > 0) {
-                this.peerConnections.forEach(peer => {
+                const screenAudioTrackId = this.screenStream.getAudioTracks()[0].id;
+                for (const [peerId, peer] of this.peerConnections) {
                     const senders = peer.connection.getSenders();
+                    let trackRemoved = false;
                     senders.forEach(sender => {
-                        if (sender.track && sender.track.kind === 'audio' && sender.track.id === this.screenStream.getAudioTracks()[0].id) {
+                        if (sender.track && sender.track.kind === 'audio' && sender.track.id === screenAudioTrackId) {
                             peer.connection.removeTrack(sender);
+                            trackRemoved = true;
                         }
                     });
-                });
+                    // Trigger renegotiation after removing track
+                    if (trackRemoved) {
+                        try {
+                            peer.connection.createOffer().then(offer => {
+                                peer.connection.setLocalDescription(offer);
+                                this.sendMessage({
+                                    type: 'offer',
+                                    targetId: peerId,
+                                    data: offer
+                                });
+                            });
+                        } catch (err) {
+                            console.error(`Failed to renegotiate after removing screen audio:`, err);
+                        }
+                    }
+                }
             }
 
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
+            document.getElementById('shareTabBtn').classList.remove('active');
 
             // Restore avatar if video is off
             if (!this.videoEnabled) {
@@ -1722,6 +1833,93 @@ class ConferenceClient {
             }
 
             console.log('Screen sharing stopped');
+        }
+    }
+
+    async shareTabWithAudio() {
+        // If already sharing, stop it
+        if (this.isScreenSharing) {
+            await this.toggleScreenShare();
+            return;
+        }
+
+        try {
+            // Request tab capture specifically with audio
+            // preferCurrentTab hints to browser to show current tab option first
+            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    displaySurface: 'browser', // Prefer browser tab
+                    cursor: 'always'
+                },
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    sampleRate: 48000
+                },
+                preferCurrentTab: true, // Chrome 94+ - prefer current tab
+                selfBrowserSurface: 'include', // Chrome 107+ - include current tab
+                systemAudio: 'include' // Include system audio
+            });
+
+            // Check if we got audio
+            const audioTracks = this.screenStream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                console.warn('No audio captured - user may need to check "Share audio" option');
+                this.addChatMessage('System', '⚠️ No audio captured. When sharing, check "Share tab audio" or "Share system audio" option.', true);
+            } else {
+                console.log('Tab audio captured successfully');
+                this.addChatMessage('System', '🎬 Sharing tab with audio', true);
+            }
+
+            // Replace video track in all peer connections
+            const screenVideoTrack = this.screenStream.getVideoTracks()[0];
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(screenVideoTrack);
+                }
+            });
+
+            // Add tab audio track and trigger renegotiation
+            if (audioTracks.length > 0) {
+                for (const [peerId, peer] of this.peerConnections) {
+                    peer.connection.addTrack(audioTracks[0], this.screenStream);
+                    try {
+                        const offer = await peer.connection.createOffer();
+                        await peer.connection.setLocalDescription(offer);
+                        this.sendMessage({
+                            type: 'offer',
+                            targetId: peerId,
+                            data: offer
+                        });
+                    } catch (err) {
+                        console.error(`Failed to renegotiate with ${peerId}:`, err);
+                    }
+                }
+            }
+
+            // Update local video
+            this.localVideo.srcObject = this.screenStream;
+
+            // Handle stream end
+            screenVideoTrack.onended = () => {
+                this.toggleScreenShare(); // Use existing cleanup logic
+            };
+
+            this.isScreenSharing = true;
+            document.getElementById('shareTabBtn').classList.add('active');
+            document.getElementById('localContainer').classList.remove('no-video');
+
+            console.log('Tab sharing with audio started');
+
+        } catch (error) {
+            console.error('Error sharing tab:', error);
+            if (error.name === 'NotAllowedError') {
+                // User cancelled
+            } else {
+                alert('Could not share tab. Try using "Share Screen" instead.');
+            }
         }
     }
 

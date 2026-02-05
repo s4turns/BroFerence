@@ -62,14 +62,24 @@
                                 </div>
                             </div>
                             <div class="gate-threshold-container">
-                                <label for="gateThresholdSlider">Gate Threshold: <span id="gateThresholdValue">5%</span></label>
-                                <input type="range" id="gateThresholdSlider" min="1" max="30" value="5" class="gate-slider">
+                                <label for="gateThresholdSlider">Gate Threshold: <span id="gateThresholdValue">15%</span></label>
+                                <input type="range" id="gateThresholdSlider" min="1" max="30" value="15" class="gate-slider">
                                 <small>Audio below this level will be muted</small>
                             </div>
                         </div>
                         <div id="micActiveWarning" class="mic-active-warning hidden">
                             ⚠️ Your mic is constantly active! Adjust the threshold higher.
                         </div>
+                    </div>
+                    <div class="options-item theme-selector">
+                        <label>🎨 Theme:</label>
+                        <select id="themeSelect">
+                            <option value="matrix">Matrix (Green)</option>
+                            <option value="cyberpunk">Cyberpunk (Purple)</option>
+                            <option value="ocean">Ocean (Blue)</option>
+                            <option value="sunset">Sunset (Orange)</option>
+                            <option value="amber">Amber (Classic)</option>
+                        </select>
                     </div>
                     <button id="leaveRoomBtn" class="options-item options-item-danger">
                         🚪 Leave Room
@@ -152,6 +162,9 @@
                         </button>
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
                             <span class="icon">🖥️</span>
+                        </button>
+                        <button id="shareTabBtn" class="control-btn" title="Share Tab with Audio (YouTube, etc)">
+                            <span class="icon">🎬</span>
                         </button>
                     </div>
                 </div>
