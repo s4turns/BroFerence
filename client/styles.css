@@ -1449,14 +1449,14 @@ body::before {
     }
 }
 
-/* Stream Video Panel */
+/* Share Video Panel */
 .watch-together-panel {
     position: fixed;
     bottom: 80px;
     left: 50%;
     transform: translateX(-50%);
     width: 90%;
-    max-width: 450px;
+    max-width: 400px;
     background: var(--darker);
     border: 2px solid var(--primary);
     box-shadow: var(--glow), 0 10px 40px rgba(0, 0, 0, 0.8);
@@ -1493,7 +1493,6 @@ body::before {
 .watch-together-input {
     display: flex;
     gap: 8px;
-    margin-bottom: 12px;
 }
 
 .watch-together-input input {
@@ -1511,20 +1510,9 @@ body::before {
     box-shadow: var(--glow);
 }
 
-.watch-together-instructions {
-    background: var(--dark);
-    border: 1px solid var(--gray-light);
-    padding: 12px;
-    margin-bottom: 12px;
-}
-
-.watch-together-instructions small {
-    color: var(--secondary);
-    line-height: 1.8;
-}
-
 #watchStatus {
     display: block;
+    margin-top: 8px;
     color: var(--warning);
     font-size: 12px;
     text-align: center;
