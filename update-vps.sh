@@ -51,7 +51,7 @@ echo "Updated client/conference.js"
 echo ""
 echo "[3/4] Rebuilding Docker containers with latest code..."
 docker compose down
-docker compose build --no-cache
+docker compose build
 docker compose up -d
 
 if [ $? -ne 0 ]; then
