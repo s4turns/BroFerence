@@ -1074,16 +1074,18 @@ class ConferenceClient {
         });
 
         // Add local stream tracks with optimized RTP parameters
-        this.localStream.getTracks().forEach(track => {
-            // Use processed audio track if noise suppression is enabled
+        // Use screenStream tracks if currently streaming video
+        const activeStream = this.isScreenSharing && this.screenStream ? this.screenStream : this.localStream;
+        activeStream.getTracks().forEach(track => {
+            // Use processed audio track if noise suppression is enabled (only for mic audio)
             let trackToAdd = track;
-            if (track.kind === 'audio' && this.noiseSuppressionEnabled && this.processedStream) {
+            if (track.kind === 'audio' && !this.isScreenSharing && this.noiseSuppressionEnabled && this.processedStream) {
                 const processedAudioTrack = this.processedStream.getAudioTracks()[0];
                 if (processedAudioTrack) {
                     trackToAdd = processedAudioTrack;
                 }
             }
-            const sender = pc.addTrack(trackToAdd, this.localStream);
+            const sender = pc.addTrack(trackToAdd, activeStream);
 
             // Optimize audio encoding parameters for voice
             if (track.kind === 'audio' && sender.getParameters) {
