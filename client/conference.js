@@ -112,7 +112,13 @@ class ConferenceClient {
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn').addEventListener('click', () => this.toggleVideo());
         document.getElementById('shareScreenBtn').addEventListener('click', () => this.toggleScreenShare());
-        document.getElementById('shareTabBtn').addEventListener('click', () => this.shareTabWithAudio());
+        document.getElementById('watchTogetherBtn').addEventListener('click', () => this.toggleWatchTogether());
+        document.getElementById('closeWatchBtn').addEventListener('click', () => this.toggleWatchTogether());
+        document.getElementById('loadVideoBtn').addEventListener('click', () => this.loadWatchVideo());
+        document.getElementById('syncVideoBtn').addEventListener('click', () => this.syncWatchVideo());
+        document.getElementById('videoUrlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.loadWatchVideo();
+        });
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
@@ -455,6 +461,13 @@ class ConferenceClient {
             case 'chat-message':
                 const isIRC = message.username.includes('(IRC)');
                 this.addChatMessage(message.username, message.message, false, isIRC);
+                break;
+
+            case 'watch-together':
+                this.handleWatchTogether({
+                    ...message,
+                    senderName: message.username || message.senderId
+                });
                 break;
 
             case 'password-required':
@@ -1921,6 +1934,106 @@ class ConferenceClient {
                 alert('Could not share tab. Try using "Share Screen" instead.');
             }
         }
+    }
+
+    toggleWatchTogether() {
+        const panel = document.getElementById('watchTogetherPanel');
+        const btn = document.getElementById('watchTogetherBtn');
+        panel.classList.toggle('hidden');
+        btn.classList.toggle('active');
+    }
+
+    loadWatchVideo() {
+        const urlInput = document.getElementById('videoUrlInput');
+        const url = urlInput.value.trim();
+
+        if (!url) return;
+
+        const videoId = this.extractYouTubeId(url);
+        if (!videoId) {
+            this.updateWatchStatus('Invalid YouTube URL');
+            return;
+        }
+
+        this.embedYouTubeVideo(videoId);
+
+        // Broadcast to all peers
+        this.sendMessage({
+            type: 'watch-together',
+            action: 'load',
+            videoId: videoId,
+            url: url
+        });
+
+        this.updateWatchStatus('Video loaded - shared with room');
+    }
+
+    extractYouTubeId(url) {
+        // Handle various YouTube URL formats
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/,
+            /youtube\.com\/shorts\/([^&\s?]+)/
+        ];
+
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+
+    embedYouTubeVideo(videoId) {
+        const player = document.getElementById('watchPlayer');
+        player.innerHTML = `<iframe
+            src="https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+        </iframe>`;
+    }
+
+    syncWatchVideo() {
+        const iframe = document.querySelector('#watchPlayer iframe');
+        if (!iframe) {
+            this.updateWatchStatus('No video loaded');
+            return;
+        }
+
+        // Broadcast sync request
+        this.sendMessage({
+            type: 'watch-together',
+            action: 'sync',
+            videoId: this.extractYouTubeId(document.getElementById('videoUrlInput').value)
+        });
+
+        this.updateWatchStatus('Sync request sent');
+    }
+
+    handleWatchTogether(data) {
+        if (data.action === 'load' && data.videoId) {
+            // Another user loaded a video
+            document.getElementById('videoUrlInput').value = data.url || '';
+            this.embedYouTubeVideo(data.videoId);
+
+            // Show the panel
+            const panel = document.getElementById('watchTogetherPanel');
+            if (panel.classList.contains('hidden')) {
+                this.toggleWatchTogether();
+            }
+
+            this.updateWatchStatus(`Video loaded by ${data.senderName || 'peer'}`);
+            this.addChatMessage('System', `📺 ${data.senderName || 'Someone'} started Watch Together`, true);
+        } else if (data.action === 'sync') {
+            // Sync request - just reload the video to restart
+            if (data.videoId) {
+                this.embedYouTubeVideo(data.videoId);
+                this.updateWatchStatus('Synced');
+            }
+        }
+    }
+
+    updateWatchStatus(msg) {
+        const status = document.getElementById('watchStatus');
+        if (status) status.textContent = msg;
     }
 
     toggleAudio() {

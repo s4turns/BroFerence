@@ -163,10 +163,29 @@
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
                             <span class="icon">🖥️</span>
                         </button>
-                        <button id="shareTabBtn" class="control-btn" title="Share Tab with Audio (YouTube, etc)">
-                            <span class="icon">🎬</span>
+                        <button id="watchTogetherBtn" class="control-btn" title="Watch Together (YouTube, etc)">
+                            <span class="icon">📺</span>
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Watch Together Panel -->
+            <div id="watchTogetherPanel" class="watch-together-panel hidden">
+                <div class="watch-together-header">
+                    <h3>📺 Watch Together</h3>
+                    <button id="closeWatchBtn" class="btn-icon">✕</button>
+                </div>
+                <div class="watch-together-input">
+                    <input type="text" id="videoUrlInput" placeholder="Paste YouTube URL..." />
+                    <button id="loadVideoBtn" class="btn btn-primary">Load</button>
+                </div>
+                <div class="watch-together-player" id="watchPlayer">
+                    <div class="player-placeholder">Enter a YouTube URL above</div>
+                </div>
+                <div class="watch-together-controls">
+                    <button id="syncVideoBtn" class="btn btn-secondary">🔄 Sync All</button>
+                    <span id="watchStatus"></span>
                 </div>
             </div>
 

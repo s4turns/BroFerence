@@ -451,6 +451,21 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 if irc_bridge and rooms[room].get('irc_channel'):
                     await irc_bridge.send_message(room, username, msg_content)
 
+        elif msg_type == 'watch-together':
+            # Watch together sync - broadcast to room
+            client_info = clients[websocket]
+            room = client_info['room']
+            username = client_info['username']
+
+            if room:
+                await broadcast_to_room(room, {
+                    'type': 'watch-together',
+                    'action': data.get('action'),
+                    'videoId': data.get('videoId'),
+                    'url': data.get('url'),
+                    'username': username
+                }, exclude=websocket)
+
         elif msg_type == 'video-state':
             # User toggled their video - broadcast to room
             client_info = clients[websocket]
