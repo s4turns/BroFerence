@@ -1,11 +1,18 @@
 FROM nginx:alpine
 
+# Install openssl for generating self-signed certs if needed
+RUN apk add --no-cache openssl
+
 # Copy client files directly into the image
 COPY client/ /usr/share/nginx/html/
 
-# Copy SSL certificates
-COPY ssl/fullchain.pem /etc/ssl/certs/fullchain.pem
-COPY ssl/privkey.pem /etc/ssl/private/privkey.pem
+# Copy SSL certificates if they exist (using wildcard to make it optional)
+COPY ssl/fullchain.pem* /etc/ssl/certs/
+COPY ssl/privkey.pem* /etc/ssl/private/
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Set app.html as the default index with HTTP and HTTPS support
 RUN echo 'server { \
@@ -33,4 +40,4 @@ server { \
 
 EXPOSE 80 443
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint.sh"]
