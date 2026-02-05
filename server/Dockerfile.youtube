@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install yt-dlp and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install --no-cache-dir aiohttp yt-dlp
+
+# Copy the proxy script
+COPY youtube_proxy.py .
+
+EXPOSE 8766
+
+CMD ["python", "youtube_proxy.py"]

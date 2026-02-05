@@ -1990,28 +1990,39 @@ class ConferenceClient {
     }
 
     async streamYouTubeVideo(videoId) {
-        // Create container for YouTube player
-        let container = document.getElementById('ytStreamContainer');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'ytStreamContainer';
-            container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:720px;';
-            document.body.appendChild(container);
-        }
+        this.updateWatchStatus('Fetching video stream...');
 
-        // Create iframe
-        container.innerHTML = `<iframe id="ytFrame"
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1"
-            width="1280" height="720" frameborder="0"
-            allow="autoplay; encrypted-media">
-        </iframe>`;
+        try {
+            // Call backend to get direct video URL
+            const hostname = window.location.hostname;
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+            const protocol = isLocalhost ? 'http' : 'https';
+            const proxyUrl = `${protocol}://${hostname}:8766/extract`;
 
-        // For YouTube, we need screen capture - prompt user
-        this.updateWatchStatus('For YouTube: Use Screen Share and select the YouTube tab');
+            const response = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}` })
+            });
 
-        setTimeout(() => {
+            const data = await response.json();
+
+            if (data.error) {
+                console.error('Proxy error:', data.error);
+                this.updateWatchStatus('Failed: ' + data.error);
+                // Fallback to screen share
+                this.promptScreenShare();
+                return;
+            }
+
+            // Got direct URL, stream it
+            await this.streamDirectVideo(data.url);
+
+        } catch (error) {
+            console.error('Error fetching video:', error);
+            this.updateWatchStatus('Proxy unavailable - using screen share');
             this.promptScreenShare();
-        }, 500);
+        }
     }
 
     async promptScreenShare() {
