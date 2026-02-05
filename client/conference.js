@@ -2033,17 +2033,13 @@ class ConferenceClient {
             }
         });
 
-        // Add audio track if present
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-            this.peerConnections.forEach(async (peer, peerId) => {
-                peer.connection.addTrack(audioTracks[0], stream);
-                try {
-                    const offer = await peer.connection.createOffer();
-                    await peer.connection.setLocalDescription(offer);
-                    this.sendMessage({ type: 'offer', targetId: peerId, data: offer });
-                } catch (err) {
-                    console.error('Renegotiation failed:', err);
+        // Replace audio track if stream has audio
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                if (sender) {
+                    sender.replaceTrack(audioTrack);
                 }
             });
         }
@@ -2068,11 +2064,14 @@ class ConferenceClient {
             this.streamSourceElement = null;
         }
 
-        // Restore camera
+        // Restore camera and mic
         const cameraTrack = this.localStream.getVideoTracks()[0];
+        const micTrack = this.localStream.getAudioTracks()[0];
         this.peerConnections.forEach(peer => {
-            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-            if (sender) sender.replaceTrack(cameraTrack);
+            const videoSender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (videoSender) videoSender.replaceTrack(cameraTrack);
+            const audioSender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+            if (audioSender && micTrack) audioSender.replaceTrack(micTrack);
         });
 
         this.localVideo.srcObject = this.localStream;
