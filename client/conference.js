@@ -115,6 +115,7 @@ class ConferenceClient {
         document.getElementById('watchTogetherBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('closeWatchBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('loadVideoBtn').addEventListener('click', () => this.loadWatchVideo());
+        document.getElementById('stopStreamBtn').addEventListener('click', () => this.stopVideoStream());
         document.getElementById('videoUrlInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.loadWatchVideo();
         });
@@ -2052,6 +2053,7 @@ class ConferenceClient {
         this.isScreenSharing = true;
         document.getElementById('watchTogetherBtn').classList.add('active');
         document.getElementById('localContainer').classList.remove('no-video');
+        document.getElementById('stopStreamBtn').classList.remove('hidden');
 
         // Handle stream end
         videoTrack.onended = () => this.stopVideoStream();
@@ -2077,6 +2079,8 @@ class ConferenceClient {
         this.isScreenSharing = false;
         this.screenStream = null;
         document.getElementById('watchTogetherBtn').classList.remove('active');
+        document.getElementById('stopStreamBtn').classList.add('hidden');
+        this.updateWatchStatus('');
 
         if (!this.videoEnabled) {
             document.getElementById('localContainer').classList.add('no-video');
