@@ -6,15 +6,10 @@ set -e
 echo "🚀 Starting WebRTC Services..."
 
 # Check if Docker is installed
-if command -v docker-compose &> /dev/null || command -v docker &> /dev/null; then
-    echo "✅ Docker found. Starting services with Docker Compose..."
+if command -v docker &> /dev/null; then
+    echo "✅ Docker found. Starting services..."
 
-    # Use docker compose (v2) or docker-compose (v1)
-    if docker compose version &> /dev/null; then
-        docker compose up -d
-    else
-        docker-compose up -d
-    fi
+    docker compose up -d
 
     echo ""
     echo "✅ All services started!"

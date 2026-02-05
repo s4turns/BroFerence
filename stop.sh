@@ -3,10 +3,6 @@
 
 echo "🛑 Stopping WebRTC Services..."
 
-if docker compose version &> /dev/null; then
-    docker compose down
-else
-    docker-compose down
-fi
+docker compose down
 
 echo "✅ All services stopped!"

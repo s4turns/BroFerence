@@ -8,11 +8,11 @@ echo ""
 
 # Check if Docker containers are running
 echo "[1/4] Checking Docker containers..."
-docker-compose ps
+docker compose ps
 
 echo ""
 echo "[2/4] Checking TURN server logs..."
-docker-compose logs --tail=20 turn
+docker compose logs --tail=20 turn
 
 echo ""
 echo "[3/4] Checking if TURN ports are listening..."

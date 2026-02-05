@@ -50,20 +50,20 @@ echo "Updated client/conference.js"
 # Rebuild and restart Docker containers
 echo ""
 echo "[3/4] Rebuilding Docker containers with latest code..."
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to start Docker containers"
-    echo "Check docker-compose.yml and logs"
+    echo "Check logs with: docker compose logs"
     exit 1
 fi
 
 # Show container status
 echo ""
 echo "[4/4] Checking container status..."
-docker-compose ps
+docker compose ps
 
 # Get system hostname
 HOSTNAME=$(hostname -f 2>/dev/null || hostname)
@@ -79,5 +79,5 @@ echo "  - WebSocket: wss://${HOSTNAME}:8765"
 echo "  - TURN:      ${HOSTNAME}:3479"
 echo ""
 echo "External IP: ${EXTERNAL_IP}"
-echo "Check logs with: docker-compose logs -f signaling"
+echo "Check logs with: docker compose logs -f signaling"
 echo ""
