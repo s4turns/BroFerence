@@ -1984,10 +1984,12 @@ class ConferenceClient {
 
     embedYouTubeVideo(videoId) {
         const player = document.getElementById('watchPlayer');
+        // Use youtube-nocookie.com for privacy mode and fewer restrictions
         player.innerHTML = `<iframe
-            src="https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
+            src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+            referrerpolicy="strict-origin-when-cross-origin">
         </iframe>`;
     }
 
