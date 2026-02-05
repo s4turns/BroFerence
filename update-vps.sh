@@ -6,13 +6,9 @@ echo "Updating WebRTC Server on VPS"
 echo "========================================="
 echo ""
 
-# Reset files that get modified by this script (passwords are regenerated anyway)
+# Stash any local changes before pulling
 echo "[1/4] Pulling latest code from GitHub..."
-git checkout -- config/turnserver.production.conf client/conference.js 2>/dev/null
-
-# Reset this script itself and restore execute permission
-git checkout -- update-vps.sh 2>/dev/null
-chmod +x update-vps.sh
+git stash --include-untracked 2>/dev/null
 
 git pull origin main
 if [ $? -ne 0 ]; then
