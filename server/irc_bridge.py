@@ -36,51 +36,78 @@ class IRCBridge:
         """Connect to IRC server."""
         try:
             logger.info(f"Connecting to IRC server {self.server}:{self.port}...")
+            logger.info(f"SSL enabled: {self.use_ssl}")
 
             if self.use_ssl:
+                logger.info("Creating SSL context...")
                 ssl_context = ssl.create_default_context()
-                self.reader, self.writer = await asyncio.open_connection(
-                    self.server, self.port, ssl=ssl_context
+                logger.info("Opening SSL connection...")
+                self.reader, self.writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.server, self.port, ssl=ssl_context),
+                    timeout=10.0
                 )
             else:
-                self.reader, self.writer = await asyncio.open_connection(
-                    self.server, self.port
+                logger.info("Opening plain connection...")
+                self.reader, self.writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.server, self.port),
+                    timeout=10.0
                 )
 
+            logger.info("✓ TCP connection established")
+
             # Send IRC registration
+            logger.info(f"Sending NICK {self.nickname}")
             await self.send_raw(f"NICK {self.nickname}")
+            logger.info(f"Sending USER registration")
             await self.send_raw(f"USER {self.nickname} 0 * :WebRTC Bridge Bot")
 
             # Wait for connection to be established
+            logger.info("Waiting for IRC welcome message...")
             await self._wait_for_welcome()
 
             self.connected = True
-            logger.info(f"Connected to IRC as {self.nickname}")
+            logger.info(f"✓ Connected to IRC as {self.nickname}")
 
             # Start message listener
             asyncio.create_task(self._message_listener())
 
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to IRC server {self.server}:{self.port}")
+            raise ConnectionError(f"Timeout connecting to {self.server}:{self.port}")
         except Exception as e:
-            logger.error(f"Failed to connect to IRC: {e}")
+            logger.error(f"Failed to connect to IRC: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
     async def _wait_for_welcome(self):
         """Wait for IRC welcome message."""
+        logger.info("Reading IRC server responses...")
+        message_count = 0
         while True:
-            line = await self.reader.readline()
+            line = await asyncio.wait_for(self.reader.readline(), timeout=15.0)
             if not line:
                 raise ConnectionError("IRC connection closed during registration")
 
             message = line.decode('utf-8', errors='ignore').strip()
-            logger.debug(f"IRC: {message}")
+            message_count += 1
+            logger.info(f"IRC << [{message_count}] {message}")
 
             # Respond to PING
             if message.startswith("PING"):
                 pong = message.replace("PING", "PONG")
+                logger.info(f"IRC >> PONG")
                 await self.send_raw(pong)
 
             # Check for welcome message (001) or end of MOTD (376)
-            if " 001 " in message or " 376 " in message:
+            if " 001 " in message:
+                logger.info("✓ Received IRC welcome message (001)")
+                break
+            elif " 376 " in message:
+                logger.info("✓ Received IRC end of MOTD (376)")
+                break
+            elif " 422 " in message:
+                logger.info("✓ Received IRC no MOTD (422)")
                 break
 
     async def send_raw(self, message: str):
@@ -94,9 +121,10 @@ class IRCBridge:
         if not channel.startswith('#'):
             channel = f"#{channel}"
 
+        logger.info(f"Joining IRC channel {channel} for room {room_id}...")
         await self.send_raw(f"JOIN {channel}")
         self.room_channels[room_id] = channel
-        logger.info(f"Joined IRC channel {channel} for room {room_id}")
+        logger.info(f"✓ Joined IRC channel {channel} for room {room_id}")
 
     async def leave_channel(self, room_id: str):
         """Leave an IRC channel."""
