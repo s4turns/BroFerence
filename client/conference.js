@@ -1970,11 +1970,31 @@ class ConferenceClient {
 
     async streamDirectVideo(url) {
         try {
-            // Create hidden video element
+            // Remove any existing stream container
+            const existingContainer = document.getElementById('streamVideoContainer');
+            if (existingContainer) existingContainer.remove();
+
+            // Create hidden container for video element (must be in DOM for captureStream)
+            const container = document.createElement('div');
+            container.id = 'streamVideoContainer';
+            container.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+
             const video = document.createElement('video');
             video.src = url;
             video.loop = true;
             video.muted = true; // Start muted to allow autoplay
+            video.playsInline = true;
+            video.crossOrigin = 'anonymous';
+
+            container.appendChild(video);
+            document.body.appendChild(container);
+
+            // Wait for video to be ready
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = resolve;
+                video.onerror = () => reject(new Error('Failed to load video'));
+                setTimeout(() => reject(new Error('Video load timeout')), 15000);
+            });
 
             await video.play();
             video.muted = false; // Unmute after playing
@@ -1988,7 +2008,10 @@ class ConferenceClient {
 
         } catch (error) {
             console.error('Error streaming video:', error);
-            this.updateWatchStatus('Failed - try a direct video URL (mp4, webm)');
+            this.updateWatchStatus('Failed - ' + error.message);
+            // Clean up on error
+            const container = document.getElementById('streamVideoContainer');
+            if (container) container.remove();
         }
     }
 
@@ -2087,9 +2110,11 @@ class ConferenceClient {
             document.getElementById('localContainer').classList.add('no-video');
         }
 
-        // Clean up YouTube container
+        // Clean up video containers
         const ytContainer = document.getElementById('ytStreamContainer');
         if (ytContainer) ytContainer.remove();
+        const streamContainer = document.getElementById('streamVideoContainer');
+        if (streamContainer) streamContainer.remove();
     }
 
     updateWatchStatus(msg) {
