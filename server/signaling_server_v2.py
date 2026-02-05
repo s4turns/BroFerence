@@ -42,17 +42,29 @@ async def init_irc_bridge():
 
     try:
         logger.info("Initializing IRC bridge (on-demand)...")
+        logger.info("IRC server: irc.blcknd.network:6697 (SSL)")
         irc_bridge = IRCBridge(
             server="irc.blcknd.network",
             port=6697,
             nickname="webrtc",
             use_ssl=True
         )
+        logger.info("Attempting to connect to IRC server...")
         await irc_bridge.connect()
         logger.info("✓ IRC bridge connected successfully")
         return True
+    except ConnectionError as e:
+        logger.error(f"✗ IRC connection error: {e}")
+        irc_bridge = None
+        return False
+    except TimeoutError as e:
+        logger.error(f"✗ IRC connection timeout: {e}")
+        irc_bridge = None
+        return False
     except Exception as e:
-        logger.error(f"✗ Failed to initialize IRC bridge: {e}")
+        logger.error(f"✗ Failed to initialize IRC bridge: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         irc_bridge = None
         return False
 
@@ -237,7 +249,9 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
         if irc_channel:
             if not irc_bridge or not irc_bridge.connected:
                 logger.info(f"IRC channel specified ({irc_channel}), initializing IRC bridge...")
-                await init_irc_bridge()
+                success = await init_irc_bridge()
+                if not success:
+                    logger.error(f"Failed to connect IRC bridge for room {room_id}")
 
         # Join IRC channel if specified and bridge is available
         if irc_bridge and irc_bridge.connected and irc_channel:
@@ -253,6 +267,7 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
                 })
 
             irc_bridge.register_message_callback(room_id, irc_message_callback)
+            logger.info(f"✓ IRC bridge joined channel {irc_channel} for room {room_id}")
 
         logger.info(f"Room {room_id} created")
 
@@ -299,12 +314,30 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     if client_info['room']:
         await leave_room(websocket)
 
+    # Join new room first so user can receive messages
+    rooms[room_id]['users'].add(websocket)
+    client_info['room'] = room_id
+
     # Initialize IRC bridge if room has IRC channel and bridge is not connected
     irc_channel = rooms[room_id].get('irc_channel')
+    irc_status_msg = None
+
     if irc_channel:
         if not irc_bridge or not irc_bridge.connected:
             logger.info(f"Room has IRC channel ({irc_channel}), ensuring IRC bridge is connected...")
-            await init_irc_bridge()
+            # Send connecting message
+            await broadcast_to_room(room_id, {
+                'type': 'chat-message',
+                'username': 'System',
+                'message': f'🔌 Connecting to IRC ({irc_channel})...',
+                'timestamp': asyncio.get_event_loop().time()
+            })
+
+            success = await init_irc_bridge()
+            if not success:
+                irc_status_msg = f'❌ Failed to connect to IRC bridge'
+            else:
+                irc_status_msg = f'✓ Connected to IRC bridge'
 
         # Join IRC channel if bridge is available and we're not already in it
         if irc_bridge and irc_bridge.connected and room_id not in irc_bridge.room_channels:
@@ -320,10 +353,23 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
                 })
 
             irc_bridge.register_message_callback(room_id, irc_message_callback)
+            logger.info(f"✓ IRC bridge joined channel {irc_channel} for room {room_id}")
+            irc_status_msg = f'✓ IRC bridge active on {irc_channel}'
+        elif irc_bridge and irc_bridge.connected:
+            # Already in channel
+            irc_status_msg = f'✓ IRC bridge already connected to {irc_channel}'
+        elif not irc_bridge or not irc_bridge.connected:
+            if not irc_status_msg:  # Only if we didn't already set error message
+                irc_status_msg = f'❌ IRC bridge not connected'
 
-    # Join new room
-    rooms[room_id]['users'].add(websocket)
-    client_info['room'] = room_id
+    # Send IRC status message if we have one
+    if irc_status_msg:
+        await broadcast_to_room(room_id, {
+            'type': 'chat-message',
+            'username': 'System',
+            'message': irc_status_msg,
+            'timestamp': asyncio.get_event_loop().time()
+        })
 
     # Get list of other users in room
     other_users = [
