@@ -6,6 +6,7 @@ Runs alongside the signaling server on port 8766
 
 import subprocess
 import logging
+import urllib.parse
 import aiohttp
 from aiohttp import web
 
@@ -38,7 +39,8 @@ async def get_video_url(request):
             return web.json_response({'error': 'No video URL found'}, status=404)
 
         logger.info("Extracted URL successfully")
-        return web.json_response({'url': f'/stream?url={video_url}'})
+        encoded_url = urllib.parse.quote(video_url, safe='')
+        return web.json_response({'url': f'/stream?url={encoded_url}'})
 
     except subprocess.TimeoutExpired:
         return web.json_response({'error': 'Request timed out'}, status=504)
