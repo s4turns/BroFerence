@@ -1290,8 +1290,7 @@ class ConferenceClient {
         video.setAttribute('playsinline', '');  // Additional attribute for iOS
         video.setAttribute('webkit-playsinline', '');  // For older iOS versions
 
-        // FIREFOX FIX: Always start muted on all browsers to ensure autoplay works
-        // Firefox (and other browsers) block unmuted autoplay by default
+        // Start muted to ensure autoplay works, will auto-unmute after playback starts
         video.muted = true;
 
         // Set srcObject
@@ -1392,8 +1391,16 @@ class ConferenceClient {
                 playPromise
                     .then(() => {
                         console.log(`Video playing for ${username}, muted: ${video.muted}`);
-                        // Always show unmute overlay for remote videos (Firefox compatibility)
-                        this.addUnmuteOverlay(container, video, username);
+                        // Auto-unmute after successful playback
+                        video.muted = false;
+                        console.log(`Audio auto-unmuted for ${username}`);
+
+                        // Update the mute button state
+                        const muteBtn = container.querySelector('.remote-audio-controls button');
+                        if (muteBtn) {
+                            muteBtn.textContent = '🔊';
+                            muteBtn.classList.remove('muted');
+                        }
                     })
                     .catch(err => {
                         console.warn(`Video autoplay failed for ${username}:`, err);
