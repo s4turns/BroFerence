@@ -2003,12 +2003,17 @@ class ConferenceClient {
             await video.play();
 
             // Use Web Audio API to route audio properly:
-            // - createMediaElementSource captures decoded audio (unaffected by muted/volume)
+            // - createMediaElementSource captures decoded audio
             // - GainNode provides local volume control
             // - MediaStreamDestination provides full-volume audio track for peers
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
             const mediaSource = audioCtx.createMediaElementSource(video);
             // After createMediaElementSource, the video element no longer outputs audio directly
+            // so unmuting is safe (no double audio) and required for the audio decoder to run
+            video.muted = false;
 
             // Local playback with volume control
             const gainNode = audioCtx.createGain();
