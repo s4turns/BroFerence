@@ -1971,6 +1971,13 @@ class ConferenceClient {
             const existingContainer = document.getElementById('streamVideoContainer');
             if (existingContainer) existingContainer.remove();
 
+            // Clean up previous stream audio context
+            if (this.streamAudioContext) {
+                this.streamAudioContext.close();
+                this.streamAudioContext = null;
+                this.streamGainNode = null;
+            }
+
             // Create hidden container for video element (must be in DOM for captureStream)
             const container = document.createElement('div');
             container.id = 'streamVideoContainer';
@@ -1994,21 +2001,45 @@ class ConferenceClient {
             });
 
             await video.play();
-            video.muted = false; // Unmute after playing
-            video.volume = 1.0; // Full volume
 
-            // Capture stream from video element
-            const stream = video.captureStream();
+            // Use Web Audio API to route audio properly:
+            // - createMediaElementSource captures decoded audio (unaffected by muted/volume)
+            // - GainNode provides local volume control
+            // - MediaStreamDestination provides full-volume audio track for peers
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const mediaSource = audioCtx.createMediaElementSource(video);
+            // After createMediaElementSource, the video element no longer outputs audio directly
 
-            // Debug: log what tracks we captured
-            const videoTracks = stream.getVideoTracks();
-            const audioTracks = stream.getAudioTracks();
-            console.log('Captured stream - Video tracks:', videoTracks.length, 'Audio tracks:', audioTracks.length);
-            if (audioTracks.length > 0) {
-                console.log('Audio track:', audioTracks[0].label, 'enabled:', audioTracks[0].enabled, 'muted:', audioTracks[0].muted);
+            // Local playback with volume control
+            const gainNode = audioCtx.createGain();
+            mediaSource.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            // Audio track for peer connections (full volume, unaffected by local slider)
+            const peerDest = audioCtx.createMediaStreamDestination();
+            mediaSource.connect(peerDest);
+            const peerAudioTrack = peerDest.stream.getAudioTracks()[0];
+
+            // Capture video track from element
+            const capturedStream = video.captureStream();
+            const videoTrack = capturedStream.getVideoTracks()[0];
+
+            // Combine video track with peer audio track
+            const stream = new MediaStream();
+            if (videoTrack) stream.addTrack(videoTrack);
+            if (peerAudioTrack) stream.addTrack(peerAudioTrack);
+
+            // Debug: log what tracks we have
+            console.log('Stream tracks - Video:', stream.getVideoTracks().length, 'Audio:', stream.getAudioTracks().length);
+            if (peerAudioTrack) {
+                console.log('Audio track:', peerAudioTrack.label, 'enabled:', peerAudioTrack.enabled);
             } else {
-                console.warn('NO AUDIO TRACK CAPTURED! Video might not have audio or CORS issue.');
+                console.warn('NO AUDIO TRACK! Video might not have audio or CORS issue.');
             }
+
+            // Store audio context and gain node for volume control
+            this.streamAudioContext = audioCtx;
+            this.streamGainNode = gainNode;
 
             this.startVideoStream(stream, video);
             this.toggleWatchTogether();
@@ -2020,6 +2051,11 @@ class ConferenceClient {
             // Clean up on error
             const container = document.getElementById('streamVideoContainer');
             if (container) container.remove();
+            if (this.streamAudioContext) {
+                this.streamAudioContext.close();
+                this.streamAudioContext = null;
+                this.streamGainNode = null;
+            }
         }
     }
 
@@ -2143,6 +2179,13 @@ class ConferenceClient {
             document.getElementById('localContainer').classList.add('no-video');
         }
 
+        // Clean up stream audio context
+        if (this.streamAudioContext) {
+            this.streamAudioContext.close();
+            this.streamAudioContext = null;
+            this.streamGainNode = null;
+        }
+
         // Clean up video containers and volume controls
         const ytContainer = document.getElementById('ytStreamContainer');
         if (ytContainer) ytContainer.remove();
@@ -2155,36 +2198,36 @@ class ConferenceClient {
         // Remove existing controls
         this.hideStreamVolumeControls();
 
-        if (!sourceElement) {
-            console.warn('No source element for volume controls');
+        if (!sourceElement && !this.streamGainNode) {
+            console.warn('No source element or gain node for volume controls');
             return;
         }
 
         // Store reference
         this.streamVolumeElement = sourceElement;
-        console.log('Setting up volume controls for:', sourceElement.tagName, 'current volume:', sourceElement.volume);
+        const currentVolume = this.streamGainNode ? Math.round(this.streamGainNode.gain.value * 100) : 100;
+        console.log('Setting up volume controls, using GainNode:', !!this.streamGainNode, 'volume:', currentVolume);
 
         const controls = document.createElement('div');
         controls.id = 'streamVolumeControls';
         controls.innerHTML = `
             <span>🔊</span>
-            <input type="range" id="streamVolumeSlider" min="0" max="100" value="${Math.round(sourceElement.volume * 100)}">
-            <span id="streamVolumeValue">${Math.round(sourceElement.volume * 100)}%</span>
+            <input type="range" id="streamVolumeSlider" min="0" max="100" value="${currentVolume}">
+            <span id="streamVolumeValue">${currentVolume}%</span>
         `;
 
         // Insert inside local video container
         const localContainer = document.getElementById('localContainer');
         localContainer.appendChild(controls);
 
-        // Wire up slider with stored reference
+        // Wire up slider to GainNode for reliable volume control
         const slider = document.getElementById('streamVolumeSlider');
         const valueDisplay = document.getElementById('streamVolumeValue');
         const self = this;
         slider.oninput = function() {
             const volume = this.value / 100;
-            if (self.streamVolumeElement) {
-                self.streamVolumeElement.volume = volume;
-                console.log('Volume set to:', volume);
+            if (self.streamGainNode) {
+                self.streamGainNode.gain.value = volume;
             }
             valueDisplay.textContent = this.value + '%';
         };
