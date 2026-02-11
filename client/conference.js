@@ -798,7 +798,7 @@ class ConferenceClient {
             let totalPacketsSent = 0;
             let totalPacketsLost = 0;
 
-            for (const [peerId, peer] of this.peerConnections) {
+            for (const [_peerId, peer] of this.peerConnections) {
                 try {
                     const stats = await peer.connection.getStats();
                     stats.forEach(report => {
@@ -815,7 +815,7 @@ class ConferenceClient {
                             totalPacketsLost += report.packetsLost || 0;
                         }
                     });
-                } catch (e) {
+                } catch (_e) {
                     // Peer connection might be closed
                 }
             }
@@ -1357,7 +1357,7 @@ class ConferenceClient {
         }
 
         // Add audio controls for remote users
-        const audioControls = this.createAudioControls(peerId, stream);
+        const audioControls = this.createAudioControls(peerId);
         container.appendChild(audioControls);
 
         container.appendChild(video);
@@ -1436,7 +1436,7 @@ class ConferenceClient {
         this.updateRoomInfo(this.peerConnections.size + 1);
     }
 
-    createAudioControls(peerId, stream) {
+    createAudioControls(peerId) {
         const controlsDiv = document.createElement('div');
         controlsDiv.className = 'remote-audio-controls';
 
@@ -2809,5 +2809,5 @@ class ConferenceClient {
     }
 }
 
-// Initialize the conference client
-const client = new ConferenceClient();
+// Initialize the conference client (constructor has side effects - sets up event listeners)
+const _client = new ConferenceClient();

@@ -383,5 +383,5 @@ class WebRTCClient {
     }
 }
 
-// Initialize client
-const client = new WebRTCClient();
+// Initialize client (constructor has side effects - sets up event listeners)
+const _client = new WebRTCClient();

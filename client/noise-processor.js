@@ -40,7 +40,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         };
     }
 
-    process(inputs, outputs, parameters) {
+    process(inputs, outputs, _parameters) {
         const input = inputs[0];
         const output = outputs[0];
 
@@ -124,7 +124,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                     threshold: dynamicThreshold,
                     gateOpen: this.envelope > 0.5
                 });
-            } catch (e) {
+            } catch (_e) {
                 // Port may be closed
             }
             this.peakLevel = 0;

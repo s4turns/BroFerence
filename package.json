@@ -1,6 +1,7 @@
 {
   "name": "webrtc-server",
   "version": "1.0.0",
+  "type": "module",
   "description": "WebRTC video chat server with TURN support",
   "scripts": {
     "start": "pm2 start ecosystem.config.js",
@@ -14,6 +15,8 @@
     "install-pm2": "npm install -g pm2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.0",
     "http-server": "^14.1.1"
   }
 }
