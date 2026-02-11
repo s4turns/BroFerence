@@ -1065,7 +1065,7 @@ class ConferenceClient {
     }
 
     async createPeerConnection(peerId, peerUsername, createOffer = false) {
-        console.log(`Creating peer connection for ${peerId} (${peerUsername})`);
+        console.log('Creating peer connection for', peerId, '(' + peerUsername + ')');
 
         const pc = new RTCPeerConnection(this.iceServers);
         this.peerConnections.set(peerId, {
@@ -1135,19 +1135,19 @@ class ConferenceClient {
 
         // Connection state changes
         pc.onconnectionstatechange = () => {
-            console.log(`Connection state with ${peerId} (${peerUsername}):`, pc.connectionState);
+            console.log('Connection state with', peerId, '(' + peerUsername + '):', pc.connectionState);
 
             if (pc.connectionState === 'connected') {
-                console.log(`Successfully connected to ${peerUsername}`);
+                console.log('Successfully connected to', peerUsername);
             } else if (pc.connectionState === 'failed') {
-                console.error(`Connection failed with ${peerUsername}, attempting to remove and reconnect`);
+                console.error('Connection failed with', peerUsername, ', attempting to remove and reconnect');
                 this.removePeerConnection(peerId);
             } else if (pc.connectionState === 'disconnected') {
-                console.warn(`Disconnected from ${peerUsername}`);
+                console.warn('Disconnected from', peerUsername);
                 // Give it a moment to potentially reconnect before removing
                 setTimeout(() => {
                     if (pc.connectionState === 'disconnected') {
-                        console.log(`Still disconnected from ${peerUsername}, removing connection`);
+                        console.log('Still disconnected from', peerUsername, ', removing connection');
                         this.removePeerConnection(peerId);
                     }
                 }, 5000);
@@ -1156,7 +1156,7 @@ class ConferenceClient {
 
         // ICE connection state changes (more detailed than connection state)
         pc.oniceconnectionstatechange = () => {
-            console.log(`ICE connection state with ${peerId} (${peerUsername}):`, pc.iceConnectionState);
+            console.log('ICE connection state with', peerId, '(' + peerUsername + '):', pc.iceConnectionState);
         };
 
         // Create offer if we're the initiator
@@ -1693,11 +1693,11 @@ class ConferenceClient {
     async attemptIceRestart(peerId) {
         const peer = this.peerConnections.get(peerId);
         if (!peer) {
-            console.warn(`Cannot restart ICE for ${peerId} - peer not found`);
+            console.warn('Cannot restart ICE for peer', peerId, '- peer not found');
             return;
         }
 
-        console.log(`Attempting ICE restart for ${peerId}`);
+        console.log('Attempting ICE restart for peer', peerId);
         try {
             const offer = await peer.connection.createOffer({ iceRestart: true });
             await peer.connection.setLocalDescription(offer);
@@ -1706,9 +1706,9 @@ class ConferenceClient {
                 targetId: peerId,
                 data: offer
             });
-            console.log(`ICE restart offer sent to ${peerId}`);
+            console.log('ICE restart offer sent to peer', peerId);
         } catch (err) {
-            console.error(`ICE restart failed for ${peerId}:`, err);
+            console.error('ICE restart failed for peer', peerId, ':', err);
         }
     }
 
@@ -1752,9 +1752,9 @@ class ConferenceClient {
                                 targetId: peerId,
                                 data: offer
                             });
-                            console.log(`Renegotiation offer sent to ${peerId} for screen audio`);
+                            console.log('Renegotiation offer sent to peer', peerId, 'for screen audio');
                         } catch (err) {
-                            console.error(`Failed to renegotiate with ${peerId}:`, err);
+                            console.error('Failed to renegotiate with peer', peerId, ':', err);
                         }
                     }
                 } else {
@@ -1899,7 +1899,7 @@ class ConferenceClient {
                             data: offer
                         });
                     } catch (err) {
-                        console.error(`Failed to renegotiate with ${peerId}:`, err);
+                        console.error('Failed to renegotiate with peer', peerId, ':', err);
                     }
                 }
             }
