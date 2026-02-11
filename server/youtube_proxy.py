@@ -7,11 +7,80 @@ Runs alongside the signaling server on port 8766
 import subprocess
 import logging
 import urllib.parse
+import ipaddress
+import socket
 import aiohttp
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Whitelist of allowed domains for video streaming (prevents SSRF attacks)
+ALLOWED_DOMAINS = {
+    # YouTube CDN domains
+    'googlevideo.com',
+    'youtube.com',
+    'ytimg.com',
+    # Common video CDNs
+    'vimeo.com',
+    'vimeocdn.com',
+    'twitch.tv',
+    'ttvnw.net',
+    'cloudfront.net',  # Used by many video services
+}
+
+
+def is_safe_url(url):
+    """
+    Validate URL to prevent SSRF attacks.
+    Returns (is_safe, error_message)
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+
+        # Only allow http/https
+        if parsed.scheme not in ('http', 'https'):
+            return False, f"Invalid scheme: {parsed.scheme}"
+
+        # Must have a hostname
+        if not parsed.hostname:
+            return False, "No hostname in URL"
+
+        hostname = parsed.hostname.lower()
+
+        # Check if domain is whitelisted
+        domain_allowed = False
+        for allowed_domain in ALLOWED_DOMAINS:
+            if hostname == allowed_domain or hostname.endswith('.' + allowed_domain):
+                domain_allowed = True
+                break
+
+        if not domain_allowed:
+            return False, f"Domain not whitelisted: {hostname}"
+
+        # Resolve hostname to IP and check if it's private
+        try:
+            # Get IP address
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+
+            # Block private/internal IP ranges
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False, f"Private/internal IP address blocked: {ip_str}"
+
+            # Block localhost
+            if ip_str == '127.0.0.1' or ip_str == '::1':
+                return False, "Localhost access blocked"
+
+        except socket.gaierror:
+            return False, f"Cannot resolve hostname: {hostname}"
+        except ValueError as e:
+            return False, f"Invalid IP address: {e}"
+
+        return True, None
+
+    except Exception as e:
+        return False, f"URL validation error: {e}"
 
 
 async def get_video_url(request):
@@ -55,30 +124,18 @@ async def stream_video(request):
     if not video_url:
         return web.Response(status=400, text='No URL')
 
-    # Basic SSRF protection: only allow http/https URLs to known video hosts
-    parsed = urllib.parse.urlparse(video_url)
-    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
-        return web.Response(status=400, text='Invalid URL')
+    # SECURITY: Validate URL to prevent SSRF attacks
+    is_safe, error_msg = is_safe_url(video_url)
+    if not is_safe:
+        logger.warning(f"Blocked unsafe URL: {error_msg}")
+        return web.Response(status=403, text=f'Forbidden: {error_msg}')
 
-    allowed_hosts = (
-        'youtube.com',
-        'www.youtube.com',
-        'youtu.be',
-        'm.youtube.com',
-        'googlevideo.com',
-        'www.googlevideo.com',
-    )
-    hostname = parsed.hostname or ''
-    if not any(
-        hostname == h or hostname.endswith('.' + h)
-        for h in allowed_hosts
-    ):
-        return web.Response(status=400, text='URL host not allowed')
-
-    logger.info("Starting video stream proxy")
+    logger.info(f"Starting video stream proxy for validated URL: {urllib.parse.urlparse(video_url).hostname}")
 
     try:
-        async with aiohttp.ClientSession() as session:
+        # Use timeout to prevent hanging requests
+        timeout = aiohttp.ClientTimeout(total=300, connect=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(video_url) as resp:
                 if resp.status != 200:
                     return web.Response(status=resp.status)
