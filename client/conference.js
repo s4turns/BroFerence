@@ -1736,30 +1736,8 @@ class ConferenceClient {
                     }
                 });
 
-                // If screen audio is available, add it as an additional audio track
-                const screenAudioTracks = this.screenStream.getAudioTracks();
-                if (screenAudioTracks.length > 0) {
-                    console.log('Screen audio available, adding as additional track');
-                    // Add screen audio track to all peers and trigger renegotiation
-                    for (const [peerId, peer] of this.peerConnections) {
-                        peer.connection.addTrack(screenAudioTracks[0], this.screenStream);
-                        // Trigger renegotiation to inform peer about new track
-                        try {
-                            const offer = await peer.connection.createOffer();
-                            await peer.connection.setLocalDescription(offer);
-                            this.sendMessage({
-                                type: 'offer',
-                                targetId: peerId,
-                                data: offer
-                            });
-                            console.log('Renegotiation offer sent to peer', peerId, 'for screen audio');
-                        } catch (err) {
-                            console.error('Failed to renegotiate with peer', peerId, ':', err);
-                        }
-                    }
-                } else {
-                    console.log('No screen audio available (user may have denied audio or system does not support it)');
-                }
+                // If screen audio is available, mix it with mic and replace audio track
+                this.mixScreenAudio(this.screenStream);
 
                 // Update local video to show screen
                 this.localVideo.srcObject = this.screenStream;
@@ -1796,36 +1774,8 @@ class ConferenceClient {
                 }
             });
 
-            // Note: We don't need to restore audio track since we kept the mic audio throughout
-            // We just need to remove any screen audio tracks that were added
-            if (this.screenStream && this.screenStream.getAudioTracks().length > 0) {
-                const screenAudioTrackId = this.screenStream.getAudioTracks()[0].id;
-                for (const [peerId, peer] of this.peerConnections) {
-                    const senders = peer.connection.getSenders();
-                    let trackRemoved = false;
-                    senders.forEach(sender => {
-                        if (sender.track && sender.track.kind === 'audio' && sender.track.id === screenAudioTrackId) {
-                            peer.connection.removeTrack(sender);
-                            trackRemoved = true;
-                        }
-                    });
-                    // Trigger renegotiation after removing track
-                    if (trackRemoved) {
-                        try {
-                            peer.connection.createOffer().then(offer => {
-                                peer.connection.setLocalDescription(offer);
-                                this.sendMessage({
-                                    type: 'offer',
-                                    targetId: peerId,
-                                    data: offer
-                                });
-                            });
-                        } catch (err) {
-                            console.error(`Failed to renegotiate after removing screen audio:`, err);
-                        }
-                    }
-                }
-            }
+            // Restore original mic audio (unmix screen audio)
+            this.unmixScreenAudio();
 
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
@@ -1886,23 +1836,8 @@ class ConferenceClient {
                 }
             });
 
-            // Add tab audio track and trigger renegotiation
-            if (audioTracks.length > 0) {
-                for (const [peerId, peer] of this.peerConnections) {
-                    peer.connection.addTrack(audioTracks[0], this.screenStream);
-                    try {
-                        const offer = await peer.connection.createOffer();
-                        await peer.connection.setLocalDescription(offer);
-                        this.sendMessage({
-                            type: 'offer',
-                            targetId: peerId,
-                            data: offer
-                        });
-                    } catch (err) {
-                        console.error('Failed to renegotiate with peer', peerId, ':', err);
-                    }
-                }
-            }
+            // Mix tab audio with mic audio and replace audio track (no renegotiation needed)
+            this.mixScreenAudio(this.screenStream);
 
             // Update local video
             this.localVideo.srcObject = this.screenStream;
@@ -1926,6 +1861,69 @@ class ConferenceClient {
                 alert('Could not share tab. Try using "Share Screen" instead.');
             }
         }
+    }
+
+    mixScreenAudio(screenStream) {
+        const screenAudioTracks = screenStream.getAudioTracks();
+        if (screenAudioTracks.length === 0) {
+            console.log('No screen audio available to mix');
+            return;
+        }
+
+        try {
+            // Mix mic + screen audio into a single track using Web Audio API
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Get current mic track (handles noise suppression)
+            const currentMicTrack = (this.noiseSuppressionEnabled && this.processedStream)
+                ? this.processedStream.getAudioTracks()[0]
+                : this.localStream.getAudioTracks()[0];
+
+            const micSource = audioCtx.createMediaStreamSource(new MediaStream([currentMicTrack]));
+            const screenSource = audioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+            const dest = audioCtx.createMediaStreamDestination();
+
+            // Connect both sources to the destination (mixes them)
+            micSource.connect(dest);
+            screenSource.connect(dest);
+
+            const mixedTrack = dest.stream.getAudioTracks()[0];
+
+            // Replace audio track with mixed track in all peers (no renegotiation needed)
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                if (sender) {
+                    sender.replaceTrack(mixedTrack);
+                }
+            });
+
+            this.screenAudioContext = audioCtx;
+            this.screenMixedTrack = mixedTrack;
+            console.log('Screen audio mixed with mic audio');
+        } catch (error) {
+            console.error('Error mixing screen audio:', error);
+        }
+    }
+
+    unmixScreenAudio() {
+        if (!this.screenAudioContext) return;
+
+        // Restore original mic track
+        const micTrack = (this.noiseSuppressionEnabled && this.processedStream)
+            ? this.processedStream.getAudioTracks()[0]
+            : this.localStream.getAudioTracks()[0];
+
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+            if (sender) {
+                sender.replaceTrack(micTrack);
+            }
+        });
+
+        this.screenAudioContext.close();
+        this.screenAudioContext = null;
+        this.screenMixedTrack = null;
+        console.log('Restored original mic audio');
     }
 
     toggleWatchTogether() {
