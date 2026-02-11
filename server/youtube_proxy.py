@@ -55,6 +55,26 @@ async def stream_video(request):
     if not video_url:
         return web.Response(status=400, text='No URL')
 
+    # Basic SSRF protection: only allow http/https URLs to known video hosts
+    parsed = urllib.parse.urlparse(video_url)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return web.Response(status=400, text='Invalid URL')
+
+    allowed_hosts = (
+        'youtube.com',
+        'www.youtube.com',
+        'youtu.be',
+        'm.youtube.com',
+        'googlevideo.com',
+        'www.googlevideo.com',
+    )
+    hostname = parsed.hostname or ''
+    if not any(
+        hostname == h or hostname.endswith('.' + h)
+        for h in allowed_hosts
+    ):
+        return web.Response(status=400, text='URL host not allowed')
+
     logger.info("Starting video stream proxy")
 
     try:
