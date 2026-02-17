@@ -32,20 +32,22 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.mouseSuppressionEnabled = false;
         this.clickSensitivity = 50;
 
-        // Transient detection state
-        this.prevAbsSample = 0;
-        this.derivativeHistory = new Float32Array(8);
-        this.derivativeIndex = 0;
+        // Transient detection state — energy ratio approach
+        // Short-term energy spikes relative to long-term energy indicate clicks
+        this.shortTermEnergy = 0;
+        this.longTermEnergy = 0;
         this.transientActive = false;
         this.transientSampleCount = 0;
         this.transientGain = 1.0;
-        this.silenceSamplesAfterTransient = 0;
+        this.suppressionHold = 0;        // Hold suppression after transient ends
+        this.prevAbsSample = 0;          // For derivative as secondary detector
 
         // Transient detection thresholds (derived from clickSensitivity)
-        this.keyboardMaxDuration = 0;
-        this.mouseMaxDuration = 0;
-        this.transientDerivativeThreshold = 0;
-        this.transientRecoverySamples = 0;
+        this.energyRatioThreshold = 0;   // Short/long energy ratio to trigger
+        this.maxTransientDuration = 0;   // Max samples before releasing as speech
+        this.suppressionHoldSamples = 0; // Hold suppression after click ends
+        this.recoverySamples = 0;        // Fade-in duration after suppression
+        this.recoveryCounter = 0;
         this.updateClickSensitivityParams();
 
         // Send a test message immediately
@@ -59,8 +61,10 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 this.threshold = event.data.threshold;
             } else if (event.data.type === 'setKeyboardSuppression') {
                 this.keyboardSuppressionEnabled = event.data.enabled;
+                this.updateClickSensitivityParams();
             } else if (event.data.type === 'setMouseSuppression') {
                 this.mouseSuppressionEnabled = event.data.enabled;
+                this.updateClickSensitivityParams();
             } else if (event.data.type === 'setClickSensitivity') {
                 this.clickSensitivity = event.data.sensitivity;
                 this.updateClickSensitivityParams();
@@ -70,16 +74,30 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 
     updateClickSensitivityParams() {
         const sensitivityNorm = this.clickSensitivity / 100;
-        // Higher sensitivity = lower derivative threshold = more aggressive detection
-        this.transientDerivativeThreshold = 0.15 - (sensitivityNorm * 0.13);
 
-        // Duration windows in samples
-        // Keyboard clicks: ~5-15ms, Mouse clicks: ~1-5ms
-        this.keyboardMaxDuration = Math.round(sampleRate * (0.015 + sensitivityNorm * 0.005));
-        this.mouseMaxDuration = Math.round(sampleRate * (0.005 + sensitivityNorm * 0.003));
+        // Energy ratio threshold: how much the short-term energy must exceed
+        // long-term energy to be considered a click.
+        // Lower ratio = more aggressive detection.
+        // Range: 8.0 (low sensitivity) down to 2.5 (high sensitivity)
+        this.energyRatioThreshold = 8.0 - (sensitivityNorm * 5.5);
 
-        // Recovery period after transient (smooth fade-in)
-        this.transientRecoverySamples = Math.round(sampleRate * 0.003);
+        // Max transient duration before releasing as speech
+        // Keyboard: up to 50ms, Mouse: up to 15ms
+        // With both enabled, use the longer window
+        const keyboardMs = 0.050 + sensitivityNorm * 0.020; // 50-70ms
+        const mouseMs = 0.015 + sensitivityNorm * 0.010;    // 15-25ms
+        if (this.keyboardSuppressionEnabled) {
+            this.maxTransientDuration = Math.round(sampleRate * keyboardMs);
+        } else {
+            this.maxTransientDuration = Math.round(sampleRate * mouseMs);
+        }
+
+        // Hold suppression briefly after the click energy drops
+        // Prevents the tail of the click from leaking through
+        this.suppressionHoldSamples = Math.round(sampleRate * (0.010 + sensitivityNorm * 0.010)); // 10-20ms
+
+        // Smooth fade-in after suppression ends
+        this.recoverySamples = Math.round(sampleRate * 0.005); // 5ms
     }
 
     detectAndSuppressTransient(absSample) {
@@ -87,49 +105,67 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
             return 1.0;
         }
 
-        // Calculate the derivative (rate of change of amplitude)
-        const derivative = absSample - this.prevAbsSample;
+        const energy = absSample * absSample;
+
+        // Short-term energy: fast-tracking (~0.5ms window)
+        // Responds quickly to sudden amplitude changes
+        const shortAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.0005));
+        this.shortTermEnergy = this.shortTermEnergy * (1 - shortAlpha) + energy * shortAlpha;
+
+        // Long-term energy: slow-tracking (~100ms window)
+        // Represents the background/speech energy level
+        const longAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.100));
+        this.longTermEnergy = this.longTermEnergy * (1 - longAlpha) + energy * longAlpha;
+
+        // Energy ratio: how much short-term exceeds long-term
+        const safeFloor = 1e-10;
+        const energyRatio = this.shortTermEnergy / (this.longTermEnergy + safeFloor);
+
+        // Derivative as secondary signal (rapid amplitude change)
+        const derivative = Math.abs(absSample - this.prevAbsSample);
         this.prevAbsSample = absSample;
-
-        // Store in ring buffer for averaging
-        this.derivativeHistory[this.derivativeIndex] = Math.abs(derivative);
-        this.derivativeIndex = (this.derivativeIndex + 1) % this.derivativeHistory.length;
-
-        // Average recent derivatives for stability
-        let avgDerivative = 0;
-        for (let j = 0; j < this.derivativeHistory.length; j++) {
-            avgDerivative += this.derivativeHistory[j];
-        }
-        avgDerivative /= this.derivativeHistory.length;
-
-        // Determine max transient duration based on enabled modes
-        let maxDuration;
-        if (this.keyboardSuppressionEnabled) {
-            maxDuration = this.keyboardMaxDuration; // Longer window covers both
-        } else {
-            maxDuration = this.mouseMaxDuration;
-        }
 
         if (this.transientActive) {
             this.transientSampleCount++;
 
-            if (this.transientSampleCount > maxDuration) {
-                // Lasted too long — this is speech, not a click. Release suppression.
+            // Check if the click energy has subsided
+            const stillClickLike = energyRatio > (this.energyRatioThreshold * 0.5);
+
+            if (this.transientSampleCount > this.maxTransientDuration) {
+                // Lasted too long — this is sustained speech, not a click
                 this.transientActive = false;
-                this.silenceSamplesAfterTransient = this.transientRecoverySamples;
+                this.recoveryCounter = this.recoverySamples;
                 this.transientGain = 1.0;
+            } else if (!stillClickLike && this.transientSampleCount > Math.round(sampleRate * 0.002)) {
+                // Energy dropped and we're past the minimum 2ms — click is over
+                this.transientActive = false;
+                this.suppressionHold = this.suppressionHoldSamples;
+                this.transientGain = 0.01;
             } else {
-                // Still in transient window — suppress
+                // Still in the click — suppress
                 this.transientGain = 0.01;
             }
-        } else if (this.silenceSamplesAfterTransient > 0) {
-            // Recovery phase: smooth fade-in after transient
-            this.silenceSamplesAfterTransient--;
-            const recoveryProgress = 1.0 - (this.silenceSamplesAfterTransient / this.transientRecoverySamples);
-            this.transientGain = recoveryProgress * recoveryProgress;
+        } else if (this.suppressionHold > 0) {
+            // Hold suppression after click ends to catch the tail
+            this.suppressionHold--;
+            this.transientGain = 0.01;
+            if (this.suppressionHold === 0) {
+                this.recoveryCounter = this.recoverySamples;
+            }
+        } else if (this.recoveryCounter > 0) {
+            // Smooth fade-in after suppression
+            this.recoveryCounter--;
+            const progress = 1.0 - (this.recoveryCounter / this.recoverySamples);
+            this.transientGain = progress * progress;
         } else {
-            // Check if a transient is starting
-            if (avgDerivative > this.transientDerivativeThreshold && absSample > 0.005) {
+            // Check if a new transient is starting
+            // Trigger when energy ratio spikes AND there's meaningful amplitude
+            const minAmplitude = 0.002;
+            const hasEnergySpike = energyRatio > this.energyRatioThreshold;
+            const hasDerivativeSpike = derivative > 0.01;
+            const aboveFloor = absSample > minAmplitude;
+
+            if (hasEnergySpike && hasDerivativeSpike && aboveFloor) {
                 this.transientActive = true;
                 this.transientSampleCount = 0;
                 this.transientGain = 0.01;
