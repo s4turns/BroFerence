@@ -819,6 +819,8 @@ body::before {
     left: 50%;
     transform: translate(-50%, -50%);
     width: 320px;
+    max-height: 85vh;
+    overflow-y: auto;
     background: var(--darker);
     border: 2px solid var(--primary);
     box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
@@ -835,7 +837,7 @@ body::before {
 }
 
 .options-header {
-    padding: 20px 24px;
+    padding: 14px 20px;
     border-bottom: 2px solid var(--primary);
     display: flex;
     justify-content: space-between;
@@ -870,17 +872,17 @@ body::before {
 }
 
 .options-list {
-    padding: 16px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .options-item {
     background: transparent;
     border: 1px solid var(--primary);
     color: var(--text);
-    padding: 16px 20px;
+    padding: 12px 16px;
     text-align: left;
     cursor: pointer;
     font-size: 14px;
@@ -974,7 +976,7 @@ body::before {
 }
 
 .noise-gate-header {
-    padding: 12px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--primary);
     font-size: 12px;
     font-weight: 700;
@@ -984,12 +986,12 @@ body::before {
 }
 
 .noise-gate-content {
-    padding: 16px;
+    padding: 10px 12px;
 }
 
 .mic-device-container {
-    margin-bottom: 12px;
-    padding: 8px 12px;
+    margin-bottom: 8px;
+    padding: 6px 10px;
     background: #001100;
     border: 1px solid var(--primary);
     display: flex;
@@ -1014,7 +1016,7 @@ body::before {
 }
 
 .mic-level-container {
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .mic-level-container label {
@@ -1023,11 +1025,11 @@ body::before {
     color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .mic-level-bar {
-    height: 24px;
+    height: 18px;
     background: #001100;
     border: 1px solid var(--primary);
     position: relative;
@@ -1066,7 +1068,7 @@ body::before {
     color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .gate-threshold-container label span {
@@ -1113,7 +1115,7 @@ body::before {
 }
 
 .mic-active-warning {
-    padding: 12px 16px;
+    padding: 8px 12px;
     background: rgba(255, 0, 64, 0.2);
     border-top: 1px solid var(--danger);
     color: var(--danger);
@@ -1143,7 +1145,7 @@ body::before {
 }
 
 .click-suppression-header {
-    padding: 10px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--primary);
     font-size: 11px;
     font-weight: 700;
@@ -1153,13 +1155,13 @@ body::before {
 }
 
 .click-suppression-content {
-    padding: 12px 16px;
+    padding: 8px 12px;
 }
 
 .click-toggle-row {
     display: flex;
     gap: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .click-toggle-btn {
@@ -1167,7 +1169,7 @@ body::before {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
+    padding: 6px 10px;
     background: transparent;
     border: 1px solid var(--primary);
     color: var(--primary);
