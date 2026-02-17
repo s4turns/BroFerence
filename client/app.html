@@ -67,6 +67,32 @@
                                 <small>Audio below this level will be muted</small>
                             </div>
                         </div>
+                        <div class="click-suppression-section">
+                            <div class="click-suppression-header">
+                                <span>⌨️ Click Suppression</span>
+                            </div>
+                            <div class="click-suppression-content">
+                                <div class="click-toggle-row">
+                                    <button id="keyboardClickToggle" class="click-toggle-btn" data-enabled="false">
+                                        <span class="click-toggle-label">⌨️ Keyboard</span>
+                                        <span class="click-toggle-status">OFF</span>
+                                    </button>
+                                    <button id="mouseClickToggle" class="click-toggle-btn" data-enabled="false">
+                                        <span class="click-toggle-label">🖱️ Mouse</span>
+                                        <span class="click-toggle-status">OFF</span>
+                                    </button>
+                                </div>
+                                <div class="click-sensitivity-container">
+                                    <label for="clickSensitivitySlider">Sensitivity: <span id="clickSensitivityValue">Medium</span></label>
+                                    <input type="range" id="clickSensitivitySlider" min="0" max="100" value="50" class="gate-slider">
+                                    <div class="sensitivity-labels">
+                                        <small>Low</small>
+                                        <small>Medium</small>
+                                        <small>High</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div id="micActiveWarning" class="mic-active-warning hidden">
                             ⚠️ Your mic is constantly active! Adjust the threshold higher.
                         </div>

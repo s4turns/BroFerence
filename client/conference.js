@@ -51,6 +51,11 @@ class ConferenceClient {
         this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
         this.micActiveWarningShown = false;
 
+        // Click suppression configuration
+        this.keyboardClickSuppression = this.loadNoiseGateSetting('keyboardSuppression', false);
+        this.mouseClickSuppression = this.loadNoiseGateSetting('mouseSuppression', false);
+        this.clickSensitivity = this.loadNoiseGateSetting('clickSensitivity', 50);
+
         this.initUI();
     }
 
@@ -158,6 +163,44 @@ class ConferenceClient {
                 // Reset warning state when user adjusts threshold
                 this.micConstantlyActiveCount = 0;
                 this.hideMicActiveWarning();
+            });
+
+            // Click suppression toggles
+            const keyboardToggle = document.getElementById('keyboardClickToggle');
+            const mouseToggle = document.getElementById('mouseClickToggle');
+            const clickSensitivitySlider = document.getElementById('clickSensitivitySlider');
+            const clickSensitivityValue = document.getElementById('clickSensitivityValue');
+
+            // Initialize from saved settings
+            keyboardToggle.setAttribute('data-enabled', String(this.keyboardClickSuppression));
+            keyboardToggle.querySelector('.click-toggle-status').textContent = this.keyboardClickSuppression ? 'ON' : 'OFF';
+            mouseToggle.setAttribute('data-enabled', String(this.mouseClickSuppression));
+            mouseToggle.querySelector('.click-toggle-status').textContent = this.mouseClickSuppression ? 'ON' : 'OFF';
+            clickSensitivitySlider.value = this.clickSensitivity;
+            clickSensitivityValue.textContent = this.getSensitivityLabel(this.clickSensitivity);
+
+            keyboardToggle.addEventListener('click', () => {
+                this.keyboardClickSuppression = !this.keyboardClickSuppression;
+                keyboardToggle.setAttribute('data-enabled', String(this.keyboardClickSuppression));
+                keyboardToggle.querySelector('.click-toggle-status').textContent = this.keyboardClickSuppression ? 'ON' : 'OFF';
+                this.saveNoiseGateSetting('keyboardSuppression', this.keyboardClickSuppression);
+                this.updateClickSuppression();
+            });
+
+            mouseToggle.addEventListener('click', () => {
+                this.mouseClickSuppression = !this.mouseClickSuppression;
+                mouseToggle.setAttribute('data-enabled', String(this.mouseClickSuppression));
+                mouseToggle.querySelector('.click-toggle-status').textContent = this.mouseClickSuppression ? 'ON' : 'OFF';
+                this.saveNoiseGateSetting('mouseSuppression', this.mouseClickSuppression);
+                this.updateClickSuppression();
+            });
+
+            clickSensitivitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.clickSensitivity = value;
+                clickSensitivityValue.textContent = this.getSensitivityLabel(value);
+                this.saveNoiseGateSetting('clickSensitivity', value);
+                this.updateClickSensitivity();
             });
         }
 
@@ -2340,6 +2383,10 @@ class ConferenceClient {
                 // Apply saved threshold setting
                 this.updateNoiseGateThreshold(this.noiseGateThreshold);
 
+                // Apply saved click suppression settings
+                this.updateClickSuppression();
+                this.updateClickSensitivity();
+
                 // Get the current audio track
                 const audioTrack = this.localStream.getAudioTracks()[0];
                 if (!audioTrack) {
@@ -2486,6 +2533,34 @@ class ConferenceClient {
             this.noiseSuppressionNode.port.postMessage({
                 type: 'setThreshold',
                 threshold: threshold
+            });
+        }
+    }
+
+    getSensitivityLabel(value) {
+        if (value <= 33) return 'Low';
+        if (value <= 66) return 'Medium';
+        return 'High';
+    }
+
+    updateClickSuppression() {
+        if (this.noiseSuppressionNode) {
+            this.noiseSuppressionNode.port.postMessage({
+                type: 'setKeyboardSuppression',
+                enabled: this.keyboardClickSuppression
+            });
+            this.noiseSuppressionNode.port.postMessage({
+                type: 'setMouseSuppression',
+                enabled: this.mouseClickSuppression
+            });
+        }
+    }
+
+    updateClickSensitivity() {
+        if (this.noiseSuppressionNode) {
+            this.noiseSuppressionNode.port.postMessage({
+                type: 'setClickSensitivity',
+                sensitivity: this.clickSensitivity
             });
         }
     }
