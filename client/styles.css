@@ -1007,12 +1007,28 @@ body::before {
     white-space: nowrap;
 }
 
-.mic-device-container span {
+.mic-device-container select {
+    flex: 1;
+    min-width: 0;
     font-size: 11px;
+    font-family: 'Courier New', monospace;
     color: var(--secondary);
+    background: #000;
+    border: 1px solid var(--primary);
+    padding: 4px 6px;
+    cursor: pointer;
+    outline: none;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+}
+
+.mic-device-container select:focus {
+    box-shadow: var(--glow);
+}
+
+.mic-device-container select option {
+    background: #000;
+    color: var(--secondary);
 }
 
 .mic-level-container {

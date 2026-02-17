@@ -142,6 +142,12 @@ class ConferenceClient {
         } else {
             noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
 
+            // Mic device selector
+            const micSelect = document.getElementById('micDeviceSelect');
+            micSelect.addEventListener('change', (e) => {
+                if (e.target.value) this.switchMicrophone(e.target.value);
+            });
+
             // Noise gate threshold slider
             const gateSlider = document.getElementById('gateThresholdSlider');
             const gateValue = document.getElementById('gateThresholdValue');
@@ -2425,7 +2431,7 @@ class ConferenceClient {
                 noiseGateSettings.classList.remove('hidden');
 
                 // Display the mic device name
-                this.updateMicDeviceName();
+                this.updateMicDeviceList();
 
                 // Reset warning state
                 this.micConstantlyActiveCount = 0;
@@ -2565,34 +2571,106 @@ class ConferenceClient {
         }
     }
 
-    async updateMicDeviceName() {
-        const micDeviceEl = document.getElementById('micDeviceName');
-        if (!micDeviceEl) return;
+    async updateMicDeviceList() {
+        const select = document.getElementById('micDeviceSelect');
+        if (!select) return;
 
         try {
-            // Get the current audio track's device ID
-            const audioTrack = this.localStream?.getAudioTracks()[0];
-            if (!audioTrack) {
-                micDeviceEl.textContent = 'No microphone';
-                return;
-            }
-
-            const settings = audioTrack.getSettings();
-            const deviceId = settings.deviceId;
-
-            // Get device list and find the matching device
             const devices = await navigator.mediaDevices.enumerateDevices();
             const audioInputs = devices.filter(d => d.kind === 'audioinput');
-            const currentDevice = audioInputs.find(d => d.deviceId === deviceId);
 
-            if (currentDevice && currentDevice.label) {
-                micDeviceEl.textContent = currentDevice.label;
-            } else {
-                micDeviceEl.textContent = `Microphone ${audioInputs.findIndex(d => d.deviceId === deviceId) + 1}`;
-            }
+            // Get current device ID
+            const audioTrack = this.localStream?.getAudioTracks()[0];
+            const currentDeviceId = audioTrack ? audioTrack.getSettings().deviceId : null;
+
+            select.innerHTML = '';
+            audioInputs.forEach((device, i) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Microphone ${i + 1}`;
+                if (device.deviceId === currentDeviceId) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
         } catch (error) {
-            console.warn('Could not get mic device name:', error);
-            micDeviceEl.textContent = 'Unknown device';
+            console.warn('Could not enumerate mic devices:', error);
+        }
+    }
+
+    async switchMicrophone(deviceId) {
+        try {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            const audioConstraints = isMobile ? {
+                deviceId: { exact: deviceId },
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } : {
+                deviceId: { exact: deviceId },
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: { ideal: 48000 },
+                channelCount: { ideal: 1 },
+                latency: { ideal: 0.01 },
+                googEchoCancellation: true,
+                googAutoGainControl: true,
+                googNoiseSuppression: true,
+                googHighpassFilter: true,
+                googTypingNoiseDetection: true,
+                googNoiseReduction: true,
+                googAudioMirroring: false
+            };
+
+            // Get new audio stream
+            const newStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+            const newAudioTrack = newStream.getAudioTracks()[0];
+
+            // Stop old audio track
+            const oldAudioTrack = this.localStream.getAudioTracks()[0];
+            if (oldAudioTrack) {
+                oldAudioTrack.stop();
+                this.localStream.removeTrack(oldAudioTrack);
+            }
+
+            // Add new track to local stream
+            this.localStream.addTrack(newAudioTrack);
+
+            // If noise suppression is active, re-route through the processor
+            if (this.noiseSuppressionEnabled && this.audioContext && this.noiseSuppressionNode) {
+                const sourceStream = new MediaStream([newAudioTrack]);
+                const source = this.audioContext.createMediaStreamSource(sourceStream);
+                const destination = this.audioContext.createMediaStreamDestination();
+
+                // Disconnect old source (node stays connected)
+                this.noiseSuppressionNode.disconnect();
+                source.connect(this.noiseSuppressionNode);
+                this.noiseSuppressionNode.connect(destination);
+
+                const processedTrack = destination.stream.getAudioTracks()[0];
+                this.processedStream = destination.stream;
+                this.originalAudioTrack = newAudioTrack;
+
+                // Replace in all peer connections
+                this.peerConnections.forEach(peer => {
+                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    if (sender) sender.replaceTrack(processedTrack);
+                });
+            } else {
+                // Replace raw track in all peer connections
+                this.peerConnections.forEach(peer => {
+                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    if (sender) sender.replaceTrack(newAudioTrack);
+                });
+            }
+
+            // Save preference
+            this.saveNoiseGateSetting('preferredMic', deviceId);
+            console.log('Switched microphone to:', newAudioTrack.label);
+        } catch (error) {
+            console.error('Error switching microphone:', error);
         }
     }
 
