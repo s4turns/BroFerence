@@ -1481,6 +1481,11 @@ body::before {
     letter-spacing: 1px;
 }
 
+.app-version {
+    opacity: 0.5;
+    letter-spacing: 1px;
+}
+
 .github-link {
     display: flex;
     align-items: center;
