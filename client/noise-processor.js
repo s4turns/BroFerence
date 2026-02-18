@@ -34,11 +34,17 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.mouseSuppressionEnabled = false;
         this.clickSensitivity = 50;
 
+        // Speech presence detector — slow attack/release to distinguish sustained
+        // speech from brief click transients. A keyboard click (≤60ms) never pushes
+        // this above the 0.5 threshold; normal speech confirms in ~140ms.
+        // Attack 200ms, Release 100ms (precomputed).
+        this.speechAttackCoef  = Math.exp(-1 / (0.200 * sampleRate));
+        this.speechReleaseCoef = Math.exp(-1 / (0.100 * sampleRate));
+        this.speechEnvelope = 0;
+
         // Click suppression state
-        // Detection only arms after sustained silence — prevents triggering
-        // during speech, plosives, or the slow gate release after speech ends.
-        this.silenceCounter = 0;         // Samples the gate has been fully closed
-        this.clickArmed = false;         // True once silence is confirmed
+        this.silenceCounter = 0;         // Samples since speech last confirmed
+        this.clickArmed = false;         // True once 50ms of non-speech confirmed
         this.clickActive = false;        // Currently suppressing a click
         this.clickSampleCount = 0;       // Samples into current suppression
         this.clickHold = 0;              // Hold suppression after click ends
@@ -46,17 +52,15 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.clickGain = 1.0;            // Current suppression gain
 
         // Thresholds (set by updateClickSensitivityParams)
-        this.minSilenceSamples = 0;      // Required silence before arming
-        this.clickMultiplier = 0;        // noiseFloor × this = trigger threshold
-        this.maxClickSamples = 0;        // Max suppression before releasing as speech
-        this.clickHoldSamples = 0;       // Hold duration after click
-        this.clickRecoverySamples = 0;   // Fade-in duration
+        this.minSilenceSamples = 0;
+        this.clickMultiplier = 0;
+        this.maxClickSamples = 0;
+        this.clickHoldSamples = 0;
+        this.clickRecoverySamples = 0;
         this.updateClickSensitivityParams();
 
-        // Send a test message immediately
         this.port.postMessage({ type: 'init', message: 'NoiseSuppressionProcessor initialized' });
 
-        // Listen for messages from main thread
         this.port.onmessage = (event) => {
             if (event.data.type === 'setEnabled') {
                 this.enabled = event.data.enabled;
@@ -83,11 +87,10 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         // Range: 12× (low) down to 5× (high)
         this.clickMultiplier = 12 - (sensitivityNorm * 7);
 
-        // Silence required before detection arms.
-        // Prevents triggering during speech tails or gate transitions.
-        this.minSilenceSamples = Math.round(sampleRate * 0.050); // 50ms
+        // 50ms of confirmed non-speech required before detection arms.
+        this.minSilenceSamples = Math.round(sampleRate * 0.050);
 
-        // Max suppression duration before we decide it's speech, not a click.
+        // Max suppression duration before releasing as speech.
         // Keyboard clicks: up to 60ms, Mouse clicks: up to 20ms.
         const keyboardMs = 0.060;
         const mouseMs = 0.020;
@@ -104,14 +107,13 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.clickRecoverySamples = Math.round(sampleRate * 0.005);
     }
 
-    detectAndSuppressTransient(absSample, gateEnvelope) {
+    detectAndSuppressTransient(absSample, inSpeech) {
         if (!this.keyboardSuppressionEnabled && !this.mouseSuppressionEnabled) {
             return 1.0;
         }
 
-        // Gate fully open = speech is active.
-        // Reset everything and wait for silence again.
-        if (gateEnvelope > 0.05) {
+        // Confirmed speech — disable click suppression and reset state.
+        if (inSpeech) {
             this.silenceCounter = 0;
             this.clickArmed = false;
             this.clickActive = false;
@@ -121,13 +123,12 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
             return 1.0;
         }
 
-        // Count confirmed silence samples (gate fully closed, not just transitioning)
+        // Count non-speech samples until arming threshold is reached.
         this.silenceCounter++;
         if (this.silenceCounter >= this.minSilenceSamples) {
             this.clickArmed = true;
         }
 
-        // Don't check for clicks until we've had 50ms of confirmed silence
         if (!this.clickArmed) {
             return 1.0;
         }
@@ -142,12 +143,12 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
             this.clickSampleCount++;
 
             if (this.clickSampleCount > this.maxClickSamples) {
-                // Lasted too long — speech starting, not a click. Release.
+                // Lasted too long — release as speech. Fade in from silence.
                 this.clickActive = false;
                 this.clickRecovery = this.clickRecoverySamples;
-                this.clickGain = 1.0;
+                this.clickGain = 0.0;
             } else if (this.smoothedLevel < triggerThreshold * 0.3) {
-                // Signal dropped back to near-silence — click is over
+                // Signal dropped — click is over, enter hold
                 this.clickActive = false;
                 this.clickHold = this.clickHoldSamples;
                 this.clickGain = 0.0;
@@ -155,15 +156,31 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 this.clickGain = 0.0;
             }
         } else if (this.clickHold > 0) {
-            this.clickHold--;
-            this.clickGain = 0.0;
-            if (this.clickHold === 0) {
-                this.clickRecovery = this.clickRecoverySamples;
+            // Check for a new click arriving during hold (rapid typing burst)
+            if (this.smoothedLevel > triggerThreshold) {
+                this.clickActive = true;
+                this.clickSampleCount = 0;
+                this.clickHold = 0;
+                this.clickGain = 0.0;
+            } else {
+                this.clickHold--;
+                this.clickGain = 0.0;
+                if (this.clickHold === 0) {
+                    this.clickRecovery = this.clickRecoverySamples;
+                }
             }
         } else if (this.clickRecovery > 0) {
-            this.clickRecovery--;
-            const progress = 1.0 - (this.clickRecovery / this.clickRecoverySamples);
-            this.clickGain = progress * progress;
+            // Check for a new click arriving during fade-in (rapid typing burst)
+            if (this.smoothedLevel > triggerThreshold) {
+                this.clickActive = true;
+                this.clickSampleCount = 0;
+                this.clickRecovery = 0;
+                this.clickGain = 0.0;
+            } else {
+                this.clickRecovery--;
+                const progress = 1.0 - (this.clickRecovery / this.clickRecoverySamples);
+                this.clickGain = progress * progress;
+            }
         } else {
             // Armed and idle — watch for a click
             if (this.smoothedLevel > triggerThreshold) {
@@ -191,7 +208,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
             const outputChannel = output[channel];
 
             if (!this.enabled) {
-                // Pass through without processing
                 outputChannel.set(inputChannel);
                 continue;
             }
@@ -237,13 +253,23 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 // Apply soft knee gain reduction
                 const gain = this.envelope * this.envelope; // Squared for softer knee
 
-                // Apply click suppression (only fires during confirmed silence)
-                const clickGain = this.detectAndSuppressTransient(absSample, this.envelope);
+                // Speech presence detector: slow attack (200ms) / release (100ms) on the
+                // raw level signal. A keyboard click (≤60ms) only pushes this to ~0.26
+                // max; speech confirms at 0.5 after ~140ms of sustained activity.
+                const speechInput = isAboveThreshold ? 1.0 : 0.0;
+                if (speechInput > this.speechEnvelope) {
+                    this.speechEnvelope = this.speechAttackCoef * this.speechEnvelope + (1 - this.speechAttackCoef) * speechInput;
+                } else {
+                    this.speechEnvelope = this.speechReleaseCoef * this.speechEnvelope + (1 - this.speechReleaseCoef) * speechInput;
+                }
+                const inSpeech = this.speechEnvelope > 0.5;
+
+                // Apply click suppression
+                const clickGain = this.detectAndSuppressTransient(absSample, inSpeech);
 
                 // Output with both gains applied
                 outputChannel[i] = sample * gain * clickGain;
 
-                // Track peak level for reporting
                 if (absSample > this.peakLevel) {
                     this.peakLevel = absSample;
                 }
