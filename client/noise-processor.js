@@ -112,8 +112,20 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.longAlpha  = 1.0 - Math.exp(-1.0 / (sampleRate * 0.100));  // 100ms window
     }
 
-    detectAndSuppressTransient(absSample) {
+    detectAndSuppressTransient(absSample, gateEnvelope) {
         if (!this.keyboardSuppressionEnabled && !this.mouseSuppressionEnabled) {
+            return 1.0;
+        }
+
+        // If the noise gate is open, speech is active — don't suppress.
+        // Clicks happen in silence; plosives/consonants during speech look
+        // identical to clicks and would cause the "bug" distortion.
+        if (gateEnvelope > 0.2) {
+            // Reset transient state so we start fresh after speech ends
+            this.transientActive = false;
+            this.suppressionHold = 0;
+            this.recoveryCounter = 0;
+            this.transientGain = 1.0;
             return 1.0;
         }
 
@@ -245,7 +257,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 const gain = this.envelope * this.envelope; // Squared for softer knee
 
                 // Apply transient suppression on top of noise gate
-                const clickGain = this.detectAndSuppressTransient(absSample);
+                const clickGain = this.detectAndSuppressTransient(absSample, this.envelope);
 
                 // Output with both gains applied
                 outputChannel[i] = sample * gain * clickGain;
