@@ -18,6 +18,8 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Password-protected rooms** - Secure your private meetings
 - **YouTube/Video streaming** - Share YouTube videos or direct video URLs with participants (Watch Together)
 - **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization
+- **Typing Attenuation** - Keyboard and mouse click suppression with adjustable sensitivity
+- **Microphone Selector** - Switch input device live, including NVIDIA Broadcast / RTX Voice
 - **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
 - **Speaking indicator** - Glowing ring shows who's talking
 - **Connection quality indicator** - Signal bars showing RTT and packet loss
@@ -447,6 +449,14 @@ MIT License - feel free to use for personal or commercial projects!
 - IRC bridge for retro chat integration
 
 ## Recent Updates
+
+### v2.2 (2026-02-18)
+- **Typing Attenuation** - Dedicated keyboard and mouse click suppression using transient/energy-ratio detection
+- **Microphone Device Selector** - Switch input device live (supports NVIDIA Broadcast, RTX Voice, Krisp, etc.)
+- **Version display** - App version shown in status bar footer
+- Fixed scratchy audio caused by `Math.exp` being computed per-sample in the audio worklet hot path
+- Fixed outgoing audio distortion (click suppression now skips during active speech)
+- Fixed mobile users hearing glitchy audio from desktop users
 
 ### v2.1.1 (2026-02-05)
 - **Firefox Compatibility** - Fixed remote video autoplay issues on Firefox
