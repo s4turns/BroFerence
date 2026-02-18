@@ -8,9 +8,11 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 
         // Noise gate parameters
         this.threshold = 0.012;     // Noise floor threshold
-        this.attack = 0.003;        // Attack time in seconds
-        this.release = 0.25;        // Release time in seconds
         this.holdTime = 0.1;        // Hold time before release
+
+        // Precomputed noise gate coefficients (never change, compute once)
+        this.attackCoef  = Math.exp(-1 / (0.003 * sampleRate));  // 3ms attack
+        this.releaseCoef = Math.exp(-1 / (0.250 * sampleRate));  // 250ms release
 
         // State
         this.envelope = 0;
@@ -48,6 +50,9 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.suppressionHoldSamples = 0; // Hold suppression after click ends
         this.recoverySamples = 0;        // Fade-in duration after suppression
         this.recoveryCounter = 0;
+        this.minClickSamples = 0;        // Minimum click duration in samples
+        this.shortAlpha = 0;             // Precomputed short-term energy coef
+        this.longAlpha = 0;              // Precomputed long-term energy coef
         this.updateClickSensitivityParams();
 
         // Send a test message immediately
@@ -98,6 +103,13 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 
         // Smooth fade-in after suppression ends
         this.recoverySamples = Math.round(sampleRate * 0.005); // 5ms
+
+        // Minimum click duration before we consider it "over" (2ms)
+        this.minClickSamples = Math.round(sampleRate * 0.002);
+
+        // Precompute energy tracking coefficients — avoids Math.exp in hot path
+        this.shortAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.0005)); // 0.5ms window
+        this.longAlpha  = 1.0 - Math.exp(-1.0 / (sampleRate * 0.100));  // 100ms window
     }
 
     detectAndSuppressTransient(absSample) {
@@ -108,14 +120,10 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         const energy = absSample * absSample;
 
         // Short-term energy: fast-tracking (~0.5ms window)
-        // Responds quickly to sudden amplitude changes
-        const shortAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.0005));
-        this.shortTermEnergy = this.shortTermEnergy * (1 - shortAlpha) + energy * shortAlpha;
+        this.shortTermEnergy = this.shortTermEnergy * (1 - this.shortAlpha) + energy * this.shortAlpha;
 
         // Long-term energy: slow-tracking (~100ms window)
-        // Represents the background/speech energy level
-        const longAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.100));
-        this.longTermEnergy = this.longTermEnergy * (1 - longAlpha) + energy * longAlpha;
+        this.longTermEnergy = this.longTermEnergy * (1 - this.longAlpha) + energy * this.longAlpha;
 
         // Energy ratio: how much short-term exceeds long-term
         const safeFloor = 1e-10;
@@ -136,7 +144,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 this.transientActive = false;
                 this.recoveryCounter = this.recoverySamples;
                 this.transientGain = 1.0;
-            } else if (!stillClickLike && this.transientSampleCount > Math.round(sampleRate * 0.002)) {
+            } else if (!stillClickLike && this.transientSampleCount > this.minClickSamples) {
                 // Energy dropped and we're past the minimum 2ms — click is over
                 this.transientActive = false;
                 this.suppressionHold = this.suppressionHoldSamples;
@@ -226,14 +234,11 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                     targetEnvelope = 0;
                 }
 
-                // Apply attack/release smoothing
-                const attackCoef = Math.exp(-1 / (this.attack * sampleRate));
-                const releaseCoef = Math.exp(-1 / (this.release * sampleRate));
-
+                // Apply attack/release smoothing (coefficients precomputed in constructor)
                 if (targetEnvelope > this.envelope) {
-                    this.envelope = attackCoef * this.envelope + (1 - attackCoef) * targetEnvelope;
+                    this.envelope = this.attackCoef * this.envelope + (1 - this.attackCoef) * targetEnvelope;
                 } else {
-                    this.envelope = releaseCoef * this.envelope + (1 - releaseCoef) * targetEnvelope;
+                    this.envelope = this.releaseCoef * this.envelope + (1 - this.releaseCoef) * targetEnvelope;
                 }
 
                 // Apply soft knee gain reduction
