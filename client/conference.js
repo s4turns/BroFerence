@@ -52,8 +52,8 @@ class ConferenceClient {
         this.micActiveWarningShown = false;
 
         // Click suppression configuration
-        this.keyboardClickSuppression = this.loadNoiseGateSetting('keyboardSuppression', true);
-        this.mouseClickSuppression = this.loadNoiseGateSetting('mouseSuppression', true);
+        this.keyboardClickSuppression = this.loadNoiseGateSetting('keyboardSuppression', false);
+        this.mouseClickSuppression = this.loadNoiseGateSetting('mouseSuppression', false);
         this.clickSensitivity = this.loadNoiseGateSetting('clickSensitivity', 50);
 
         this.initUI();
