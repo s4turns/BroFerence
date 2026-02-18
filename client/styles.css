@@ -1506,65 +1506,177 @@ body::before {
     height: 20px;
 }
 
-/* Responsive */
+/* ── Touch devices: always show controls (no hover on touchscreen) ── */
+@media (hover: none) {
+    .video-controls {
+        opacity: 1;
+        background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        justify-content: center;
+        gap: 12px;
+        padding: 8px 0;
+    }
+
+    .remote-audio-controls {
+        opacity: 1;
+        /* Hide volume slider on touch — just keep mute button */
+    }
+
+    .remote-audio-controls input[type="range"] {
+        display: none;
+    }
+}
+
+/* ── Tablet and below (768px) ── */
 @media (max-width: 768px) {
     .header {
-        padding: 12px 20px;
+        padding: 10px 12px;
+        flex-wrap: wrap;
+        gap: 6px;
     }
 
     .header h1 {
-        font-size: 20px;
+        font-size: 18px;
     }
 
     .logo-icon {
-        font-size: 24px;
+        font-size: 22px;
+    }
+
+    /* Room info: inline below title instead of absolutely positioned */
+    .room-info {
+        position: static;
+        transform: none;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11px;
+        order: 3;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .room-info span {
+        padding: 4px 10px;
+        font-size: 11px;
+        border-width: 1px;
+    }
+
+    /* Controls: stay left but smaller */
+    .bottom-controls {
+        position: static;
+        transform: none;
+        order: 2;
+        margin-left: auto;
+        gap: 6px;
+    }
+
+    .bottom-controls .btn {
+        padding: 6px 12px;
+        font-size: 12px;
+        border-width: 1px;
     }
 
     .join-card {
-        padding: 32px 24px;
+        padding: 20px 16px;
     }
 
     .join-card h2 {
-        font-size: 24px;
+        font-size: 20px;
     }
 
     .video-grid {
         grid-template-columns: 1fr;
-        gap: 12px;
-        padding: 12px;
+        gap: 8px;
+        padding: 8px;
     }
 
+    /* Chat: full-width overlay on phones */
     .chat-sidebar {
         position: absolute;
         right: 0;
         top: 0;
         height: 100%;
         width: 100%;
-        max-width: 320px;
+        max-width: 360px;
         z-index: 100;
     }
 
-    .bottom-controls {
-        flex-direction: row;
-        width: calc(100% - 32px);
-        max-width: 400px;
+    /* Options menu: fit within screen */
+    .options-menu {
+        width: min(320px, calc(100vw - 16px));
+        max-height: 90vh;
     }
 
-    .room-info {
-        flex-direction: column;
-        gap: 8px;
-        font-size: 12px;
-    }
-
+    /* Status bar: single line, hide branding to save space */
     .status-bar {
-        flex-direction: column;
-        gap: 8px;
-        padding: 8px 16px;
+        flex-direction: row;
+        padding: 6px 12px;
         font-size: 11px;
     }
 
     .status-footer {
+        display: none;
+    }
+}
+
+/* ── Small phones (480px) ── */
+@media (max-width: 480px) {
+    .header h1 {
+        font-size: 16px;
+        letter-spacing: 1px;
+    }
+
+    /* Room info: hide participant count, keep room name only */
+    .room-info {
+        gap: 4px;
+    }
+
+    .room-info #participantCount {
+        display: none;
+    }
+
+    .room-info span {
+        padding: 3px 8px;
         font-size: 10px;
+    }
+
+    /* Chat: fully full-width */
+    .chat-sidebar {
+        max-width: 100%;
+    }
+
+    /* Options menu: full width with margin */
+    .options-menu {
+        width: calc(100vw - 16px);
+        max-height: 92vh;
+    }
+
+    /* Join card: minimal padding */
+    .join-card, .prejoin-card {
+        padding: 16px 12px;
+        margin: 0 8px;
+    }
+
+    .join-card h2 {
+        font-size: 18px;
+        margin-bottom: 14px;
+    }
+
+    /* Tighter video grid */
+    .video-grid {
+        gap: 6px;
+        padding: 6px;
+    }
+
+    /* Control buttons slightly smaller on very small screens */
+    .control-btn {
+        width: 38px;
+        height: 38px;
     }
 }
 
