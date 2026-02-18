@@ -1435,6 +1435,13 @@ body::before {
     padding: 8px 16px;
     font-size: 13px;
     border-width: 1px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.waffle-icon {
+    flex-shrink: 0;
 }
 
 /* Status Bar */
@@ -1536,18 +1543,20 @@ body::before {
     .header {
         padding: 10px 12px;
         flex-wrap: wrap;
-        gap: 6px;
+        justify-content: space-between; /* title left, controls right */
+        gap: 4px;
     }
 
     .header h1 {
-        font-size: 18px;
+        font-size: 17px;
+        letter-spacing: 1px;
     }
 
     .logo-icon {
         font-size: 22px;
     }
 
-    /* Room info: inline below title instead of absolutely positioned */
+    /* Room info: second row, centred */
     .room-info {
         position: static;
         transform: none;
@@ -1566,19 +1575,28 @@ body::before {
         border-width: 1px;
     }
 
-    /* Controls: stay left but smaller */
+    /* Controls: flow naturally to the right of h1 */
     .bottom-controls {
         position: static;
         transform: none;
         order: 2;
-        margin-left: auto;
         gap: 6px;
     }
 
     .bottom-controls .btn {
-        padding: 6px 12px;
+        padding: 6px 10px;
         font-size: 12px;
         border-width: 1px;
+    }
+
+    /* Fix iOS auto-zoom: inputs must be >= 16px on mobile */
+    .form-group input,
+    .form-group select,
+    input[type="text"],
+    input[type="password"],
+    input[type="search"],
+    select {
+        font-size: 16px !important;
     }
 
     .join-card {
