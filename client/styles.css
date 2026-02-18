@@ -1888,3 +1888,223 @@ body::before {
 body {
     animation: flicker 0.15s infinite;
 }
+
+/* ── Debug Panel ── */
+.debug-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(720px, calc(100vw - 16px));
+    height: 80vh;
+    background: #000;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Courier New', monospace;
+}
+
+.debug-panel.hidden {
+    display: none;
+}
+
+.debug-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--primary);
+    background: #000;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.debug-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-right: 4px;
+}
+
+.debug-tabs {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+}
+
+.debug-tab {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 3px 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.debug-tab.active {
+    opacity: 1;
+    background: #001100;
+    box-shadow: 0 0 6px var(--shadow);
+}
+
+.debug-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.debug-action-btn {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 3px 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.debug-action-btn:hover {
+    background: #001100;
+}
+
+.debug-close-btn {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.debug-close-btn:hover {
+    background: rgba(255, 0, 64, 0.15);
+}
+
+.debug-status-bar {
+    display: flex;
+    gap: 8px;
+    padding: 6px 14px;
+    border-bottom: 1px solid #002200;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.debug-badge {
+    font-size: 11px;
+    color: var(--primary);
+    padding: 2px 8px;
+    border: 1px solid var(--primary);
+    background: #001100;
+}
+
+.debug-badge-err {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: rgba(255, 0, 64, 0.08);
+}
+
+.debug-peer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 14px;
+    border-bottom: 1px solid #002200;
+    flex-shrink: 0;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.debug-peer-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 10px;
+    color: #aaa;
+}
+
+.debug-peer-name {
+    color: var(--secondary);
+    font-weight: 700;
+    min-width: 80px;
+}
+
+.debug-state {
+    padding: 1px 6px;
+    border: 1px solid currentColor;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debug-state-connected { color: var(--primary); }
+.debug-state-connecting { color: var(--warning, #ff9900); }
+.debug-state-failed, .debug-state-closed { color: var(--danger); }
+.debug-state-disconnected { color: #ff9900; }
+.debug-state-new, .debug-state-checking { color: #aaa; }
+
+.debug-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.debug-entry {
+    display: flex;
+    gap: 8px;
+    padding: 2px 14px;
+    font-size: 11px;
+    line-height: 1.5;
+    border-bottom: 1px solid #0a0a0a;
+    word-break: break-all;
+}
+
+.debug-entry:hover {
+    background: #050505;
+}
+
+.debug-entry.hidden {
+    display: none;
+}
+
+.debug-ts {
+    color: #444;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 10px;
+    padding-top: 1px;
+}
+
+.debug-level {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    text-transform: uppercase;
+    height: fit-content;
+    margin-top: 2px;
+}
+
+.debug-level-log  { color: #555; border: 1px solid #333; }
+.debug-level-warn { color: #ff9900; border: 1px solid #ff9900; }
+.debug-level-err  { color: var(--danger); border: 1px solid var(--danger); }
+
+.debug-cat {
+    flex-shrink: 0;
+    font-size: 9px;
+    padding: 1px 5px;
+    text-transform: uppercase;
+    height: fit-content;
+    margin-top: 2px;
+    color: var(--secondary);
+    border: 1px solid #003333;
+}
+
+.debug-msg {
+    color: #ccc;
+    flex: 1;
+}

@@ -56,11 +56,205 @@ class ConferenceClient {
         this.mouseClickSuppression = this.loadNoiseGateSetting('mouseSuppression', false);
         this.clickSensitivity = this.loadNoiseGateSetting('clickSensitivity', 50);
 
+        // Debug log buffer
+        this.debugLog = [];
+        this.debugMaxEntries = 500;
+        this.debugFilter = 'all';
+        this.debugErrorCount = 0;
+        this.initConsoleInterceptor();
+
         this.initUI();
     }
 
     generateId() {
         return 'client_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // ── Debug Panel ──────────────────────────────────────────────────────────
+
+    initConsoleInterceptor() {
+        const self = this;
+        const _log   = console.log.bind(console);
+        const _warn  = console.warn.bind(console);
+        const _error = console.error.bind(console);
+
+        function intercept(level, args) {
+            const msg = args.map(a => {
+                if (a instanceof Error) return a.message;
+                if (typeof a === 'object') { try { return JSON.stringify(a); } catch { return String(a); } }
+                return String(a);
+            }).join(' ');
+            self.addDebugEntry(level, msg);
+        }
+
+        console.log   = (...a) => { _log(...a);   intercept('log',  a); };
+        console.warn  = (...a) => { _warn(...a);  intercept('warn', a); };
+        console.error = (...a) => { _error(...a); intercept('err',  a); };
+    }
+
+    addDebugEntry(level, msg) {
+        const cat = this.classifyDebugMsg(msg);
+        const entry = { level, msg, cat, ts: new Date() };
+
+        if (level === 'err') this.debugErrorCount++;
+        this.debugLog.push(entry);
+        if (this.debugLog.length > this.debugMaxEntries) this.debugLog.shift();
+
+        this.renderDebugEntry(entry);
+        this.updateDebugBadges();
+    }
+
+    classifyDebugMsg(msg) {
+        const m = msg.toLowerCase();
+        if (m.includes('websocket') || m.includes('signaling') || m.includes('ws ')) return 'ws';
+        if (m.includes('ice') || m.includes('candidate')) return 'ice';
+        if (m.includes('offer') || m.includes('answer') || m.includes('peer') || m.includes('connection state')) return 'peer';
+        if (m.includes('track') || m.includes('stream') || m.includes('audio') || m.includes('video') || m.includes('mic')) return 'media';
+        if (m.includes('error') || m.includes('fail')) return 'error';
+        return 'info';
+    }
+
+    isConnectionCategory(cat, level) {
+        return ['ws', 'ice', 'peer'].includes(cat) || level === 'err';
+    }
+
+    renderDebugEntry(entry) {
+        const container = document.getElementById('debugLog');
+        if (!container) return;
+
+        const hh = String(entry.ts.getHours()).padStart(2, '0');
+        const mm = String(entry.ts.getMinutes()).padStart(2, '0');
+        const ss = String(entry.ts.getSeconds()).padStart(2, '0');
+        const ms = String(entry.ts.getMilliseconds()).padStart(3, '0');
+
+        const el = document.createElement('div');
+        el.className = 'debug-entry';
+        el.dataset.level = entry.level;
+        el.dataset.cat = entry.cat;
+
+        const isConnCat = this.isConnectionCategory(entry.cat, entry.level);
+        if (this.debugFilter === 'error' && entry.level !== 'err') el.classList.add('hidden');
+        if (this.debugFilter === 'connection' && !isConnCat) el.classList.add('hidden');
+
+        el.innerHTML = `
+            <span class="debug-ts">${hh}:${mm}:${ss}.${ms}</span>
+            <span class="debug-level debug-level-${entry.level}">${entry.level}</span>
+            <span class="debug-cat">${entry.cat}</span>
+            <span class="debug-msg">${this.escapeHtml(entry.msg)}</span>
+        `;
+
+        container.appendChild(el);
+        // Auto-scroll to bottom
+        container.scrollTop = container.scrollHeight;
+    }
+
+    escapeHtml(str) {
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    updateDebugBadges() {
+        const wsEl = document.getElementById('debugWsStatus');
+        const pcEl = document.getElementById('debugPeerCount');
+        const errEl = document.getElementById('debugErrCount');
+        if (!wsEl) return;
+
+        const wsState = this.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][this.ws.readyState] ?? '—' : '—';
+        wsEl.textContent = `WS: ${wsState}`;
+        wsEl.style.color = wsState === 'OPEN' ? 'var(--primary)' : wsState === 'CONNECTING' ? '#ff9900' : 'var(--danger)';
+
+        pcEl.textContent = `Peers: ${this.peerConnections.size}`;
+        errEl.textContent = `Errors: ${this.debugErrorCount}`;
+    }
+
+    updateDebugPeerList() {
+        const list = document.getElementById('debugPeerList');
+        if (!list) return;
+        list.innerHTML = '';
+
+        if (this.peerConnections.size === 0) {
+            list.innerHTML = '<div class="debug-peer-row" style="color:#444;font-size:10px">No active peer connections</div>';
+            return;
+        }
+
+        this.peerConnections.forEach((peer, peerId) => {
+            const pc = peer.connection;
+            const cs = pc.connectionState || '—';
+            const ice = pc.iceConnectionState || '—';
+            const row = document.createElement('div');
+            row.className = 'debug-peer-row';
+            row.innerHTML = `
+                <span class="debug-peer-name">${this.escapeHtml(peer.username || peerId)}</span>
+                <span class="debug-state debug-state-${cs}">conn: ${cs}</span>
+                <span class="debug-state debug-state-${ice}">ice: ${ice}</span>
+                <span style="color:#444;font-size:9px">${peerId.slice(-6)}</span>
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    initDebugPanel() {
+        const panel = document.getElementById('debugPanel');
+        const openBtn = document.getElementById('debugMenuBtn');
+        const closeBtn = document.getElementById('closeDebugBtn');
+        const clearBtn = document.getElementById('clearDebugBtn');
+        const copyBtn = document.getElementById('copyDebugBtn');
+        const tabs = document.querySelectorAll('.debug-tab');
+
+        openBtn.addEventListener('click', () => {
+            this.toggleOptionsMenu(); // close options first
+            panel.classList.remove('hidden');
+            this.updateDebugPeerList();
+            this.updateDebugBadges();
+            // Start live refresh
+            this._debugRefreshInterval = setInterval(() => {
+                this.updateDebugPeerList();
+                this.updateDebugBadges();
+            }, 1000);
+        });
+
+        closeBtn.addEventListener('click', () => {
+            panel.classList.add('hidden');
+            clearInterval(this._debugRefreshInterval);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            this.debugLog = [];
+            this.debugErrorCount = 0;
+            document.getElementById('debugLog').innerHTML = '';
+            this.updateDebugBadges();
+        });
+
+        copyBtn.addEventListener('click', () => {
+            const text = this.debugLog.map(e => {
+                const ts = e.ts.toISOString();
+                return `[${ts}] [${e.level.toUpperCase()}] [${e.cat}] ${e.msg}`;
+            }).join('\n');
+            navigator.clipboard.writeText(text).catch(() => {});
+        });
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.debugFilter = tab.dataset.filter;
+                this.applyDebugFilter();
+            });
+        });
+    }
+
+    applyDebugFilter() {
+        const entries = document.querySelectorAll('.debug-entry');
+        entries.forEach(el => {
+            const level = el.dataset.level;
+            const cat = el.dataset.cat;
+            const isConnCat = this.isConnectionCategory(cat, level);
+
+            let show = true;
+            if (this.debugFilter === 'error' && level !== 'err') show = false;
+            if (this.debugFilter === 'connection' && !isConnCat) show = false;
+
+            el.classList.toggle('hidden', !show);
+        });
     }
 
     initICEServers() {
@@ -234,6 +428,9 @@ class ConferenceClient {
 
         // Check for URL parameters (invite links)
         this.handleInviteLink();
+
+        // Wire up debug panel
+        this.initDebugPanel();
     }
 
     handleInviteLink() {

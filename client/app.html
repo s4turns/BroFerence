@@ -112,10 +112,37 @@
                             <option value="amber">Amber (Classic)</option>
                         </select>
                     </div>
+                    <button id="debugMenuBtn" class="options-item">
+                        🔧 Debug Console
+                    </button>
                     <button id="leaveRoomBtn" class="options-item options-item-danger">
                         🚪 Leave Room
                     </button>
                 </div>
+            </div>
+
+            <!-- Debug Panel -->
+            <div id="debugPanel" class="debug-panel hidden">
+                <div class="debug-panel-header">
+                    <span class="debug-panel-title">🔧 Debug Console</span>
+                    <div class="debug-tabs">
+                        <button class="debug-tab active" data-filter="all">All</button>
+                        <button class="debug-tab" data-filter="error">Errors</button>
+                        <button class="debug-tab" data-filter="connection">Connection</button>
+                    </div>
+                    <div class="debug-actions">
+                        <button id="clearDebugBtn" class="debug-action-btn">Clear</button>
+                        <button id="copyDebugBtn" class="debug-action-btn">Copy</button>
+                        <button id="closeDebugBtn" class="debug-action-btn debug-close-btn">✕</button>
+                    </div>
+                </div>
+                <div class="debug-status-bar">
+                    <span id="debugWsStatus" class="debug-badge">WS: —</span>
+                    <span id="debugPeerCount" class="debug-badge">Peers: 0</span>
+                    <span id="debugErrCount" class="debug-badge debug-badge-err">Errors: 0</span>
+                </div>
+                <div id="debugPeerList" class="debug-peer-list"></div>
+                <div id="debugLog" class="debug-log"></div>
             </div>
         </header>
 
