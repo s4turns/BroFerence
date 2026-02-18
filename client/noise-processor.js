@@ -1,5 +1,5 @@
 // AudioWorklet processor for noise suppression
-// Uses a noise gate + transient detection approach
+// Uses a noise gate + silence-gated transient detection approach
 
 class NoiseSuppressionProcessor extends AudioWorkletProcessor {
     constructor() {
@@ -34,25 +34,23 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.mouseSuppressionEnabled = false;
         this.clickSensitivity = 50;
 
-        // Transient detection state — energy ratio approach
-        // Short-term energy spikes relative to long-term energy indicate clicks
-        this.shortTermEnergy = 0;
-        this.longTermEnergy = 0;
-        this.transientActive = false;
-        this.transientSampleCount = 0;
-        this.transientGain = 1.0;
-        this.suppressionHold = 0;        // Hold suppression after transient ends
-        this.prevAbsSample = 0;          // For derivative as secondary detector
+        // Click suppression state
+        // Detection only arms after sustained silence — prevents triggering
+        // during speech, plosives, or the slow gate release after speech ends.
+        this.silenceCounter = 0;         // Samples the gate has been fully closed
+        this.clickArmed = false;         // True once silence is confirmed
+        this.clickActive = false;        // Currently suppressing a click
+        this.clickSampleCount = 0;       // Samples into current suppression
+        this.clickHold = 0;              // Hold suppression after click ends
+        this.clickRecovery = 0;          // Fade-in counter after hold
+        this.clickGain = 1.0;            // Current suppression gain
 
-        // Transient detection thresholds (derived from clickSensitivity)
-        this.energyRatioThreshold = 0;   // Short/long energy ratio to trigger
-        this.maxTransientDuration = 0;   // Max samples before releasing as speech
-        this.suppressionHoldSamples = 0; // Hold suppression after click ends
-        this.recoverySamples = 0;        // Fade-in duration after suppression
-        this.recoveryCounter = 0;
-        this.minClickSamples = 0;        // Minimum click duration in samples
-        this.shortAlpha = 0;             // Precomputed short-term energy coef
-        this.longAlpha = 0;              // Precomputed long-term energy coef
+        // Thresholds (set by updateClickSensitivityParams)
+        this.minSilenceSamples = 0;      // Required silence before arming
+        this.clickMultiplier = 0;        // noiseFloor × this = trigger threshold
+        this.maxClickSamples = 0;        // Max suppression before releasing as speech
+        this.clickHoldSamples = 0;       // Hold duration after click
+        this.clickRecoverySamples = 0;   // Fade-in duration
         this.updateClickSensitivityParams();
 
         // Send a test message immediately
@@ -80,36 +78,30 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
     updateClickSensitivityParams() {
         const sensitivityNorm = this.clickSensitivity / 100;
 
-        // Energy ratio threshold: how much the short-term energy must exceed
-        // long-term energy to be considered a click.
-        // Lower ratio = more aggressive detection.
-        // Range: 8.0 (low sensitivity) down to 2.5 (high sensitivity)
-        this.energyRatioThreshold = 8.0 - (sensitivityNorm * 5.5);
+        // How many times above noise floor the signal must be to trigger.
+        // High sensitivity = lower multiplier = easier to trigger.
+        // Range: 12× (low) down to 5× (high)
+        this.clickMultiplier = 12 - (sensitivityNorm * 7);
 
-        // Max transient duration before releasing as speech
-        // Keyboard: up to 50ms, Mouse: up to 15ms
-        // With both enabled, use the longer window
-        const keyboardMs = 0.050 + sensitivityNorm * 0.020; // 50-70ms
-        const mouseMs = 0.015 + sensitivityNorm * 0.010;    // 15-25ms
+        // Silence required before detection arms.
+        // Prevents triggering during speech tails or gate transitions.
+        this.minSilenceSamples = Math.round(sampleRate * 0.050); // 50ms
+
+        // Max suppression duration before we decide it's speech, not a click.
+        // Keyboard clicks: up to 60ms, Mouse clicks: up to 20ms.
+        const keyboardMs = 0.060;
+        const mouseMs = 0.020;
         if (this.keyboardSuppressionEnabled) {
-            this.maxTransientDuration = Math.round(sampleRate * keyboardMs);
+            this.maxClickSamples = Math.round(sampleRate * keyboardMs);
         } else {
-            this.maxTransientDuration = Math.round(sampleRate * mouseMs);
+            this.maxClickSamples = Math.round(sampleRate * mouseMs);
         }
 
-        // Hold suppression briefly after the click energy drops
-        // Prevents the tail of the click from leaking through
-        this.suppressionHoldSamples = Math.round(sampleRate * (0.010 + sensitivityNorm * 0.010)); // 10-20ms
+        // Hold suppression for 15ms after the click signal drops
+        this.clickHoldSamples = Math.round(sampleRate * 0.015);
 
-        // Smooth fade-in after suppression ends
-        this.recoverySamples = Math.round(sampleRate * 0.005); // 5ms
-
-        // Minimum click duration before we consider it "over" (2ms)
-        this.minClickSamples = Math.round(sampleRate * 0.002);
-
-        // Precompute energy tracking coefficients — avoids Math.exp in hot path
-        this.shortAlpha = 1.0 - Math.exp(-1.0 / (sampleRate * 0.0005)); // 0.5ms window
-        this.longAlpha  = 1.0 - Math.exp(-1.0 / (sampleRate * 0.100));  // 100ms window
+        // 5ms fade-in after suppression ends
+        this.clickRecoverySamples = Math.round(sampleRate * 0.005);
     }
 
     detectAndSuppressTransient(absSample, gateEnvelope) {
@@ -117,84 +109,73 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
             return 1.0;
         }
 
-        // If the noise gate is open, speech is active — don't suppress.
-        // Clicks happen in silence; plosives/consonants during speech look
-        // identical to clicks and would cause the "bug" distortion.
-        if (gateEnvelope > 0.2) {
-            // Reset transient state so we start fresh after speech ends
-            this.transientActive = false;
-            this.suppressionHold = 0;
-            this.recoveryCounter = 0;
-            this.transientGain = 1.0;
+        // Gate fully open = speech is active.
+        // Reset everything and wait for silence again.
+        if (gateEnvelope > 0.05) {
+            this.silenceCounter = 0;
+            this.clickArmed = false;
+            this.clickActive = false;
+            this.clickHold = 0;
+            this.clickRecovery = 0;
+            this.clickGain = 1.0;
             return 1.0;
         }
 
-        const energy = absSample * absSample;
+        // Count confirmed silence samples (gate fully closed, not just transitioning)
+        this.silenceCounter++;
+        if (this.silenceCounter >= this.minSilenceSamples) {
+            this.clickArmed = true;
+        }
 
-        // Short-term energy: fast-tracking (~0.5ms window)
-        this.shortTermEnergy = this.shortTermEnergy * (1 - this.shortAlpha) + energy * this.shortAlpha;
+        // Don't check for clicks until we've had 50ms of confirmed silence
+        if (!this.clickArmed) {
+            return 1.0;
+        }
 
-        // Long-term energy: slow-tracking (~100ms window)
-        this.longTermEnergy = this.longTermEnergy * (1 - this.longAlpha) + energy * this.longAlpha;
+        // Trigger threshold: signal must be meaningfully above the noise floor
+        const triggerThreshold = Math.max(
+            this.noiseFloor * this.clickMultiplier,
+            this.threshold * 0.5
+        );
 
-        // Energy ratio: how much short-term exceeds long-term
-        const safeFloor = 1e-10;
-        const energyRatio = this.shortTermEnergy / (this.longTermEnergy + safeFloor);
+        if (this.clickActive) {
+            this.clickSampleCount++;
 
-        // Derivative as secondary signal (rapid amplitude change)
-        const derivative = Math.abs(absSample - this.prevAbsSample);
-        this.prevAbsSample = absSample;
-
-        if (this.transientActive) {
-            this.transientSampleCount++;
-
-            // Check if the click energy has subsided
-            const stillClickLike = energyRatio > (this.energyRatioThreshold * 0.5);
-
-            if (this.transientSampleCount > this.maxTransientDuration) {
-                // Lasted too long — this is sustained speech, not a click
-                this.transientActive = false;
-                this.recoveryCounter = this.recoverySamples;
-                this.transientGain = 1.0;
-            } else if (!stillClickLike && this.transientSampleCount > this.minClickSamples) {
-                // Energy dropped and we're past the minimum 2ms — click is over
-                this.transientActive = false;
-                this.suppressionHold = this.suppressionHoldSamples;
-                this.transientGain = 0.01;
+            if (this.clickSampleCount > this.maxClickSamples) {
+                // Lasted too long — speech starting, not a click. Release.
+                this.clickActive = false;
+                this.clickRecovery = this.clickRecoverySamples;
+                this.clickGain = 1.0;
+            } else if (this.smoothedLevel < triggerThreshold * 0.3) {
+                // Signal dropped back to near-silence — click is over
+                this.clickActive = false;
+                this.clickHold = this.clickHoldSamples;
+                this.clickGain = 0.0;
             } else {
-                // Still in the click — suppress
-                this.transientGain = 0.01;
+                this.clickGain = 0.0;
             }
-        } else if (this.suppressionHold > 0) {
-            // Hold suppression after click ends to catch the tail
-            this.suppressionHold--;
-            this.transientGain = 0.01;
-            if (this.suppressionHold === 0) {
-                this.recoveryCounter = this.recoverySamples;
+        } else if (this.clickHold > 0) {
+            this.clickHold--;
+            this.clickGain = 0.0;
+            if (this.clickHold === 0) {
+                this.clickRecovery = this.clickRecoverySamples;
             }
-        } else if (this.recoveryCounter > 0) {
-            // Smooth fade-in after suppression
-            this.recoveryCounter--;
-            const progress = 1.0 - (this.recoveryCounter / this.recoverySamples);
-            this.transientGain = progress * progress;
+        } else if (this.clickRecovery > 0) {
+            this.clickRecovery--;
+            const progress = 1.0 - (this.clickRecovery / this.clickRecoverySamples);
+            this.clickGain = progress * progress;
         } else {
-            // Check if a new transient is starting
-            // Trigger when energy ratio spikes AND there's meaningful amplitude
-            const minAmplitude = 0.002;
-            const hasEnergySpike = energyRatio > this.energyRatioThreshold;
-            const hasDerivativeSpike = derivative > 0.01;
-            const aboveFloor = absSample > minAmplitude;
-
-            if (hasEnergySpike && hasDerivativeSpike && aboveFloor) {
-                this.transientActive = true;
-                this.transientSampleCount = 0;
-                this.transientGain = 0.01;
+            // Armed and idle — watch for a click
+            if (this.smoothedLevel > triggerThreshold) {
+                this.clickActive = true;
+                this.clickSampleCount = 0;
+                this.clickGain = 0.0;
             } else {
-                this.transientGain = 1.0;
+                this.clickGain = 1.0;
             }
         }
 
-        return this.transientGain;
+        return this.clickGain;
     }
 
     process(inputs, outputs, _parameters) {
@@ -256,7 +237,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                 // Apply soft knee gain reduction
                 const gain = this.envelope * this.envelope; // Squared for softer knee
 
-                // Apply transient suppression on top of noise gate
+                // Apply click suppression (only fires during confirmed silence)
                 const clickGain = this.detectAndSuppressTransient(absSample, this.envelope);
 
                 // Output with both gains applied
@@ -280,7 +261,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
                     smoothedLevel: this.smoothedLevel,
                     threshold: dynamicThreshold,
                     gateOpen: this.envelope > 0.5,
-                    clickSuppressed: this.transientActive
+                    clickSuppressed: this.clickActive
                 });
             } catch (_e) {
                 // Port may be closed
