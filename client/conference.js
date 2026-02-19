@@ -827,17 +827,19 @@ class ConferenceClient {
     }
 
     monitorAudioLevel(stream, containerElement) {
-        // Stop any existing monitor on this container to avoid zombie loops
+        // Close any existing AudioContext for this container
         if (containerElement._monitorCtx) {
-            containerElement._monitorStop = true;
             containerElement._monitorCtx.close().catch(() => {});
             containerElement._monitorCtx = null;
         }
 
+        // Increment generation so old RAF loops self-terminate when they next fire
+        containerElement._monitorGen = (containerElement._monitorGen || 0) + 1;
+        const myGen = containerElement._monitorGen;
+
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             containerElement._monitorCtx = audioContext;
-            containerElement._monitorStop = false;
 
             const audioSource = audioContext.createMediaStreamSource(stream);
             const analyser = audioContext.createAnalyser();
@@ -848,14 +850,13 @@ class ConferenceClient {
             const dataArray = new Uint8Array(bufferLength);
 
             const checkAudioLevel = () => {
-                if (containerElement._monitorStop) return;
+                // If a newer monitor has started, stop this loop
+                if (containerElement._monitorGen !== myGen) return;
 
                 analyser.getByteFrequencyData(dataArray);
 
                 let sum = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    sum += dataArray[i];
-                }
+                for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
                 const average = sum / bufferLength;
 
                 const SPEAKING_THRESHOLD = 20;
