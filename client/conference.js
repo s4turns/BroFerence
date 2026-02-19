@@ -650,47 +650,7 @@ class ConferenceClient {
                 // You have been promoted to moderator
                 this.isModerator = true;
                 this.addChatMessage('System', 'You are now a moderator! Hover over users to see moderator controls.', true);
-
-                // Add moderator controls to all existing remote videos
-                this.peerConnections.forEach((peer, peerId) => {
-                    const container = document.getElementById(`video-${peerId}`);
-                    if (container) {
-                        // Find the audio controls div
-                        const audioControls = container.querySelector('.remote-audio-controls');
-                        if (audioControls) {
-                            // Check if moderator controls already exist
-                            if (!audioControls.querySelector('[title="Promote to moderator"]')) {
-                                // Add moderator controls
-                                if (peerId !== this.moderatorId) {
-                                    const promoteBtn = document.createElement('button');
-                                    promoteBtn.textContent = '👑';
-                                    promoteBtn.title = 'Promote to moderator';
-                                    promoteBtn.onclick = () => this.promoteToModerator(peerId);
-                                    audioControls.appendChild(promoteBtn);
-                                }
-
-                                const renameBtn = document.createElement('button');
-                                renameBtn.textContent = '✏️';
-                                renameBtn.title = 'Change user name';
-                                renameBtn.onclick = () => this.moderatorChangeName(peerId);
-
-                                const kickBtn = document.createElement('button');
-                                kickBtn.textContent = '👢';
-                                kickBtn.title = 'Kick user';
-                                kickBtn.onclick = () => this.kickUser(peerId);
-
-                                const banBtn = document.createElement('button');
-                                banBtn.textContent = '🚫';
-                                banBtn.title = 'Ban user';
-                                banBtn.onclick = () => this.banUser(peerId);
-
-                                audioControls.appendChild(renameBtn);
-                                audioControls.appendChild(kickBtn);
-                                audioControls.appendChild(banBtn);
-                            }
-                        }
-                    }
-                });
+                this.refreshModeratorControls();
                 break;
 
             case 'offer':
@@ -1708,6 +1668,9 @@ class ConferenceClient {
         });
 
         this.updateRoomInfo(this.peerConnections.size + 1);
+
+        // Ensure all containers still have mod controls after a new peer was added
+        this.refreshModeratorControls();
     }
 
     createAudioControls(peerId) {
@@ -1732,38 +1695,54 @@ class ConferenceClient {
         controlsDiv.appendChild(muteBtn);
         controlsDiv.appendChild(volumeSlider);
 
-        // Add moderator controls if user is moderator
-        if (this.isModerator) {
-            // Only show promote button if target is not already a moderator
+        // Moderator controls are added by refreshModeratorControls() after the
+        // container is in the DOM, so they are always up-to-date on join/leave.
+        return controlsDiv;
+    }
+
+    // Add/ensure moderator controls on every remote video container.
+    // Safe to call multiple times — skips containers that already have them.
+    refreshModeratorControls() {
+        if (!this.isModerator) return;
+
+        this.peerConnections.forEach((peer, peerId) => {
+            const audioControls = document.querySelector(`#video-${peerId} .remote-audio-controls`);
+            if (!audioControls) return;
+
+            // Skip if mod controls already present
+            if (audioControls.querySelector('[data-mod-control]')) return;
+
             if (peerId !== this.moderatorId) {
                 const promoteBtn = document.createElement('button');
                 promoteBtn.textContent = '👑';
                 promoteBtn.title = 'Promote to moderator';
+                promoteBtn.dataset.modControl = 'promote';
                 promoteBtn.onclick = () => this.promoteToModerator(peerId);
-                controlsDiv.appendChild(promoteBtn);
+                audioControls.appendChild(promoteBtn);
             }
 
             const renameBtn = document.createElement('button');
             renameBtn.textContent = '✏️';
             renameBtn.title = 'Change user name';
+            renameBtn.dataset.modControl = 'rename';
             renameBtn.onclick = () => this.moderatorChangeName(peerId);
 
             const kickBtn = document.createElement('button');
             kickBtn.textContent = '👢';
             kickBtn.title = 'Kick user';
+            kickBtn.dataset.modControl = 'kick';
             kickBtn.onclick = () => this.kickUser(peerId);
 
             const banBtn = document.createElement('button');
             banBtn.textContent = '🚫';
             banBtn.title = 'Ban user';
+            banBtn.dataset.modControl = 'ban';
             banBtn.onclick = () => this.banUser(peerId);
 
-            controlsDiv.appendChild(renameBtn);
-            controlsDiv.appendChild(kickBtn);
-            controlsDiv.appendChild(banBtn);
-        }
-
-        return controlsDiv;
+            audioControls.appendChild(renameBtn);
+            audioControls.appendChild(kickBtn);
+            audioControls.appendChild(banBtn);
+        });
     }
 
     kickUser(targetId) {
@@ -1962,6 +1941,9 @@ class ConferenceClient {
         }
 
         this.updateRoomInfo(this.peerConnections.size + 1);
+
+        // After a peer leaves, verify remaining containers still have mod controls
+        this.refreshModeratorControls();
     }
 
     async attemptIceRestart(peerId) {
