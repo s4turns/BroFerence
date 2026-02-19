@@ -827,8 +827,18 @@ class ConferenceClient {
     }
 
     monitorAudioLevel(stream, containerElement) {
+        // Stop any existing monitor on this container to avoid zombie loops
+        if (containerElement._monitorCtx) {
+            containerElement._monitorStop = true;
+            containerElement._monitorCtx.close().catch(() => {});
+            containerElement._monitorCtx = null;
+        }
+
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            containerElement._monitorCtx = audioContext;
+            containerElement._monitorStop = false;
+
             const audioSource = audioContext.createMediaStreamSource(stream);
             const analyser = audioContext.createAnalyser();
             analyser.fftSize = 256;
@@ -838,18 +848,17 @@ class ConferenceClient {
             const dataArray = new Uint8Array(bufferLength);
 
             const checkAudioLevel = () => {
+                if (containerElement._monitorStop) return;
+
                 analyser.getByteFrequencyData(dataArray);
 
-                // Calculate average volume
                 let sum = 0;
                 for (let i = 0; i < bufferLength; i++) {
                     sum += dataArray[i];
                 }
                 const average = sum / bufferLength;
 
-                // Threshold for "speaking" (adjust as needed)
                 const SPEAKING_THRESHOLD = 20;
-
                 if (average > SPEAKING_THRESHOLD) {
                     containerElement.classList.add('speaking');
                 } else {
@@ -2866,6 +2875,12 @@ class ConferenceClient {
             // Save preference
             this.saveNoiseGateSetting('preferredMic', deviceId);
             console.log('Switched microphone to:', newAudioTrack.label);
+
+            // Restart speaking-glow monitor with the new stream
+            const localContainer = document.getElementById('localContainer');
+            if (localContainer) {
+                this.monitorAudioLevel(this.localStream, localContainer);
+            }
         } catch (error) {
             console.error('Error switching microphone:', error);
         }
