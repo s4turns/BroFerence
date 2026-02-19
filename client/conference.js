@@ -1244,6 +1244,12 @@ class ConferenceClient {
                 localContainer.classList.add('no-video');
             }
 
+            // Click local tile to spotlight it
+            localContainer.addEventListener('click', (e) => {
+                if (e.target.closest('.video-controls')) return;
+                this.toggleSpotlight('localContainer');
+            });
+
             // Initialize video grid layout for 1 participant (local)
             this.updateVideoGridLayout();
 
@@ -1605,7 +1611,7 @@ class ConferenceClient {
         container.addEventListener('click', (e) => {
             // Don't trigger spotlight if clicking on controls
             if (e.target.closest('.remote-audio-controls')) return;
-            this.toggleSpotlight(peerId);
+            this.toggleSpotlight(`video-${peerId}`);
         });
         container.style.cursor = 'pointer';
 
@@ -3160,6 +3166,37 @@ class ConferenceClient {
         const videoContainers = this.videoGrid.querySelectorAll('.video-container');
         const count = videoContainers.length;
         this.videoGrid.setAttribute('data-participants', Math.min(count, 16));
+    }
+
+    toggleSpotlight(containerId) {
+        const grid = this.videoGrid;
+        const target = document.getElementById(containerId);
+        if (!target) return;
+
+        const alreadySpotlit = grid.classList.contains('spotlight-mode') &&
+            target.classList.contains('spotlight-active');
+
+        if (alreadySpotlit) {
+            // Click same tile again → exit spotlight
+            grid.classList.remove('spotlight-mode');
+            grid.querySelectorAll('.video-container').forEach(c => {
+                c.classList.remove('spotlight-active', 'spotlight-hidden');
+            });
+            this.updateVideoGridLayout();
+            return;
+        }
+
+        // Enter spotlight: expand target, hide others
+        grid.classList.add('spotlight-mode');
+        grid.querySelectorAll('.video-container').forEach(c => {
+            if (c === target) {
+                c.classList.add('spotlight-active');
+                c.classList.remove('spotlight-hidden');
+            } else {
+                c.classList.add('spotlight-hidden');
+                c.classList.remove('spotlight-active');
+            }
+        });
     }
 
     addScreenShareTile(id, label, stream) {
