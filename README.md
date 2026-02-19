@@ -1,6 +1,6 @@
 # BroFerence - WebRTC Video Conferencing
 
-<img width="3619" height="1495" alt="image" src="https://github.com/user-attachments/assets/e95c0c68-902e-4da1-8c89-64aebf583044" />
+<img width="3257" height="1309" alt="image" src="https://github.com/user-attachments/assets/29e003a1-be59-4905-8d0b-12ccae02b2ba" />
 
 
 <img width="2935" height="1289" alt="image" src="https://github.com/user-attachments/assets/f85f908d-6d29-4bb0-bc46-c7100b82a345" />
