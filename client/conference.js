@@ -1370,12 +1370,20 @@ class ConferenceClient {
         pc.ontrack = (event) => {
             console.log('Received remote track from', peerId, 'kind:', event.track.kind);
 
-            // Only add video element once (ontrack fires for each track)
+            const stream = (event.streams && event.streams.length > 0) ? event.streams[0] : null;
+
             if (!streamAdded) {
                 streamAdded = true;
-                console.log('Remote stream:', event.streams[0]);
-                console.log('Stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}: ${t.enabled}`));
-                this.addRemoteVideo(peerId, peerUsername, event.streams[0]);
+                console.log('Remote stream:', stream);
+                // Fall back to building a stream from the track if browser omits streams[]
+                this.addRemoteVideo(peerId, peerUsername, stream || new MediaStream([event.track]));
+            } else if (stream) {
+                // Subsequent track arrived (e.g. video after audio) — update existing video element
+                const videoEl = document.querySelector(`#video-${peerId} video`);
+                if (videoEl && videoEl.srcObject !== stream) {
+                    console.log('Updating video srcObject for', peerId, 'with new stream containing', stream.getTracks().length, 'tracks');
+                    videoEl.srcObject = stream;
+                }
             }
         };
 
@@ -1397,13 +1405,22 @@ class ConferenceClient {
             if (pc.connectionState === 'connected') {
                 console.log('Successfully connected to', peerUsername);
             } else if (pc.connectionState === 'failed') {
-                console.error('Connection failed with', peerUsername, ', attempting to remove and reconnect');
-                this.removePeerConnection(peerId);
+                console.error('Connection failed with', peerUsername, '- attempting ICE restart');
+                this.attemptIceRestart(peerId).catch(() => {});
+                // If still failed after giving ICE restart time to work, remove
+                setTimeout(() => {
+                    const current = this.peerConnections.get(peerId);
+                    if (current && current.connection === pc && pc.connectionState === 'failed') {
+                        console.warn('ICE restart did not recover connection to', peerUsername, ', removing');
+                        this.removePeerConnection(peerId);
+                    }
+                }, 8000);
             } else if (pc.connectionState === 'disconnected') {
                 console.warn('Disconnected from', peerUsername);
-                // Give it a moment to potentially reconnect before removing
                 setTimeout(() => {
-                    if (pc.connectionState === 'disconnected') {
+                    // Only remove if it's still the same pc object (not a reconnection)
+                    const current = this.peerConnections.get(peerId);
+                    if (current && current.connection === pc && pc.connectionState === 'disconnected') {
                         console.log('Still disconnected from', peerUsername, ', removing connection');
                         this.removePeerConnection(peerId);
                     }
