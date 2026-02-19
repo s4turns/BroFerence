@@ -1759,6 +1759,27 @@ body::before {
     box-shadow: var(--glow);
 }
 
+.btn-yt-window {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 9px 12px;
+    background: transparent;
+    border: 1px solid var(--secondary);
+    color: var(--secondary);
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: center;
+    letter-spacing: 0.5px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-yt-window:hover {
+    background: var(--secondary);
+    color: var(--darker);
+}
+
 #watchStatus {
     display: block;
     margin-top: 8px;

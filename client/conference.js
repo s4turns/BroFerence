@@ -314,6 +314,7 @@ class ConferenceClient {
         document.getElementById('watchTogetherBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('closeWatchBtn').addEventListener('click', () => this.toggleWatchTogether());
         document.getElementById('loadVideoBtn').addEventListener('click', () => this.loadWatchVideo());
+        document.getElementById('shareYouTubeWindowBtn').addEventListener('click', () => this.shareYouTubeWindow());
         document.getElementById('stopStreamBtn').addEventListener('click', () => this.stopVideoStream());
         document.getElementById('videoUrlInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.loadWatchVideo();
@@ -2044,6 +2045,61 @@ class ConferenceClient {
             }
 
             console.log('Screen sharing stopped');
+        }
+    }
+
+    async shareYouTubeWindow() {
+        // If already sharing, stop
+        if (this.isScreenSharing) {
+            await this.toggleScreenShare();
+            return;
+        }
+
+        const inputUrl = document.getElementById('videoUrlInput').value.trim();
+        const openUrl = inputUrl || 'https://www.youtube.com';
+
+        // Open YouTube in a popup — popup windows allow audio capture unlike embedded tabs
+        const popup = window.open(openUrl, 'yt_share', 'width=1280,height=720,menubar=no,toolbar=no,location=yes');
+        if (!popup) {
+            this.addChatMessage('System', '⚠️ Popup blocked. Allow popups for this site and try again.', true);
+            return;
+        }
+
+        this.addChatMessage('System', '🎬 YouTube window opened. In the picker: select the YouTube window and enable "Share audio".', true);
+
+        try {
+            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: 'window', cursor: 'always' },
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000 },
+                systemAudio: 'include'
+            });
+
+            const screenVideoTrack = this.screenStream.getVideoTracks()[0];
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(screenVideoTrack);
+            });
+
+            this.mixScreenAudio(this.screenStream);
+            this.localVideo.srcObject = this.screenStream;
+            screenVideoTrack.onended = () => this.toggleScreenShare();
+
+            this.isScreenSharing = true;
+            document.getElementById('shareScreenBtn').classList.add('active');
+            document.getElementById('localContainer').classList.remove('no-video');
+            document.getElementById('watchTogetherPanel').classList.add('hidden');
+
+            const audioTracks = this.screenStream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                this.addChatMessage('System', '⚠️ No audio captured — make sure to check "Share audio" in the picker.', true);
+            } else {
+                this.addChatMessage('System', '✅ YouTube window sharing with audio active.', true);
+            }
+
+        } catch (error) {
+            if (error.name !== 'NotAllowedError') {
+                console.error('Error sharing YouTube window:', error);
+            }
         }
     }
 
