@@ -2033,6 +2033,13 @@ class ConferenceClient {
             // Restore original mic audio (unmix screen audio)
             this.unmixScreenAudio();
 
+            // Remove YouTube window tile if present
+            const ytTile = document.getElementById('yt-share-tile');
+            if (ytTile) {
+                ytTile.remove();
+                this.updateVideoGridLayout();
+            }
+
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
@@ -2080,12 +2087,11 @@ class ConferenceClient {
             });
 
             this.mixScreenAudio(this.screenStream);
-            this.localVideo.srcObject = this.screenStream;
+            this.addScreenShareTile('yt-share-tile', '📺 YouTube Share', this.screenStream);
             screenVideoTrack.onended = () => this.toggleScreenShare();
 
             this.isScreenSharing = true;
             document.getElementById('shareScreenBtn').classList.add('active');
-            document.getElementById('localContainer').classList.remove('no-video');
             document.getElementById('watchTogetherPanel').classList.add('hidden');
 
             const audioTracks = this.screenStream.getAudioTracks();
@@ -3154,6 +3160,30 @@ class ConferenceClient {
         const videoContainers = this.videoGrid.querySelectorAll('.video-container');
         const count = videoContainers.length;
         this.videoGrid.setAttribute('data-participants', Math.min(count, 16));
+    }
+
+    addScreenShareTile(id, label, stream) {
+        const existing = document.getElementById(id);
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.className = 'video-container';
+        container.id = id;
+
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsinline = true;
+        video.muted = true;
+        video.srcObject = stream;
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'video-label';
+        labelEl.textContent = label;
+
+        container.appendChild(video);
+        container.appendChild(labelEl);
+        this.videoGrid.appendChild(container);
+        this.updateVideoGridLayout();
     }
 
     changeName() {
