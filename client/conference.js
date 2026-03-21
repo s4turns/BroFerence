@@ -268,21 +268,31 @@ class ConferenceClient {
         // Use localhost for local development, actual hostname for production
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
-        this.iceServers = {
-            iceServers: [
-                {
-                    urls: [
-                        `turn:${turnServer}:3479`,
-                        `turn:${turnServer}:3479?transport=tcp`
-                    ],
-                    username: 'webrtc',
-                    credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
-                }
+        const turnConfig = {
+            urls: [
+                `turn:${turnServer}:3479`,
+                `turn:${turnServer}:3479?transport=tcp`
             ],
+            username: 'webrtc',
+            credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
+        };
+
+        // Primary: TURN relay only (hides peer IPs)
+        this.iceServers = {
+            iceServers: [turnConfig],
             iceTransportPolicy: 'relay'
         };
 
-        console.log('ICE servers configured:', this.iceServers);
+        // Fallback: allow direct P2P if TURN relay completely fails
+        this.iceServersFallback = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                turnConfig
+            ]
+        };
+
+        console.log('ICE servers configured (relay-first with P2P fallback)');
     }
 
     initUI() {
@@ -1313,13 +1323,21 @@ class ConferenceClient {
         }
     }
 
-    async createPeerConnection(peerId, peerUsername, createOffer = false) {
+    async createPeerConnection(peerId, peerUsername, createOffer = false, iceConfig = null) {
         console.log('Creating peer connection for', peerId, '(' + peerUsername + ')');
 
-        const pc = new RTCPeerConnection(this.iceServers);
+        const config = iceConfig || this.iceServers;
+        const usingFallback = iceConfig === this.iceServersFallback;
+        if (usingFallback) {
+            console.warn('Using P2P fallback ICE config for', peerId);
+        }
+
+        const pc = new RTCPeerConnection(config);
         this.peerConnections.set(peerId, {
             connection: pc,
             username: peerUsername,
+            isInitiator: createOffer,
+            usingFallback,
             iceRestartCount: 0,
             lastIceRestartTime: 0
         });
@@ -1499,6 +1517,11 @@ class ConferenceClient {
 
         const peer = this.peerConnections.get(senderId);
         if (!peer) return;
+
+        if (peer.connection.signalingState !== 'have-local-offer') {
+            console.warn('Dropping stale answer from', senderId, '- signalingState:', peer.connection.signalingState);
+            return;
+        }
 
         try {
             await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
@@ -1991,6 +2014,13 @@ class ConferenceClient {
             return;
         }
 
+        // Only the original offer initiator sends ICE restarts.
+        // The responder just answers incoming offers — this prevents glare.
+        if (!peer.isInitiator) {
+            console.log('Not initiator for peer', peerId, '- skipping ICE restart, waiting for their offer');
+            return;
+        }
+
         const MAX_RESTARTS = 5;
         const MIN_RESTART_INTERVAL_MS = 4000;
 
@@ -1998,7 +2028,12 @@ class ConferenceClient {
         const timeSinceLast = now - (peer.lastIceRestartTime || 0);
 
         if (peer.iceRestartCount >= MAX_RESTARTS) {
-            console.warn('ICE restart limit reached for peer', peerId, '- giving up');
+            if (!peer.usingFallback) {
+                console.warn('TURN relay failed for peer', peerId, '- falling back to P2P');
+                this.reconnectWithFallback(peerId);
+            } else {
+                console.warn('ICE restart limit reached for peer', peerId, '(already on P2P fallback) - giving up');
+            }
             return;
         }
 
@@ -2025,6 +2060,17 @@ class ConferenceClient {
         } catch (err) {
             console.error('ICE restart failed for peer', peerId, ':', err);
         }
+    }
+
+    async reconnectWithFallback(peerId) {
+        const peer = this.peerConnections.get(peerId);
+        if (!peer || !peer.isInitiator) return;
+
+        const username = peer.username;
+        console.log('Reconnecting to', peerId, 'with P2P fallback ICE config');
+
+        this.removePeerConnection(peerId);
+        await this.createPeerConnection(peerId, username, true, this.iceServersFallback);
     }
 
     async toggleScreenShare() {
