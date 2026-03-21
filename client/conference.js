@@ -270,8 +270,6 @@ class ConferenceClient {
 
         this.iceServers = {
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
                 {
                     urls: [
                         `turn:${turnServer}:3479`,
@@ -280,7 +278,8 @@ class ConferenceClient {
                     username: 'webrtc',
                     credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
                 }
-            ]
+            ],
+            iceTransportPolicy: 'relay'
         };
 
         console.log('ICE servers configured:', this.iceServers);
