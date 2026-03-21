@@ -2,10 +2,7 @@ services:
   # TURN Server (Coturn)
   turn:
     image: coturn/coturn:latest
-    ports:
-      - "3479:3479"
-      - "3479:3479/udp"
-      - "49152-65535:49152-65535/udp"
+    network_mode: host
     volumes:
       - type: bind
         source: ./config/turnserver.production.conf
