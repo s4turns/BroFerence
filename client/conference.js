@@ -277,7 +277,8 @@ class ConferenceClient {
                     username: 'webrtc',
                     credential: 'webrtc123'
                 }
-            ]
+            ],
+            iceTransportPolicy: 'relay'
         };
 
         console.log('ICE servers configured:', this.iceServers);
