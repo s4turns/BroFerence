@@ -278,7 +278,7 @@ class ConferenceClient {
                         `turn:${turnServer}:3479?transport=tcp`
                     ],
                     username: 'webrtc',
-                    credential: 'webrtc123'
+                    credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
                 }
             ]
         };

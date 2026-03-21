@@ -5,7 +5,7 @@ services:
     ports:
       - "3479:3479"
       - "3479:3479/udp"
-      - "49152-49200:49152-49200/udp"
+      - "49152-65535:49152-65535/udp"
     volumes:
       - type: bind
         source: ./config/turnserver.production.conf
