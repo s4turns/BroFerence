@@ -33,6 +33,9 @@ class ConferenceClient {
         this.unreadMessageCount = 0;
         this.spotlightMode = false;
         this.spotlightPeerId = null;
+        this.clearedMessages = [];
+        this.moderatorUsername = null;
+        this.highlightOwnMessages = localStorage.getItem('broference-highlight-own') === 'true';
 
         // Prejoin state
         this.prejoinStream = null;
@@ -410,6 +413,21 @@ class ConferenceClient {
             if (e.key === 'Enter') this.sendChatMessage();
         });
 
+        // Click channel name to focus input
+        document.querySelector('.chat-header h3').addEventListener('click', () => this.chatInput.focus());
+
+        // Highlight own messages toggle
+        const highlightOwnToggle = document.getElementById('highlightOwnToggle');
+        if (highlightOwnToggle) {
+            highlightOwnToggle.checked = this.highlightOwnMessages;
+            if (this.highlightOwnMessages) document.body.classList.add('highlight-own');
+            highlightOwnToggle.addEventListener('change', (e) => {
+                this.highlightOwnMessages = e.target.checked;
+                localStorage.setItem('broference-highlight-own', String(this.highlightOwnMessages));
+                document.body.classList.toggle('highlight-own', this.highlightOwnMessages);
+            });
+        }
+
         // Theme selector
         const themeSelect = document.getElementById('themeSelect');
         if (themeSelect) {
@@ -550,6 +568,9 @@ class ConferenceClient {
                 this.currentRoom = message.roomId;
                 this.isModerator = message.isModerator || false;
                 this.moderatorId = message.moderatorId;
+                this.moderatorUsername = this.isModerator
+                    ? this.username
+                    : (message.users.find(u => u.id === this.moderatorId)?.username || null);
                 this.updateRoomInfo(message.users.length + 1);
 
                 // Show conference screen
@@ -638,6 +659,7 @@ class ConferenceClient {
             case 'moderator-promoted':
                 // Update moderator status for a user
                 this.moderatorId = message.moderatorId;
+                this.moderatorUsername = message.username;
                 // Add crown to the moderator's label
                 const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
                 if (modLabel && !modLabel.querySelector('.mod-crown')) {
@@ -649,6 +671,7 @@ class ConferenceClient {
             case 'you-are-moderator':
                 // You have been promoted to moderator
                 this.isModerator = true;
+                this.moderatorUsername = this.username;
                 this.addChatMessage('System', 'You are now a moderator! Hover over users to see moderator controls.', true);
                 this.refreshModeratorControls();
                 break;
@@ -667,7 +690,8 @@ class ConferenceClient {
 
             case 'chat-message':
                 const isIRC = message.username.includes('(IRC)');
-                this.addChatMessage(message.username, message.message, false, isIRC);
+                const isOwn = message.username === this.username;
+                this.addChatMessage(message.username, message.message, false, isIRC, isOwn);
                 break;
 
             case 'password-required':
@@ -804,7 +828,7 @@ class ConferenceClient {
 
             const audioSource = audioContext.createMediaStreamSource(stream);
             const analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
+            analyser.fftSize = 64;
             audioSource.connect(analyser);
 
             const bufferLength = analyser.frequencyBinCount;
@@ -827,7 +851,7 @@ class ConferenceClient {
                     containerElement.classList.remove('speaking');
                 }
 
-                requestAnimationFrame(checkAudioLevel);
+                setTimeout(checkAudioLevel, 100);
             };
 
             checkAudioLevel();
@@ -958,8 +982,8 @@ class ConferenceClient {
             }
         };
 
-        // Poll stats every 2 seconds
-        const intervalId = setInterval(updateStats, 2000);
+        // Poll stats every 5 seconds
+        const intervalId = setInterval(updateStats, 5000);
         this.statsIntervals.set(peerId, intervalId);
 
         // Initial update
@@ -1088,8 +1112,8 @@ class ConferenceClient {
             }
         };
 
-        // Poll every 2 seconds
-        this.localStatsInterval = setInterval(updateLocalStats, 2000);
+        // Poll every 5 seconds
+        this.localStatsInterval = setInterval(updateLocalStats, 5000);
         updateLocalStats();
     }
 
@@ -2619,6 +2643,7 @@ class ConferenceClient {
         if (this.chatVisible) {
             this.unreadMessageCount = 0;
             this.updateChatNotification();
+            setTimeout(() => this.chatInput.focus(), 50);
         }
     }
 
@@ -3092,12 +3117,39 @@ class ConferenceClient {
         const message = this.chatInput.value.trim();
         if (!message) return;
 
+        if (message.startsWith('/')) {
+            this.handleChatCommand(message);
+            this.chatInput.value = '';
+            return;
+        }
+
         this.sendMessage({
             type: 'chat-message',
             message: message
         });
 
         this.chatInput.value = '';
+    }
+
+    handleChatCommand(command) {
+        const cmd = command.toLowerCase().split(' ')[0];
+        if (cmd === '/clear') {
+            const children = Array.from(this.chatMessages.children);
+            this.clearedMessages = children.filter(el => !el.classList.contains('load-more-btn'));
+            this.chatMessages.innerHTML = '';
+            if (this.clearedMessages.length > 0) {
+                const btn = document.createElement('button');
+                btn.className = 'load-more-btn';
+                btn.textContent = '↑ Load older messages';
+                btn.addEventListener('click', () => {
+                    btn.remove();
+                    this.clearedMessages.forEach(el => this.chatMessages.insertBefore(el, this.chatMessages.firstChild));
+                    this.clearedMessages = [];
+                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                });
+                this.chatMessages.prepend(btn);
+            }
+        }
     }
 
     linkifyText(text) {
@@ -3115,6 +3167,12 @@ class ConferenceClient {
         });
     }
 
+    getNickPrefix(username, isOwn) {
+        if (isOwn && this.isModerator) return '@';
+        if (this.moderatorUsername && username === this.moderatorUsername) return '@';
+        return '';
+    }
+
     addChatMessage(username, text, isSystem = false, isIRC = false, isOwn = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'chat-message';
@@ -3124,7 +3182,8 @@ class ConferenceClient {
 
         const usernameSpan = document.createElement('div');
         usernameSpan.className = 'username';
-        usernameSpan.textContent = username;
+        const prefix = !isSystem ? this.getNickPrefix(username, isOwn) : '';
+        usernameSpan.textContent = prefix + username;
 
         const textSpan = document.createElement('div');
         textSpan.className = 'text';
@@ -3316,6 +3375,8 @@ class ConferenceClient {
         this.isScreenSharing = false;
         this.isModerator = false;
         this.moderatorId = null;
+        this.moderatorUsername = null;
+        this.clearedMessages = [];
 
         // Reset button states
         document.getElementById('shareScreenBtn').classList.remove('active');
