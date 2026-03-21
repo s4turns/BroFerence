@@ -2,13 +2,6 @@
 
 <img width="3257" height="1309" alt="image" src="https://github.com/user-attachments/assets/29e003a1-be59-4905-8d0b-12ccae02b2ba" />
 
-
-<img width="778" height="1477" alt="image" src="https://github.com/user-attachments/assets/52827936-1e75-44b7-979e-2f4e2189f407" />
-
-
-<img width="3613" height="1498" alt="image" src="https://github.com/user-attachments/assets/df0287f0-5607-438e-b268-3113f3887c5f" />
-
-
 A complete multi-participant WebRTC video conferencing application with Python signaling server, TURN server, and IRC chat bridge.
 
 ## Features
