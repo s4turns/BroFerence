@@ -1319,7 +1319,9 @@ class ConferenceClient {
         const pc = new RTCPeerConnection(this.iceServers);
         this.peerConnections.set(peerId, {
             connection: pc,
-            username: peerUsername
+            username: peerUsername,
+            iceRestartCount: 0,
+            lastIceRestartTime: 0
         });
 
         // Add local stream tracks with optimized RTP parameters
@@ -1396,6 +1398,12 @@ class ConferenceClient {
 
             if (pc.connectionState === 'connected') {
                 console.log('Successfully connected to', peerUsername);
+                // Reset restart counter on successful connection
+                const peerData = this.peerConnections.get(peerId);
+                if (peerData) {
+                    peerData.iceRestartCount = 0;
+                    peerData.lastIceRestartTime = 0;
+                }
             } else if (pc.connectionState === 'failed') {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
                 this.attemptIceRestart(peerId).catch(() => {});
@@ -1595,10 +1603,8 @@ class ConferenceClient {
                 container.classList.remove('no-video');
             };
             videoTrack.onended = () => {
-                console.warn(`Video track ended for ${username}, attempting ICE restart`);
+                console.warn(`Video track ended for ${username}`);
                 container.classList.add('no-video');
-                // Attempt ICE restart to recover connection
-                this.attemptIceRestart(peerId);
             };
 
             // Periodic health check for frozen video
@@ -1985,7 +1991,28 @@ class ConferenceClient {
             return;
         }
 
-        console.log('Attempting ICE restart for peer', peerId);
+        const MAX_RESTARTS = 5;
+        const MIN_RESTART_INTERVAL_MS = 4000;
+
+        const now = Date.now();
+        const timeSinceLast = now - (peer.lastIceRestartTime || 0);
+
+        if (peer.iceRestartCount >= MAX_RESTARTS) {
+            console.warn('ICE restart limit reached for peer', peerId, '- giving up');
+            return;
+        }
+
+        if (timeSinceLast < MIN_RESTART_INTERVAL_MS) {
+            const delay = MIN_RESTART_INTERVAL_MS - timeSinceLast;
+            console.log(`ICE restart for ${peerId} throttled, retrying in ${delay}ms`);
+            setTimeout(() => this.attemptIceRestart(peerId), delay);
+            return;
+        }
+
+        peer.iceRestartCount = (peer.iceRestartCount || 0) + 1;
+        peer.lastIceRestartTime = now;
+
+        console.log(`Attempting ICE restart #${peer.iceRestartCount} for peer`, peerId);
         try {
             const offer = await peer.connection.createOffer({ iceRestart: true });
             await peer.connection.setLocalDescription(offer);
