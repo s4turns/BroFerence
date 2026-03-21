@@ -676,6 +676,9 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 # Find target user
                 for ws, info in clients.items():
                     if info['id'] == target_id and info['room'] == room:
+                        # Transfer moderator role
+                        rooms[room]['moderator'] = target_id
+
                         # Notify the target user
                         await ws.send(json.dumps({
                             'type': 'you-are-moderator'

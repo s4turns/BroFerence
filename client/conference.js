@@ -674,11 +674,24 @@ class ConferenceClient {
                 // Update moderator status for a user
                 this.moderatorId = message.moderatorId;
                 this.moderatorUsername = message.username;
-                // Add crown to the moderator's label
+                // If WE were the moderator, we no longer are
+                if (this.isModerator && message.moderatorId !== this.clientId) {
+                    this.isModerator = false;
+                    // Remove all mod controls from existing containers
+                    document.querySelectorAll('[data-mod-control]').forEach(el => el.remove());
+                }
+                // Add crown to the new moderator's label
                 const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
                 if (modLabel && !modLabel.querySelector('.mod-crown')) {
                     modLabel.innerHTML = '<span class="mod-crown">👑</span> ' + message.username;
                 }
+                // Remove crown from any other label that had it
+                document.querySelectorAll('.video-label .mod-crown').forEach(crown => {
+                    const label = crown.closest('.video-label');
+                    if (label && !label.closest(`#video-${message.moderatorId}`)) {
+                        label.textContent = label.textContent.replace('👑 ', '').trim();
+                    }
+                });
                 this.addChatMessage('System', `${message.username} is now a moderator`, true);
                 break;
 
