@@ -18,7 +18,7 @@ else
     if [ -z "$PUBLIC_IP" ]; then
         echo "ERROR: Could not detect public IP"
         echo "Usage: $0 [hostname]"
-        echo "Example: $0 ts.interdo.me"
+        echo "Example: $0 blcknd.net"
         exit 1
     fi
 
@@ -67,7 +67,7 @@ echo ""
 echo "Next steps:"
 echo "1. Verify firewall allows ports:"
 echo "   - 3479 (TCP/UDP) - TURN server"
-echo "   - 49152-49200 (UDP) - Media relay"
+echo "   - 49152-65535 (UDP) - Media relay"
 echo ""
 echo "2. Restart TURN server:"
 echo "   docker compose restart turn"
@@ -76,5 +76,5 @@ echo "3. Test TURN connectivity:"
 echo "   Visit: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/"
 echo "   Use: turn:$PUBLIC_IP:3479"
 echo "   Username: webrtc"
-echo "   Password: webrtc123"
+echo "   Password: hLBTE9M6osBZuOWy7FQHTVIpZIvISo3"
 echo ""

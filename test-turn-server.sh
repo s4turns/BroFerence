@@ -27,7 +27,7 @@ echo ""
 echo "[4/4] Testing TURN server connectivity..."
 echo "You can test TURN server at: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/"
 echo "Use these settings:"
-echo "  STUN/TURN URI: turn:ts.interdo.me:3479"
+echo "  STUN/TURN URI: turn:blcknd.net:3479"
 echo "  Username: webrtc"
 echo "  Password: webrtc123"
 

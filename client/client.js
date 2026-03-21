@@ -65,7 +65,7 @@ class WebRTCClient {
         return new Promise((resolve, reject) => {
             this.updateStatus('Connecting to signaling server...', 'status-connecting');
 
-            this.ws = new WebSocket('wss://ts.interdo.me:8765');
+            this.ws = new WebSocket('wss://blcknd.net:8765');
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
