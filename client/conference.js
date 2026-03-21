@@ -15,6 +15,7 @@ class ConferenceClient {
         this.peerConnections = new Map(); // Map<clientId, RTCPeerConnection>
         this.pendingUsernames = new Map(); // Map<clientId, username> for users who haven't established peer connection yet
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
+        this.turnFailedPeers = new Set(); // Peers whose TURN relay has failed; use P2P fallback on next connect
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
         this.localStatsInterval = null; // Interval for local connection stats
@@ -629,6 +630,7 @@ class ConferenceClient {
                 break;
 
             case 'user-left':
+                this.turnFailedPeers.delete(message.clientId);
                 this.removePeerConnection(message.clientId);
                 this.addChatMessage('System', `${message.username} left the room`, true);
                 this.updateRoomInfo(this.peerConnections.size + 1);
@@ -1424,6 +1426,7 @@ class ConferenceClient {
                 }
             } else if (pc.connectionState === 'failed') {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
+                this.turnFailedPeers.add(peerId);
                 this.attemptIceRestart(peerId).catch(() => {});
                 // If still failed after giving ICE restart time to work, remove
                 setTimeout(() => {
@@ -1471,12 +1474,23 @@ class ConferenceClient {
     async handleOffer(senderId, offer) {
         console.log('Received offer from:', senderId);
 
+        const useFallback = this.turnFailedPeers.has(senderId);
+
+        // If peer exists but PC is dead, tear it down so we recreate below
+        if (this.peerConnections.has(senderId)) {
+            const existingPeer = this.peerConnections.get(senderId);
+            const state = existingPeer.connection.connectionState;
+            if (state === 'failed' || state === 'closed') {
+                this.removePeerConnection(senderId);
+            }
+        }
+
         // Create peer connection if it doesn't exist
         if (!this.peerConnections.has(senderId)) {
-            // Get username from pending usernames or use default
             const username = this.pendingUsernames.get(senderId) || 'User';
-            this.pendingUsernames.delete(senderId); // Remove from pending
-            await this.createPeerConnection(senderId, username, false);
+            this.pendingUsernames.delete(senderId);
+            const iceConfig = useFallback ? this.iceServersFallback : null;
+            await this.createPeerConnection(senderId, username, false, iceConfig);
         }
 
         const peer = this.peerConnections.get(senderId);
@@ -2021,7 +2035,7 @@ class ConferenceClient {
             return;
         }
 
-        const MAX_RESTARTS = 5;
+        const MAX_RESTARTS = 2;
         const MIN_RESTART_INTERVAL_MS = 4000;
 
         const now = Date.now();
@@ -3404,6 +3418,7 @@ class ConferenceClient {
         this.pendingUsernames.clear();
         this.pendingIceCandidates.clear();
         this.remoteAudioControls.clear();
+        this.turnFailedPeers.clear();
 
         // Clean up all stats monitoring intervals
         this.statsIntervals.forEach((intervalId) => {
