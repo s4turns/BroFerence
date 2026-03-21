@@ -273,7 +273,10 @@ class ConferenceClient {
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 {
-                    urls: `turn:${turnServer}:3479`,
+                    urls: [
+                        `turn:${turnServer}:3479`,
+                        `turn:${turnServer}:3479?transport=tcp`
+                    ],
                     username: 'webrtc',
                     credential: 'webrtc123'
                 }
