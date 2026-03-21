@@ -7,6 +7,7 @@ Supports multiple users per room, password protection, and IRC chat bridge
 import asyncio
 import json
 import logging
+import re
 import ssl
 from typing import Dict, Optional, Tuple
 import websockets
@@ -566,10 +567,22 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             target_id = data.get('targetId')
             sender_id = clients[websocket]['id']
 
+            msg_data = data.get('data')
+
+            # Strip raddr/rport from relay ICE candidates to prevent real IP leaks.
+            # Even with iceTransportPolicy:'relay', browsers embed the peer's real
+            # public IP in the raddr attribute of relay candidates.
+            if msg_type == 'ice-candidate' and isinstance(msg_data, dict):
+                candidate_str = msg_data.get('candidate', '')
+                if candidate_str and 'typ relay' in candidate_str:
+                    candidate_str = re.sub(r'\s+raddr\s+\S+', '', candidate_str)
+                    candidate_str = re.sub(r'\s+rport\s+\S+', '', candidate_str)
+                    msg_data = {**msg_data, 'candidate': candidate_str}
+
             relay_message = {
                 'type': msg_type,
                 'senderId': sender_id,
-                'data': data.get('data')
+                'data': msg_data
             }
 
             success = await relay_to_peer(target_id, relay_message)
