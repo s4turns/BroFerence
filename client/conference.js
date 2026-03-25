@@ -47,7 +47,7 @@ class ConferenceClient {
 
         // Prejoin state
         this.prejoinStream = null;
-        this.prejoinAudioEnabled = false;
+        this.prejoinAudioEnabled = true;
         this.prejoinVideoEnabled = false;
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
 
@@ -1259,18 +1259,17 @@ class ConferenceClient {
                 audio: this.getAudioConstraints()
             });
 
-            // Default: mic and camera OFF
-            this.prejoinAudioEnabled = false;
+            // Default: mic ON, camera OFF
+            this.prejoinAudioEnabled = true;
             this.prejoinVideoEnabled = false;
-            this.prejoinStream.getAudioTracks().forEach(t => { t.enabled = false; });
             this.prejoinStream.getVideoTracks().forEach(t => { t.enabled = false; });
 
             document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
 
             // Sync button states
             const audioBtn = document.getElementById('prejoinToggleAudioBtn');
-            audioBtn.classList.add('active');
-            audioBtn.querySelector('.icon').textContent = '🔇';
+            audioBtn.classList.remove('active');
+            audioBtn.querySelector('.icon').textContent = '🎤';
 
             const videoBtn = document.getElementById('prejoinToggleVideoBtn');
             videoBtn.classList.add('active');
