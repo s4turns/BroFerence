@@ -598,19 +598,19 @@ class ConferenceClient {
 
             if (!this.currentRoom) return; // Left the room while waiting
 
-            // Tear down peer connections but keep local stream alive
+            // Only close peer connections that are not connected.
+            // Established WebRTC connections survive without the signaling channel,
+            // so tearing them down on a brief WS blip breaks working audio/video.
+            const stale = [];
             this.peerConnections.forEach((peer, peerId) => {
-                peer.connection.close();
-                this.stopStatsMonitoring(peerId);
-                const el = document.getElementById(`video-${peerId}`);
-                if (el) el.remove();
+                if (peer.connection.connectionState !== 'connected') {
+                    stale.push(peerId);
+                }
             });
-            this.peerConnections.clear();
+            stale.forEach(peerId => this.removePeerConnection(peerId));
+
             this.pendingUsernames.clear();
             this.pendingIceCandidates.clear();
-            this.remoteAudioControls.clear();
-            this.turnFailedPeers.clear();
-            this.statsIntervals.clear();
 
             try {
                 await this.connectSignalingServer();
@@ -649,8 +649,15 @@ class ConferenceClient {
                 // Show control buttons in header
                 document.getElementById('bottomControls').style.display = 'flex';
 
-                // Create peer connections for existing users
+                // Create peer connections for existing users.
+                // Skip peers that are already connected (e.g. after a WS reconnect —
+                // established WebRTC connections survive without the signaling channel).
                 for (const user of message.users) {
+                    const existing = this.peerConnections.get(user.id);
+                    if (existing && existing.connection.connectionState === 'connected') {
+                        console.log('Skipping already-connected peer on room-joined:', user.username);
+                        continue;
+                    }
                     await this.createPeerConnection(user.id, user.username, true);
                 }
 
@@ -1513,14 +1520,15 @@ class ConferenceClient {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
                 this.turnFailedPeers.add(peerId);
                 this.attemptIceRestart(peerId).catch(() => {});
-                // If still failed after giving ICE restart time to work, remove
+                // If still failed after giving ICE restart time to work, remove.
+                // 20 s gives enough time for a new offer/answer + ICE candidate exchange to complete.
                 setTimeout(() => {
                     const current = this.peerConnections.get(peerId);
                     if (current && current.connection === pc && pc.connectionState === 'failed') {
                         console.warn('ICE restart did not recover connection to', peerUsername, ', removing');
                         this.removePeerConnection(peerId);
                     }
-                }, 8000);
+                }, 20000);
             } else if (pc.connectionState === 'disconnected') {
                 console.warn('Disconnected from', peerUsername);
                 // Some browsers never transition disconnected→failed; attempt ICE restart after a short delay
