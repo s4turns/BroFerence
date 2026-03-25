@@ -969,6 +969,11 @@ body::before {
     color: #000;
 }
 
+.options-item-link {
+    display: block;
+    text-decoration: none;
+}
+
 .options-toggle {
     display: flex;
     justify-content: space-between;
