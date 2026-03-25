@@ -443,6 +443,12 @@ MIT License - feel free to use for personal or commercial projects!
 
 ## Recent Updates
 
+### v2.3 (2026-03-25)
+- **Fix intermittent "can't see/hear" after extended sessions** — WebRTC `connectionState: disconnected` now triggers an ICE restart after 6 seconds. Firefox, Safari, and mobile browsers often never transition to `failed`, leaving connections silently dead. Previously the peer was simply removed after 20 seconds with no recovery attempt.
+- **WebSocket auto-reconnect** — If the signaling server connection drops (proxy timeout, brief restart, network blip), the client reconnects automatically with exponential backoff (2 s → 30 s cap). The local camera/mic stream is preserved and all peer connections are re-established without a page reload.
+- **Username preserved across reconnects** — Display names no longer reset to "User" when a peer connection is torn down and rebuilt.
+- **Cache-busting for static assets** — `update-vps.sh` now stamps `app.html` asset URLs with the current git commit hash on each deploy, ensuring browsers always load the latest client files.
+
 ### v2.2 (2026-02-18)
 - **Typing Attenuation** - Dedicated keyboard and mouse click suppression using transient/energy-ratio detection
 - **Microphone Device Selector** - Switch input device live (supports NVIDIA Broadcast, RTX Voice, Krisp, etc.)
