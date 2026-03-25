@@ -47,8 +47,9 @@ class ConferenceClient {
 
         // Prejoin state
         this.prejoinStream = null;
-        this.prejoinAudioEnabled = true;
-        this.prejoinVideoEnabled = true;
+        this.prejoinAudioEnabled = false;
+        this.prejoinVideoEnabled = false;
+        this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
@@ -329,6 +330,7 @@ class ConferenceClient {
         // Prejoin buttons
         document.getElementById('prejoinToggleAudioBtn').addEventListener('click', () => this.prejoinToggleAudio());
         document.getElementById('prejoinToggleVideoBtn').addEventListener('click', () => this.prejoinToggleVideo());
+        document.getElementById('prejoinLowBandwidthBtn').addEventListener('click', () => this.toggleLowBandwidth());
         document.getElementById('prejoinBackBtn').addEventListener('click', () => this.hidePrejoinScreen());
         document.getElementById('prejoinJoinBtn').addEventListener('click', () => this.joinRoom());
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
@@ -426,6 +428,14 @@ class ConferenceClient {
                 this.saveNoiseGateSetting('clickSensitivity', value);
                 this.updateClickSensitivity();
             });
+        }
+
+        // Low bandwidth mode toggle (options menu)
+        const lowBandwidthBtn = document.getElementById('lowBandwidthBtn');
+        if (lowBandwidthBtn) {
+            lowBandwidthBtn.setAttribute('data-enabled', String(this.lowBandwidthMode));
+            lowBandwidthBtn.querySelector('.toggle-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
+            lowBandwidthBtn.addEventListener('click', () => this.toggleLowBandwidth());
         }
 
         // Chat input enter key
@@ -847,47 +857,56 @@ class ConferenceClient {
         }
     }
 
+    isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    getVideoConstraints() {
+        if (this.lowBandwidthMode) {
+            const c = { width: { ideal: 480, max: 640 }, height: { ideal: 360, max: 480 }, frameRate: { ideal: 15, max: 15 } };
+            if (this.isMobileDevice()) c.facingMode = 'user';
+            return c;
+        }
+        return this.isMobileDevice() ? {
+            facingMode: 'user',
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 }
+        } : {
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+        };
+    }
+
+    getAudioConstraints() {
+        if (this.isMobileDevice() || this.lowBandwidthMode) {
+            return { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        }
+        return {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: { ideal: 48000 },
+            channelCount: { ideal: 1 },
+            latency: { ideal: 0.01 },
+            googEchoCancellation: true,
+            googAutoGainControl: true,
+            googNoiseSuppression: true,
+            googHighpassFilter: true,
+            googTypingNoiseDetection: true,
+            googNoiseReduction: true,
+            googAudioMirroring: false
+        };
+    }
+
     async getLocalStream() {
         if (!this.localStream) {
             try {
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-                // Simpler constraints for mobile, advanced for desktop
-                const audioConstraints = isMobile ? {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                } : {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: { ideal: 48000 },
-                    channelCount: { ideal: 1 },
-                    latency: { ideal: 0.01 },
-                    googEchoCancellation: true,
-                    googAutoGainControl: true,
-                    googNoiseSuppression: true,
-                    googHighpassFilter: true,
-                    googTypingNoiseDetection: true,
-                    googNoiseReduction: true,
-                    googAudioMirroring: false
-                };
-
-                const videoConstraints = isMobile ? {
-                    facingMode: 'user',
-                    width: { ideal: 640, max: 1280 },
-                    height: { ideal: 480, max: 720 }
-                } : {
-                    width: { ideal: 1920, max: 1920 },
-                    height: { ideal: 1080, max: 1080 },
-                    frameRate: { ideal: 30, max: 30 }
-                };
-
                 this.localStream = await navigator.mediaDevices.getUserMedia({
-                    video: videoConstraints,
-                    audio: audioConstraints
+                    video: this.getVideoConstraints(),
+                    audio: this.getAudioConstraints()
                 });
-                console.log(`Media stream acquired (${isMobile ? 'mobile' : 'desktop'} mode)`);
+                console.log(`Media stream acquired (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
                 this.localVideo.srcObject = this.localStream;
 
                 // Start monitoring for speaking indicator
@@ -1235,44 +1254,33 @@ class ConferenceClient {
 
         // Get media for preview
         try {
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-            const audioConstraints = isMobile ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            } : {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: { ideal: 48000 },
-                channelCount: { ideal: 1 },
-                latency: { ideal: 0.01 },
-                googEchoCancellation: true,
-                googAutoGainControl: true,
-                googNoiseSuppression: true,
-                googHighpassFilter: true,
-                googTypingNoiseDetection: true,
-                googNoiseReduction: true,
-                googAudioMirroring: false
-            };
-
-            const videoConstraints = isMobile ? {
-                facingMode: 'user',
-                width: { ideal: 640, max: 1280 },
-                height: { ideal: 480, max: 720 }
-            } : {
-                width: { ideal: 1920, max: 1920 },
-                height: { ideal: 1080, max: 1080 },
-                frameRate: { ideal: 30, max: 30 }
-            };
-
             this.prejoinStream = await navigator.mediaDevices.getUserMedia({
-                video: videoConstraints,
-                audio: audioConstraints
+                video: this.getVideoConstraints(),
+                audio: this.getAudioConstraints()
             });
 
+            // Default: mic and camera OFF
+            this.prejoinAudioEnabled = false;
+            this.prejoinVideoEnabled = false;
+            this.prejoinStream.getAudioTracks().forEach(t => { t.enabled = false; });
+            this.prejoinStream.getVideoTracks().forEach(t => { t.enabled = false; });
+
             document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
+
+            // Sync button states
+            const audioBtn = document.getElementById('prejoinToggleAudioBtn');
+            audioBtn.classList.add('active');
+            audioBtn.querySelector('.icon').textContent = '🔇';
+
+            const videoBtn = document.getElementById('prejoinToggleVideoBtn');
+            videoBtn.classList.add('active');
+            videoBtn.querySelector('.icon').textContent = '📷';
+
+            const lwBtn = document.getElementById('prejoinLowBandwidthBtn');
+            if (lwBtn) {
+                lwBtn.classList.toggle('active', this.lowBandwidthMode);
+                lwBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+            }
         } catch (error) {
             console.error('Error accessing media devices:', error);
             alert('Could not access camera/microphone. You can still join but others will not see or hear you.');
@@ -1315,6 +1323,66 @@ class ConferenceClient {
             btn.classList.toggle('active', !this.prejoinVideoEnabled);
             btn.querySelector('.icon').textContent = this.prejoinVideoEnabled ? '📹' : '📷';
         }
+    }
+
+    toggleLowBandwidth() {
+        this.lowBandwidthMode = !this.lowBandwidthMode;
+        localStorage.setItem('broference-low-bandwidth', String(this.lowBandwidthMode));
+
+        // Update options menu button
+        const optBtn = document.getElementById('lowBandwidthBtn');
+        if (optBtn) {
+            optBtn.setAttribute('data-enabled', String(this.lowBandwidthMode));
+            optBtn.querySelector('.toggle-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
+        }
+
+        // Update prejoin button if on prejoin screen
+        const prejoinBtn = document.getElementById('prejoinLowBandwidthBtn');
+        if (prejoinBtn) {
+            prejoinBtn.classList.toggle('active', this.lowBandwidthMode);
+            prejoinBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+        }
+
+        // Re-apply constraints to the active video track
+        const stream = this.localStream || this.prejoinStream;
+        if (stream) {
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.applyConstraints(this.getVideoConstraints()).catch(err => {
+                    console.warn('Could not apply video constraints:', err);
+                });
+            }
+        }
+
+        // Apply or remove bitrate caps on all existing peer connections
+        this.applyBandwidthToSenders();
+
+        console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
+    }
+
+    applyBandwidthToSenders() {
+        const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
+        const audioBitrate = this.lowBandwidthMode ? 32000 : undefined;  // 32kbps or uncapped
+
+        this.peerConnections.forEach((peer) => {
+            peer.connection.getSenders().forEach(sender => {
+                if (!sender.track || !sender.getParameters) return;
+                try {
+                    const params = sender.getParameters();
+                    if (!params.encodings || params.encodings.length === 0) return;
+                    if (sender.track.kind === 'video') {
+                        params.encodings[0].maxBitrate = videoBitrate;
+                    } else if (sender.track.kind === 'audio') {
+                        params.encodings[0].maxBitrate = audioBitrate;
+                    }
+                    sender.setParameters(params).catch(err => {
+                        console.warn('Could not apply bandwidth limit:', err);
+                    });
+                } catch (err) {
+                    console.warn('Error applying bandwidth limits:', err);
+                }
+            });
+        });
     }
 
     async joinRoom() {
@@ -1455,8 +1523,23 @@ class ConferenceClient {
                         parameters.encodings[0].dtx = 'enabled';
                     }
 
+                    if (this.lowBandwidthMode) {
+                        parameters.encodings[0].maxBitrate = 32000; // 32kbps audio cap
+                    }
+
                     sender.setParameters(parameters).catch(err => {
                         console.warn('Could not set audio encoding parameters:', err);
+                    });
+                }
+            }
+
+            // Cap video bitrate in low bandwidth mode
+            if (track.kind === 'video' && this.lowBandwidthMode && sender.getParameters) {
+                const parameters = sender.getParameters();
+                if (parameters.encodings && parameters.encodings.length > 0) {
+                    parameters.encodings[0].maxBitrate = 200000; // 200kbps video cap
+                    sender.setParameters(parameters).catch(err => {
+                        console.warn('Could not set video encoding parameters:', err);
                     });
                 }
             }
