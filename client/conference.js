@@ -11,11 +11,18 @@ class ConferenceClient {
         this.isModerator = false;
         this.moderatorId = null;
 
+        // WebSocket reconnection
+        this.wsReconnectAttempts = 0;
+        this.wsReconnecting = false;
+        this.isIntentionalDisconnect = false;
+        this.roomPassword = null;
+
         // WebRTC - multiple peer connections
         this.peerConnections = new Map(); // Map<clientId, RTCPeerConnection>
         this.pendingUsernames = new Map(); // Map<clientId, username> for users who haven't established peer connection yet
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
         this.turnFailedPeers = new Set(); // Peers whose TURN relay has failed; use P2P fallback on next connect
+        this.knownUsernames = new Map(); // Persists across peer connection teardowns for reconnection display
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
         this.localStatsInterval = null; // Interval for local connection stats
@@ -557,7 +564,11 @@ class ConferenceClient {
             this.ws.onclose = () => {
                 console.log('WebSocket disconnected');
                 this.updateStatus('Disconnected', 'error');
-                this.cleanup();
+                if (!this.isIntentionalDisconnect && this.currentRoom) {
+                    this.scheduleWsReconnect();
+                } else {
+                    this.cleanup();
+                }
             };
 
             // Resolve when registered
@@ -571,6 +582,51 @@ class ConferenceClient {
             };
             this.ws.addEventListener('message', checkRegistered);
         });
+    }
+
+    scheduleWsReconnect() {
+        if (this.wsReconnecting) return;
+        this.wsReconnecting = true;
+
+        const delay = Math.min(2000 * Math.pow(2, this.wsReconnectAttempts), 30000);
+        this.wsReconnectAttempts++;
+        console.log(`WebSocket reconnect attempt ${this.wsReconnectAttempts} in ${delay}ms`);
+        this.updateStatus(`Reconnecting... (attempt ${this.wsReconnectAttempts})`, 'error');
+
+        setTimeout(async () => {
+            this.wsReconnecting = false;
+
+            if (!this.currentRoom) return; // Left the room while waiting
+
+            // Tear down peer connections but keep local stream alive
+            this.peerConnections.forEach((peer, peerId) => {
+                peer.connection.close();
+                this.stopStatsMonitoring(peerId);
+                const el = document.getElementById(`video-${peerId}`);
+                if (el) el.remove();
+            });
+            this.peerConnections.clear();
+            this.pendingUsernames.clear();
+            this.pendingIceCandidates.clear();
+            this.remoteAudioControls.clear();
+            this.turnFailedPeers.clear();
+            this.statsIntervals.clear();
+
+            try {
+                await this.connectSignalingServer();
+                // Re-join the room after successful reconnection
+                this.sendMessage({
+                    type: 'create-room',
+                    roomId: this.currentRoom,
+                    password: this.roomPassword
+                });
+                this.wsReconnectAttempts = 0;
+                console.log('WebSocket reconnected, re-joining room:', this.currentRoom);
+            } catch (err) {
+                console.error('WebSocket reconnect failed:', err);
+                this.scheduleWsReconnect();
+            }
+        }, delay);
     }
 
     async handleSignalingMessage(message) {
@@ -733,11 +789,13 @@ class ConferenceClient {
                 break;
 
             case 'kicked':
+                this.isIntentionalDisconnect = true;
                 alert(message.message);
                 this.cleanup();
                 break;
 
             case 'banned':
+                this.isIntentionalDisconnect = true;
                 alert(message.message);
                 this.cleanup();
                 break;
@@ -1255,6 +1313,7 @@ class ConferenceClient {
     async joinRoom() {
         const roomId = this.roomInput.value.trim();
         const password = this.passwordInput.value.trim() || null;
+        this.roomPassword = password; // Store for WebSocket reconnection
         const ircChannel = this.ircChannelInput.value.trim() || null;
 
         try {
@@ -1356,6 +1415,10 @@ class ConferenceClient {
             iceRestartCount: 0,
             lastIceRestartTime: 0
         });
+        // Persist username across reconnections
+        if (peerUsername && peerUsername !== 'User') {
+            this.knownUsernames.set(peerId, peerUsername);
+        }
 
         // Add local stream tracks with optimized RTP parameters
         // Use screenStream tracks if currently streaming video
@@ -1404,12 +1467,19 @@ class ConferenceClient {
                 console.log('Remote stream:', stream);
                 // Fall back to building a stream from the track if browser omits streams[]
                 this.addRemoteVideo(peerId, peerUsername, stream || new MediaStream([event.track]));
-            } else if (stream) {
-                // Subsequent track arrived (e.g. video after audio) — update existing video element
+            } else {
+                // Subsequent track arrived (e.g. video after audio)
                 const videoEl = document.querySelector(`#video-${peerId} video`);
-                if (videoEl && videoEl.srcObject !== stream) {
-                    console.log('Updating video srcObject for', peerId, 'with new stream containing', stream.getTracks().length, 'tracks');
-                    videoEl.srcObject = stream;
+                if (stream) {
+                    // Browser provided the full stream — update srcObject if it changed
+                    if (videoEl && videoEl.srcObject !== stream) {
+                        console.log('Updating video srcObject for', peerId, 'with new stream containing', stream.getTracks().length, 'tracks');
+                        videoEl.srcObject = stream;
+                    }
+                } else if (videoEl && videoEl.srcObject) {
+                    // No stream on event — add track directly to the existing MediaStream
+                    console.log('Adding', event.track.kind, 'track directly to existing stream for', peerId);
+                    videoEl.srcObject.addTrack(event.track);
                 }
             }
         };
@@ -1437,6 +1507,8 @@ class ConferenceClient {
                     peerData.iceRestartCount = 0;
                     peerData.lastIceRestartTime = 0;
                 }
+                // Clear TURN failure flag so TURN is retried if they disconnect and reconnect
+                this.turnFailedPeers.delete(peerId);
             } else if (pc.connectionState === 'failed') {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
                 this.turnFailedPeers.add(peerId);
@@ -1451,14 +1523,22 @@ class ConferenceClient {
                 }, 8000);
             } else if (pc.connectionState === 'disconnected') {
                 console.warn('Disconnected from', peerUsername);
+                // Some browsers never transition disconnected→failed; attempt ICE restart after a short delay
                 setTimeout(() => {
-                    // Only remove if it's still the same pc object (not a reconnection)
                     const current = this.peerConnections.get(peerId);
                     if (current && current.connection === pc && pc.connectionState === 'disconnected') {
-                        console.log('Still disconnected from', peerUsername, ', removing connection');
+                        console.log('Still disconnected from', peerUsername, 'after 6s, attempting ICE restart');
+                        this.attemptIceRestart(peerId).catch(() => {});
+                    }
+                }, 6000);
+                // Remove if still disconnected after 30s (ICE restart had ~24s to work)
+                setTimeout(() => {
+                    const current = this.peerConnections.get(peerId);
+                    if (current && current.connection === pc && pc.connectionState === 'disconnected') {
+                        console.log('Still disconnected from', peerUsername, 'after 30s, removing connection');
                         this.removePeerConnection(peerId);
                     }
-                }, 5000);
+                }, 30000);
             }
         };
 
@@ -1500,7 +1580,7 @@ class ConferenceClient {
 
         // Create peer connection if it doesn't exist
         if (!this.peerConnections.has(senderId)) {
-            const username = this.pendingUsernames.get(senderId) || 'User';
+            const username = this.pendingUsernames.get(senderId) || this.knownUsernames.get(senderId) || 'User';
             this.pendingUsernames.delete(senderId);
             const iceConfig = useFallback ? this.iceServersFallback : null;
             await this.createPeerConnection(senderId, username, false, iceConfig);
@@ -1574,7 +1654,12 @@ class ConferenceClient {
     async handleIceCandidate(senderId, candidate) {
         const peer = this.peerConnections.get(senderId);
         if (!peer) {
-            console.warn(`Received ICE candidate for unknown peer ${senderId}, ignoring`);
+            // Peer connection doesn't exist yet — queue for when it's created
+            console.log(`Queueing ICE candidate for ${senderId} (peer connection not yet created)`);
+            if (!this.pendingIceCandidates.has(senderId)) {
+                this.pendingIceCandidates.set(senderId, []);
+            }
+            this.pendingIceCandidates.get(senderId).push(candidate);
             return;
         }
 
@@ -2067,7 +2152,13 @@ class ConferenceClient {
         if (timeSinceLast < MIN_RESTART_INTERVAL_MS) {
             const delay = MIN_RESTART_INTERVAL_MS - timeSinceLast;
             console.log(`ICE restart for ${peerId} throttled, retrying in ${delay}ms`);
-            setTimeout(() => this.attemptIceRestart(peerId), delay);
+            const pcAtQueueTime = peer.connection;
+            setTimeout(() => {
+                // Abort if the PC was replaced (e.g. by reconnectWithFallback) while we waited
+                const currentPeer = this.peerConnections.get(peerId);
+                if (!currentPeer || currentPeer.connection !== pcAtQueueTime) return;
+                this.attemptIceRestart(peerId);
+            }, delay);
             return;
         }
 
@@ -3414,6 +3505,7 @@ class ConferenceClient {
     }
 
     leaveRoom() {
+        this.isIntentionalDisconnect = true;
         if (this.currentRoom) {
             this.sendMessage({ type: 'leave-room' });
         }
@@ -3475,11 +3567,16 @@ class ConferenceClient {
 
         this.localVideo.srcObject = null;
         this.currentRoom = null;
+        this.roomPassword = null;
         this.isScreenSharing = false;
         this.isModerator = false;
         this.moderatorId = null;
         this.moderatorUsername = null;
         this.clearedMessages = [];
+        this.knownUsernames.clear();
+        this.isIntentionalDisconnect = false;
+        this.wsReconnectAttempts = 0;
+        this.wsReconnecting = false;
 
         // Reset button states
         document.getElementById('shareScreenBtn').classList.remove('active');

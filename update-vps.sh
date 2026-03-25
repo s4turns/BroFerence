@@ -20,6 +20,11 @@ fi
 # Ensure update script stays executable after pull
 chmod +x update-vps.sh
 
+# Stamp static assets with git commit hash to bust browser cache
+COMMIT_HASH=$(git rev-parse --short HEAD)
+sed -i "s/?v=[^\"']*/?v=${COMMIT_HASH}/g" client/app.html
+echo "Cache-busted assets with commit ${COMMIT_HASH}"
+
 # Generate random TURN password and detect external IP
 echo ""
 echo "[2/4] Configuring TURN server..."
