@@ -211,7 +211,10 @@ async def unregister_client(websocket: WebSocketServerProtocol):
 
         # Remove from room if in one
         if room and room in rooms:
-            rooms[room]['users'].discard(websocket)
+            try:
+                rooms[room]['users'].remove(websocket)
+            except ValueError:
+                pass
 
             # Notify others in room
             await broadcast_to_room(room, {
@@ -223,6 +226,9 @@ async def unregister_client(websocket: WebSocketServerProtocol):
             # Send IRC notification
             if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                 await irc_bridge.send_message(room, "System", f"{username} left the room")
+
+            # Transfer mod role if the disconnecting user was the moderator
+            await transfer_mod_if_needed(room, client_id)
 
             # Clean up empty rooms
             if not rooms[room]['users']:
@@ -239,7 +245,7 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
     """Create a new room."""
     if room_id not in rooms:
         rooms[room_id] = {
-            'users': set(),
+            'users': [],  # Ordered list — join order determines moderator succession
             'password': hash_password(password) if password else None,
             'irc_channel': irc_channel,
             'moderator': moderator_id,  # First user to create the room becomes moderator
@@ -316,7 +322,7 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         await leave_room(websocket)
 
     # Join new room first so user can receive messages
-    rooms[room_id]['users'].add(websocket)
+    rooms[room_id]['users'].append(websocket)
     client_info['room'] = room_id
 
     # Initialize IRC bridge if room has IRC channel and bridge is not connected
@@ -412,13 +418,42 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     return True
 
 
+async def transfer_mod_if_needed(room_id: str, departing_client_id: str):
+    """If the departing user was the moderator, pass the role to the next user by join order."""
+    if room_id not in rooms:
+        return
+    room = rooms[room_id]
+    if room['moderator'] != departing_client_id:
+        return
+    if not room['users']:
+        room['moderator'] = None
+        return
+    new_mod_ws = room['users'][0]
+    new_mod_info = clients.get(new_mod_ws)
+    if not new_mod_info:
+        return
+    new_mod_id = new_mod_info['id']
+    new_mod_username = new_mod_info['username']
+    room['moderator'] = new_mod_id
+    await new_mod_ws.send(json.dumps({'type': 'you-are-moderator'}))
+    await broadcast_to_room(room_id, {
+        'type': 'moderator-promoted',
+        'moderatorId': new_mod_id,
+        'username': new_mod_username
+    })
+    logger.info(f"Moderator transferred to {new_mod_username} ({new_mod_id}) in room {room_id}")
+
+
 async def leave_room(websocket: WebSocketServerProtocol):
     """Remove client from their current room."""
     client_info = clients[websocket]
     room = client_info['room']
 
     if room and room in rooms:
-        rooms[room]['users'].discard(websocket)
+        try:
+            rooms[room]['users'].remove(websocket)
+        except ValueError:
+            pass
         client_info['room'] = None
 
         # Notify others
@@ -427,6 +462,9 @@ async def leave_room(websocket: WebSocketServerProtocol):
             'clientId': client_info['id'],
             'username': client_info['username']
         }, exclude=websocket)
+
+        # Transfer mod role if the leaver was the moderator
+        await transfer_mod_if_needed(room, client_info['id'])
 
         # Clean up empty rooms
         if not rooms[room]['users']:
