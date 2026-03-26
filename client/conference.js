@@ -680,10 +680,14 @@ class ConferenceClient {
             case 'name-changed-by-moderator':
                 // Your name was changed by moderator
                 this.username = message.newUsername;
-                // Update local avatar
+                // Update local avatar and label
                 const localAvatarMod = document.getElementById('localAvatar');
                 if (localAvatarMod) {
                     localAvatarMod.textContent = this.username.charAt(0).toUpperCase();
+                }
+                const localLabelMod = document.querySelector('#localContainer .video-label');
+                if (localLabelMod) {
+                    localLabelMod.textContent = this.username;
                 }
                 this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
@@ -1367,10 +1371,14 @@ class ConferenceClient {
                 await this.getLocalStream();
             }
 
-            // Set local avatar initial
+            // Set local avatar and label
             const localAvatar = document.getElementById('localAvatar');
             if (localAvatar && this.username) {
                 localAvatar.textContent = this.username.charAt(0).toUpperCase();
+            }
+            const localLabel = document.querySelector('#localContainer .video-label');
+            if (localLabel && this.username) {
+                localLabel.textContent = this.username;
             }
 
             // Set initial video state for local container
@@ -3513,7 +3521,7 @@ class ConferenceClient {
             // Update local video label
             const localLabel = document.querySelector('#localContainer .video-label');
             if (localLabel) {
-                localLabel.textContent = 'You (Local)';
+                localLabel.textContent = this.username;
             }
 
             // Update local avatar
