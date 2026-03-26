@@ -297,6 +297,10 @@ body::before {
     margin: 20px 0;
 }
 
+.prejoin-controls .btn {
+    flex: 1;
+}
+
 .prejoin-actions {
     display: flex;
     gap: 12px;
