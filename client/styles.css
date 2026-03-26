@@ -174,7 +174,8 @@ body::before {
     transform: translateY(-50%);
 }
 
-.room-info span {
+.room-info span,
+.room-info .btn {
     padding: 8px 16px;
     background: var(--darker);
     border: 2px solid var(--secondary);
@@ -183,6 +184,9 @@ body::before {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
+    box-shadow: none;
+    border-radius: 0;
+    line-height: normal;
 }
 
 /* Join Screen */
@@ -1541,7 +1545,8 @@ body::before {
         justify-content: center;
     }
 
-    .room-info span {
+    .room-info span,
+    .room-info .btn {
         padding: 4px 10px;
         font-size: 11px;
         border-width: 1px;
@@ -1630,7 +1635,8 @@ body::before {
         display: none;
     }
 
-    .room-info span {
+    .room-info span,
+    .room-info .btn {
         padding: 3px 8px;
         font-size: 10px;
     }
