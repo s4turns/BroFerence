@@ -3093,11 +3093,6 @@ class ConferenceClient {
             micLevelDebug.textContent = `${levelPercent.toFixed(0)}%`;
         }
 
-        // Debug logging (every ~1 second)
-        if (Math.random() < 0.02) {
-            console.log('Audio level:', data.level.toFixed(4), 'Smoothed:', data.smoothedLevel.toFixed(4), 'Percent:', levelPercent.toFixed(1));
-        }
-
         // Track if mic is constantly active (gate always open)
         if (data.gateOpen) {
             this.micConstantlyActiveCount++;
