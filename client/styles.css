@@ -308,6 +308,21 @@ body::before {
     flex: 1;
 }
 
+.prejoin-controls .btn-secondary.active {
+    background: #1a0000;
+    border-color: var(--danger);
+    color: var(--danger);
+    box-shadow: 0 0 8px var(--danger);
+}
+
+.btn-status {
+    font-size: 0.7em;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    opacity: 0.85;
+    margin-left: 2px;
+}
+
 /* Buttons */
 .btn {
     padding: 14px 28px;

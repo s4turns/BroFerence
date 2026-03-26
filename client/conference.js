@@ -1270,15 +1270,18 @@ class ConferenceClient {
             const audioBtn = document.getElementById('prejoinToggleAudioBtn');
             audioBtn.classList.remove('active');
             audioBtn.querySelector('.icon').textContent = '🎤';
+            audioBtn.querySelector('.btn-status').textContent = 'ON';
 
             const videoBtn = document.getElementById('prejoinToggleVideoBtn');
             videoBtn.classList.add('active');
             videoBtn.querySelector('.icon').textContent = '📷';
+            videoBtn.querySelector('.btn-status').textContent = 'OFF';
 
             const lwBtn = document.getElementById('prejoinLowBandwidthBtn');
             if (lwBtn) {
                 lwBtn.classList.toggle('active', this.lowBandwidthMode);
                 lwBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+                lwBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
             }
         } catch (error) {
             console.error('Error accessing media devices:', error);
@@ -1308,6 +1311,7 @@ class ConferenceClient {
             const btn = document.getElementById('prejoinToggleAudioBtn');
             btn.classList.toggle('active', !this.prejoinAudioEnabled);
             btn.querySelector('.icon').textContent = this.prejoinAudioEnabled ? '🎤' : '🔇';
+            btn.querySelector('.btn-status').textContent = this.prejoinAudioEnabled ? 'ON' : 'OFF';
         }
     }
 
@@ -1321,6 +1325,7 @@ class ConferenceClient {
             const btn = document.getElementById('prejoinToggleVideoBtn');
             btn.classList.toggle('active', !this.prejoinVideoEnabled);
             btn.querySelector('.icon').textContent = this.prejoinVideoEnabled ? '📹' : '📷';
+            btn.querySelector('.btn-status').textContent = this.prejoinVideoEnabled ? 'ON' : 'OFF';
         }
     }
 
@@ -1340,6 +1345,7 @@ class ConferenceClient {
         if (prejoinBtn) {
             prejoinBtn.classList.toggle('active', this.lowBandwidthMode);
             prejoinBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+            prejoinBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
         }
 
         // Re-apply constraints to the active video track
