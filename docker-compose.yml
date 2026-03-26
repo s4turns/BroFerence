@@ -22,7 +22,8 @@ services:
       context: ./server
       dockerfile: Dockerfile
     ports:
-      - "8765:8765"
+      - "0.0.0.0:8765:8765"
+      - "[::]:8765:8765"
     volumes:
       - ./ssl:/app/ssl:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
@@ -42,7 +43,8 @@ services:
       context: ./server
       dockerfile: Dockerfile.youtube
     ports:
-      - "8766:8766"
+      - "0.0.0.0:8766:8766"
+      - "[::]:8766:8766"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -59,8 +61,10 @@ services:
       context: .
       dockerfile: Dockerfile.web
     ports:
-      - "8080:80"
-      - "443:443"
+      - "0.0.0.0:8080:80"
+      - "[::]:8080:80"
+      - "0.0.0.0:443:443"
+      - "[::]:443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     restart: unless-stopped
