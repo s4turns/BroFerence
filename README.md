@@ -11,8 +11,9 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Password-protected rooms** - Secure your private meetings
 - **YouTube/Video streaming** - Share YouTube videos or direct video URLs with participants (Watch Together)
 - **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization
-- **Typing Attenuation** - Keyboard and mouse click suppression with adjustable sensitivity
 - **Microphone Selector** - Switch input device live, including NVIDIA Broadcast / RTX Voice
+- **Low Bandwidth Mode** - Reduces video to 480p/15fps and caps bitrate for mobile or slow connections
+- **Moderator succession** - Moderator role auto-transfers to the next user by join order when mod leaves
 - **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
 - **Speaking indicator** - Glowing ring shows who's talking
 - **Connection quality indicator** - Signal bars showing RTT and packet loss
@@ -122,9 +123,9 @@ Access at: **https://your-domain.com/app.html**
 - **Share Screen** - Share your entire screen with optional audio
 - **Watch Together** - Stream YouTube videos or direct video URLs to all participants
 - **Stop Streaming** - Stop sharing video/screen and return to camera
-- **Chat** - Open/close text chat sidebar
-- **Invite** - Copy invite link to clipboard
-- **Settings** - Access noise suppression, theme selector, and leave room
+- **Chat** - Open/close text chat sidebar (top-right header)
+- **Invite** - Copy invite link to clipboard (top-left header)
+- **Settings** - Access noise suppression, low bandwidth mode, theme selector, and leave room
 - **Spotlight** - Click any participant's video to fullscreen it
 - **Volume Control** - Hover over any participant to adjust their volume
 
@@ -140,7 +141,7 @@ You can also include a suggested username:
 https://your-domain.com/app.html?room=MyRoom&name=Guest
 ```
 
-Click the **Invite** button in the header to copy the current room's invite link.
+Click the **Invite** button in the top-left header to copy the current room's invite link.
 
 ### Connection Quality
 
@@ -442,6 +443,15 @@ MIT License - feel free to use for personal or commercial projects!
 - IRC bridge for retro chat integration
 
 ## Recent Updates
+
+### v2.4 (2026-03-25)
+- **Low Bandwidth Mode** — New toggle (auto-enabled on mobile) caps video to 480p/15fps, video bitrate to 200kbps, and audio to 32kbps. Can also be toggled from the prejoin screen and the Options menu.
+- **Moderator succession** — When the moderator leaves, the role automatically transfers to the next user in join order. Previously no one received mod after the first moderator left.
+- **iOS/Safari connectivity fix** — Clients on iOS with an unreachable TURN server would silently fail to connect because `iceTransportPolicy: relay` gathers zero candidates and `connectionState` never fires `failed`. Now detects zero relay candidates at ICE gathering completion and immediately falls back to direct P2P.
+- **WebSocket reconnect no longer drops healthy peers** — The reconnect routine previously tore down all peer connections; it now preserves peers that are already `connected` and skips re-negotiation for them on rejoin.
+- **Prejoin defaults** — Microphone on, camera off by default on the prejoin screen.
+- **Prejoin ON/OFF labels** — Mic, camera, and low bandwidth buttons on the prejoin screen now show a clear ON/OFF status indicator.
+- **UI cleanup** — Chat button moved to top-right header (next to room name); Invite and Bug Report moved to top-left header. Removed keyboard/mouse click suppression and "Highlight my messages" features.
 
 ### v2.3 (2026-03-25)
 - **Fix intermittent "can't see/hear" after extended sessions** — WebRTC `connectionState: disconnected` now triggers an ICE restart after 6 seconds. Firefox, Safari, and mobile browsers often never transition to `failed`, leaving connections silently dead. Previously the peer was simply removed after 20 seconds with no recovery attempt.
