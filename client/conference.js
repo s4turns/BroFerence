@@ -940,12 +940,22 @@ class ConferenceClient {
                     <span class="stat-label">Loss:</span>
                     <span class="stat-value loss-value">--</span>
                 </div>
+                <div class="stat-row">
+                    <span class="stat-label">Res:</span>
+                    <span class="stat-value res-value">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">FPS:</span>
+                    <span class="stat-value fps-value">--</span>
+                </div>
             </div>
         `;
         container.appendChild(signalBars);
 
         const rttSpan = signalBars.querySelector('.rtt-value');
         const lossSpan = signalBars.querySelector('.loss-value');
+        const resSpan = signalBars.querySelector('.res-value');
+        const fpsSpan = signalBars.querySelector('.fps-value');
 
         // Track previous values for packet loss calculation
         let prevPacketsReceived = 0;
@@ -957,6 +967,9 @@ class ConferenceClient {
                 let rtt = null;
                 let packetsReceived = 0;
                 let packetsLost = 0;
+                let frameWidth = null;
+                let frameHeight = null;
+                let fps = null;
 
                 stats.forEach(report => {
                     // Get RTT from candidate-pair
@@ -966,10 +979,13 @@ class ConferenceClient {
                         }
                     }
 
-                    // Get packet loss from inbound-rtp
+                    // Get packet loss, resolution, and FPS from inbound-rtp
                     if (report.type === 'inbound-rtp' && report.kind === 'video') {
                         packetsReceived = report.packetsReceived || 0;
                         packetsLost = report.packetsLost || 0;
+                        if (report.frameWidth) frameWidth = report.frameWidth;
+                        if (report.frameHeight) frameHeight = report.frameHeight;
+                        if (report.framesPerSecond !== undefined) fps = Math.round(report.framesPerSecond);
                     }
                 });
 
@@ -1024,6 +1040,10 @@ class ConferenceClient {
                     lossSpan.classList.add('stat-bad');
                     signalQuality = Math.min(signalQuality, 1);
                 }
+
+                // Update resolution and FPS
+                resSpan.textContent = (frameWidth && frameHeight) ? `${frameWidth}×${frameHeight}` : '--';
+                fpsSpan.textContent = fps !== null ? `${fps}` : '--';
 
                 // Update signal bars appearance
                 signalBars.className = 'signal-bars';
@@ -1080,12 +1100,22 @@ class ConferenceClient {
                     <span class="stat-label">Loss:</span>
                     <span class="stat-value loss-value">--</span>
                 </div>
+                <div class="stat-row">
+                    <span class="stat-label">Res:</span>
+                    <span class="stat-value res-value">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">FPS:</span>
+                    <span class="stat-value fps-value">--</span>
+                </div>
             </div>
         `;
         localContainer.appendChild(signalBars);
 
         const rttSpan = signalBars.querySelector('.rtt-value');
         const lossSpan = signalBars.querySelector('.loss-value');
+        const resSpan = signalBars.querySelector('.res-value');
+        const fpsSpan = signalBars.querySelector('.fps-value');
 
         const updateLocalStats = async () => {
             if (this.peerConnections.size === 0) {
@@ -1098,6 +1128,9 @@ class ConferenceClient {
             let rttCount = 0;
             let totalPacketsSent = 0;
             let totalPacketsLost = 0;
+            let frameWidth = null;
+            let frameHeight = null;
+            let fps = null;
 
             for (const [_peerId, peer] of this.peerConnections) {
                 try {
@@ -1111,6 +1144,9 @@ class ConferenceClient {
                         }
                         if (report.type === 'outbound-rtp' && report.kind === 'video') {
                             totalPacketsSent += report.packetsSent || 0;
+                            if (report.frameWidth) frameWidth = report.frameWidth;
+                            if (report.frameHeight) frameHeight = report.frameHeight;
+                            if (report.framesPerSecond !== undefined) fps = Math.round(report.framesPerSecond);
                         }
                         if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
                             totalPacketsLost += report.packetsLost || 0;
@@ -1158,6 +1194,10 @@ class ConferenceClient {
                 lossSpan.classList.add('stat-bad');
                 signalQuality = Math.min(signalQuality, 1);
             }
+
+            // Update resolution and FPS
+            resSpan.textContent = (frameWidth && frameHeight) ? `${frameWidth}×${frameHeight}` : '--';
+            fpsSpan.textContent = fps !== null ? `${fps}` : '--';
 
             // Update signal bars
             signalBars.className = 'signal-bars';
