@@ -967,22 +967,6 @@ body::before {
     color: var(--primary);
 }
 
-.highlight-own-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    color: var(--primary);
-    font-weight: 600;
-}
-
-.highlight-own-label input[type="checkbox"] {
-    accent-color: var(--primary);
-    width: 14px;
-    height: 14px;
-    cursor: pointer;
-}
-
 .options-item-danger:hover {
     background: var(--danger);
     color: #000;
@@ -1211,102 +1195,6 @@ body::before {
     }
 }
 
-/* Click Suppression Section */
-.click-suppression-section {
-    border-top: 1px solid var(--primary);
-}
-
-.click-suppression-header {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--primary);
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--secondary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.click-suppression-content {
-    padding: 8px 12px;
-}
-
-.click-toggle-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.click-toggle-btn {
-    flex: 1;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 10px;
-    background: transparent;
-    border: 1px solid var(--primary);
-    color: var(--primary);
-    cursor: pointer;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    transition: all 0.2s;
-}
-
-.click-toggle-btn:hover {
-    background: #001100;
-}
-
-.click-toggle-btn .click-toggle-status {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 2px;
-    background: rgba(255, 68, 68, 0.2);
-    color: #ff4444;
-    border: 1px solid #ff4444;
-    font-weight: 700;
-}
-
-.click-toggle-btn[data-enabled="true"] .click-toggle-status {
-    background: rgba(0, 255, 0, 0.2);
-    color: var(--primary);
-    border-color: var(--primary);
-}
-
-.click-toggle-btn[data-enabled="true"] {
-    border-color: var(--primary);
-    box-shadow: 0 0 5px var(--shadow);
-}
-
-.click-sensitivity-container {
-    margin-bottom: 4px;
-}
-
-.click-sensitivity-container label {
-    display: block;
-    font-size: 11px;
-    color: var(--primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-}
-
-.click-sensitivity-container label span {
-    color: var(--secondary);
-    font-weight: 700;
-}
-
-.sensitivity-labels {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
-}
-
-.sensitivity-labels small {
-    font-size: 9px;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
 /* Chat Sidebar */
 .chat-sidebar {
     width: 320px;
@@ -1398,10 +1286,6 @@ body::before {
     box-shadow: 0 0 5px var(--shadow);
 }
 
-.highlight-own .chat-message.own {
-    background: var(--own-highlighted-bg, #003300);
-    box-shadow: var(--glow);
-}
 
 .chat-message.irc {
     background: #1a1a00;
@@ -1578,17 +1462,7 @@ body::before {
 }
 
 .bug-report-link {
-    color: var(--primary);
     text-decoration: none;
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    opacity: 0.7;
-    transition: opacity 0.2s, color 0.2s;
-}
-
-.bug-report-link:hover {
-    opacity: 1;
-    color: var(--secondary);
 }
 
 .github-link {

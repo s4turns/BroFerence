@@ -43,8 +43,6 @@ class ConferenceClient {
         this.spotlightPeerId = null;
         this.clearedMessages = [];
         this.moderatorUsername = null;
-        this.highlightOwnMessages = localStorage.getItem('broference-highlight-own') === 'true';
-
         // Prejoin state
         this.prejoinStream = null;
         this.prejoinAudioEnabled = true;
@@ -62,11 +60,6 @@ class ConferenceClient {
         this.micConstantlyActiveCount = 0;
         this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
         this.micActiveWarningShown = false;
-
-        // Click suppression configuration
-        this.keyboardClickSuppression = this.loadNoiseGateSetting('keyboardSuppression', false);
-        this.mouseClickSuppression = this.loadNoiseGateSetting('mouseSuppression', false);
-        this.clickSensitivity = this.loadNoiseGateSetting('clickSensitivity', 50);
 
         // Debug log buffer
         this.debugLog = [];
@@ -347,7 +340,7 @@ class ConferenceClient {
         document.getElementById('chatToggleBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
-        document.getElementById('inviteLinkBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.copyInviteLink(); });
+        document.getElementById('inviteLinkBtn').addEventListener('click', () => this.copyInviteLink());
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
@@ -391,43 +384,6 @@ class ConferenceClient {
                 this.hideMicActiveWarning();
             });
 
-            // Click suppression toggles
-            const keyboardToggle = document.getElementById('keyboardClickToggle');
-            const mouseToggle = document.getElementById('mouseClickToggle');
-            const clickSensitivitySlider = document.getElementById('clickSensitivitySlider');
-            const clickSensitivityValue = document.getElementById('clickSensitivityValue');
-
-            // Initialize from saved settings
-            keyboardToggle.setAttribute('data-enabled', String(this.keyboardClickSuppression));
-            keyboardToggle.querySelector('.click-toggle-status').textContent = this.keyboardClickSuppression ? 'ON' : 'OFF';
-            mouseToggle.setAttribute('data-enabled', String(this.mouseClickSuppression));
-            mouseToggle.querySelector('.click-toggle-status').textContent = this.mouseClickSuppression ? 'ON' : 'OFF';
-            clickSensitivitySlider.value = this.clickSensitivity;
-            clickSensitivityValue.textContent = this.getSensitivityLabel(this.clickSensitivity);
-
-            keyboardToggle.addEventListener('click', () => {
-                this.keyboardClickSuppression = !this.keyboardClickSuppression;
-                keyboardToggle.setAttribute('data-enabled', String(this.keyboardClickSuppression));
-                keyboardToggle.querySelector('.click-toggle-status').textContent = this.keyboardClickSuppression ? 'ON' : 'OFF';
-                this.saveNoiseGateSetting('keyboardSuppression', this.keyboardClickSuppression);
-                this.updateClickSuppression();
-            });
-
-            mouseToggle.addEventListener('click', () => {
-                this.mouseClickSuppression = !this.mouseClickSuppression;
-                mouseToggle.setAttribute('data-enabled', String(this.mouseClickSuppression));
-                mouseToggle.querySelector('.click-toggle-status').textContent = this.mouseClickSuppression ? 'ON' : 'OFF';
-                this.saveNoiseGateSetting('mouseSuppression', this.mouseClickSuppression);
-                this.updateClickSuppression();
-            });
-
-            clickSensitivitySlider.addEventListener('input', (e) => {
-                const value = parseInt(e.target.value);
-                this.clickSensitivity = value;
-                clickSensitivityValue.textContent = this.getSensitivityLabel(value);
-                this.saveNoiseGateSetting('clickSensitivity', value);
-                this.updateClickSensitivity();
-            });
         }
 
         // Low bandwidth mode toggle (options menu)
@@ -446,17 +402,6 @@ class ConferenceClient {
         // Click channel name to focus input
         document.querySelector('.chat-header h3').addEventListener('click', () => this.chatInput.focus());
 
-        // Highlight own messages toggle
-        const highlightOwnToggle = document.getElementById('highlightOwnToggle');
-        if (highlightOwnToggle) {
-            highlightOwnToggle.checked = this.highlightOwnMessages;
-            if (this.highlightOwnMessages) document.body.classList.add('highlight-own');
-            highlightOwnToggle.addEventListener('change', (e) => {
-                this.highlightOwnMessages = e.target.checked;
-                localStorage.setItem('broference-highlight-own', String(this.highlightOwnMessages));
-                document.body.classList.toggle('highlight-own', this.highlightOwnMessages);
-            });
-        }
 
         // Theme selector
         const themeSelect = document.getElementById('themeSelect');
@@ -2997,10 +2942,6 @@ class ConferenceClient {
                 // Apply saved threshold setting
                 this.updateNoiseGateThreshold(this.noiseGateThreshold);
 
-                // Apply saved click suppression settings
-                this.updateClickSuppression();
-                this.updateClickSensitivity();
-
                 // Get the current audio track
                 const audioTrack = this.localStream.getAudioTracks()[0];
                 if (!audioTrack) {
@@ -3147,34 +3088,6 @@ class ConferenceClient {
             this.noiseSuppressionNode.port.postMessage({
                 type: 'setThreshold',
                 threshold: threshold
-            });
-        }
-    }
-
-    getSensitivityLabel(value) {
-        if (value <= 33) return 'Low';
-        if (value <= 66) return 'Medium';
-        return 'High';
-    }
-
-    updateClickSuppression() {
-        if (this.noiseSuppressionNode) {
-            this.noiseSuppressionNode.port.postMessage({
-                type: 'setKeyboardSuppression',
-                enabled: this.keyboardClickSuppression
-            });
-            this.noiseSuppressionNode.port.postMessage({
-                type: 'setMouseSuppression',
-                enabled: this.mouseClickSuppression
-            });
-        }
-    }
-
-    updateClickSensitivity() {
-        if (this.noiseSuppressionNode) {
-            this.noiseSuppressionNode.port.postMessage({
-                type: 'setClickSensitivity',
-                sensitivity: this.clickSensitivity
             });
         }
     }
