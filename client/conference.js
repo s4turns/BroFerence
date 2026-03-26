@@ -1574,13 +1574,33 @@ class ConferenceClient {
         };
 
         // Handle ICE candidates
+        let relayCandidatesGathered = 0;
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                if (event.candidate.type === 'relay') relayCandidatesGathered++;
                 this.sendMessage({
                     type: 'ice-candidate',
                     targetId: peerId,
                     data: event.candidate
                 });
+            }
+        };
+
+        // Detect TURN unreachable: gathering finishes with zero relay candidates.
+        // With iceTransportPolicy:'relay', if TURN is blocked we gather nothing and
+        // connectionState never fires 'failed' (common on iOS / some mobile networks).
+        // Fall back to P2P immediately in that case.
+        pc.onicegatheringstatechange = () => {
+            console.log('ICE gathering state for', peerUsername, ':', pc.iceGatheringState);
+            if (pc.iceGatheringState === 'complete' && !usingFallback && relayCandidatesGathered === 0) {
+                console.warn('No TURN relay candidates gathered for', peerUsername, '- TURN unreachable, falling back to P2P');
+                this.turnFailedPeers.add(peerId);
+                setTimeout(() => {
+                    const current = this.peerConnections.get(peerId);
+                    if (current && current.connection === pc) {
+                        this.reconnectWithFallback(peerId).catch(() => {});
+                    }
+                }, 100);
             }
         };
 
