@@ -25,11 +25,13 @@ sudo netstat -tulpn | grep -E "491[5-9][0-9]|4920[0]" | head -5 || echo "  No re
 
 echo ""
 echo "[4/4] Testing TURN server connectivity..."
+TURN_PASS=$(grep "^user=" config/turnserver.production.conf 2>/dev/null | cut -d: -f2)
+TURN_PASS=${TURN_PASS:-webrtc123}
 echo "You can test TURN server at: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/"
 echo "Use these settings:"
 echo "  STUN/TURN URI: turn:blcknd.net:3479"
 echo "  Username: webrtc"
-echo "  Password: webrtc123"
+echo "  Password: ${TURN_PASS}"
 
 echo ""
 echo "========================================="
