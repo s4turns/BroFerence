@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.4 — 2026-03-31
+
+### Performance
+- **Fix extreme CPU usage from body-wide flicker animation** — the terminal flicker effect was animating opacity on the entire `<body>` every 150 ms, forcing full-page repaints over every video element. Moved the effect to a GPU-composited `::after` pseudo-element with `will-change: opacity` so it no longer triggers layout or paint on child nodes.
+- **Replace box-shadow speaking animation with GPU-friendly transform** — the speaking-pulse keyframes were animating multi-layer `box-shadow`, which cannot be composited and forces repaints per frame. Replaced with a `transform: scale()` animation that runs entirely on the compositor thread.
+- **Reduce audio-level monitoring overhead** — all per-stream audio monitors now share a single `AudioContext` instead of creating one each, and the polling interval was increased from 100 ms to 250 ms (60 % fewer FFT operations per second).
+- **Default video to 720p / 24 fps** — desktop capture constraints changed from 1080p / 30 fps to 720p / 24 fps (`max` still allows 1080p / 30 fps). Significantly reduces encode/decode CPU load in multi-party calls.
+- **Prefer H.264 codec for hardware acceleration** — video transceivers now call `setCodecPreferences()` to favour H.264, which has hardware encode/decode on Apple Silicon. VP8/VP9 fall back to software-only decoding on macOS.
+
+---
+
 ## v2.3 — 2026-03-25
 
 ### Bug Fixes

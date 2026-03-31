@@ -568,16 +568,17 @@ body::before {
 
 .video-container.speaking {
     border-color: var(--secondary);
-    box-shadow: 0 0 20px var(--secondary), 0 0 40px var(--secondary), inset 0 0 10px rgba(0, 255, 255, 0.3);
+    box-shadow: 0 0 20px var(--secondary);
     animation: speakingPulse 0.5s ease-in-out infinite alternate;
+    will-change: transform;
 }
 
 @keyframes speakingPulse {
     0% {
-        box-shadow: 0 0 15px var(--secondary), 0 0 30px var(--secondary);
+        transform: scale(1);
     }
     100% {
-        box-shadow: 0 0 25px var(--secondary), 0 0 50px var(--secondary);
+        transform: scale(1.01);
     }
 }
 
@@ -1864,29 +1865,24 @@ body::before {
     gap: 16px;
 }
 
-/* Terminal flicker effect */
+/* Terminal flicker effect - applied to a composited overlay to avoid full-page repaints */
 @keyframes flicker {
-    0% {
-        opacity: 0.97;
-    }
-    5% {
-        opacity: 0.98;
-    }
-    10% {
-        opacity: 0.96;
-    }
-    15% {
-        opacity: 0.99;
-    }
-    20% {
-        opacity: 0.97;
-    }
-    100% {
-        opacity: 0.97;
-    }
+    0% { opacity: 0.03; }
+    5% { opacity: 0.02; }
+    10% { opacity: 0.04; }
+    15% { opacity: 0.01; }
+    20% { opacity: 0.03; }
+    100% { opacity: 0.03; }
 }
 
-body {
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: black;
+    pointer-events: none;
+    z-index: 9999;
+    will-change: opacity;
     animation: flicker 0.15s infinite;
 }
 
