@@ -625,9 +625,9 @@ class ConferenceClient {
             width: { ideal: 640, max: 1280 },
             height: { ideal: 480, max: 720 }
         } : {
-            width: { ideal: 1920, max: 1920 },
-            height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, max: 30 }
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 24, max: 30 }
         };
     }
 
@@ -675,22 +675,29 @@ class ConferenceClient {
         return this.localStream;
     }
 
+    getSharedAudioContext() {
+        if (!this._sharedAudioCtx || this._sharedAudioCtx.state === 'closed') {
+            this._sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return this._sharedAudioCtx;
+    }
+
     monitorAudioLevel(stream, containerElement) {
-        // Close any existing AudioContext for this container
-        if (containerElement._monitorCtx) {
-            containerElement._monitorCtx.close().catch(() => {});
-            containerElement._monitorCtx = null;
+        // Disconnect any existing analyser nodes for this container
+        if (containerElement._monitorSource) {
+            containerElement._monitorSource.disconnect();
+            containerElement._monitorSource = null;
         }
 
-        // Increment generation so old RAF loops self-terminate when they next fire
+        // Increment generation so old loops self-terminate when they next fire
         containerElement._monitorGen = (containerElement._monitorGen || 0) + 1;
         const myGen = containerElement._monitorGen;
 
         try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            containerElement._monitorCtx = audioContext;
+            const audioContext = this.getSharedAudioContext();
 
             const audioSource = audioContext.createMediaStreamSource(stream);
+            containerElement._monitorSource = audioSource;
             const analyser = audioContext.createAnalyser();
             analyser.fftSize = 64;
             audioSource.connect(analyser);
@@ -715,7 +722,7 @@ class ConferenceClient {
                     containerElement.classList.remove('speaking');
                 }
 
-                setTimeout(checkAudioLevel, 100);
+                setTimeout(checkAudioLevel, 250);
             };
 
             checkAudioLevel();
