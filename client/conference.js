@@ -1158,6 +1158,41 @@ class ConferenceClient {
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
     }
 
+    setPreferredCodecs(pc) {
+        // Prefer H.264 for video — it has the widest hardware decoder support
+        // (iOS, Android, and most desktop GPUs). VP9/VP8 are often software-decoded.
+        if (!RTCRtpSender.getCapabilities || !RTCRtpReceiver.getCapabilities) return;
+
+        const videoSend = RTCRtpSender.getCapabilities('video');
+        const audioSend = RTCRtpSender.getCapabilities('audio');
+        if (!videoSend || !audioSend) return;
+
+        const videoOrder = ['H264', 'VP9', 'AV1', 'VP8'];
+        const sortedVideo = [...videoSend.codecs].sort((a, b) => {
+            const ai = videoOrder.findIndex(c => a.mimeType.toUpperCase().includes(c));
+            const bi = videoOrder.findIndex(c => b.mimeType.toUpperCase().includes(c));
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+
+        // Prefer Opus with stereo + high bitrate for audio
+        const audioOrder = ['OPUS'];
+        const sortedAudio = [...audioSend.codecs].sort((a, b) => {
+            const ai = audioOrder.findIndex(c => a.mimeType.toUpperCase().includes(c));
+            const bi = audioOrder.findIndex(c => b.mimeType.toUpperCase().includes(c));
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+
+        pc.getTransceivers().forEach(transceiver => {
+            try {
+                const kind = transceiver.sender.track?.kind;
+                if (kind === 'video') transceiver.setCodecPreferences(sortedVideo);
+                else if (kind === 'audio') transceiver.setCodecPreferences(sortedAudio);
+            } catch (e) {
+                console.warn('Could not set codec preferences:', e);
+            }
+        });
+    }
+
     applyBandwidthToSenders() {
         const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
         const audioBitrate = this.lowBandwidthMode ? 32000 : undefined;  // 32kbps or uncapped
@@ -1346,6 +1381,9 @@ class ConferenceClient {
                 }
             }
         });
+
+        // Prefer hardware-accelerated codecs (H.264 > VP9 > AV1 > VP8)
+        this.setPreferredCodecs(pc);
 
         // Handle incoming tracks
         let streamAdded = false;
