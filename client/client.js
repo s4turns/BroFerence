@@ -161,12 +161,20 @@ class WebRTCClient {
         }
 
         this.usersListEl.style.display = 'block';
-        this.usersContainer.innerHTML = this.usersInRoom.map(userId => `
-            <div class="user-item">
-                <span>${userId}</span>
-                <button class="call-button" onclick="client.callUser('${userId}')">Call</button>
-            </div>
-        `).join('');
+        this.usersContainer.innerHTML = '';
+        this.usersInRoom.forEach(userId => {
+            const div = document.createElement('div');
+            div.className = 'user-item';
+            const span = document.createElement('span');
+            span.textContent = userId;
+            const btn = document.createElement('button');
+            btn.className = 'call-button';
+            btn.textContent = 'Call';
+            btn.addEventListener('click', () => client.callUser(userId));
+            div.appendChild(span);
+            div.appendChild(btn);
+            this.usersContainer.appendChild(div);
+        });
     }
 
     async getLocalStream() {

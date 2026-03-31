@@ -509,7 +509,12 @@ class ConferenceClient {
                 // Add crown to the new moderator's label
                 const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
                 if (modLabel && !modLabel.querySelector('.mod-crown')) {
-                    modLabel.innerHTML = '<span class="mod-crown">👑</span> ' + message.username;
+                    modLabel.textContent = '';
+                    const crownSpan = document.createElement('span');
+                    crownSpan.className = 'mod-crown';
+                    crownSpan.textContent = '👑';
+                    modLabel.appendChild(crownSpan);
+                    modLabel.appendChild(document.createTextNode(' ' + message.username));
                 }
                 // Remove crown from any other label that had it
                 document.querySelectorAll('.video-label .mod-crown').forEach(crown => {
@@ -1637,7 +1642,7 @@ class ConferenceClient {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
             console.log(`Added ICE candidate for ${senderId}`);
         } catch (error) {
-            console.error(`Error adding ICE candidate for ${senderId}:`, error);
+            console.error('Error adding ICE candidate for', senderId, error);
         }
     }
 
@@ -1667,7 +1672,11 @@ class ConferenceClient {
         label.className = 'video-label';
         // Add crown for moderator
         if (peerId === this.moderatorId) {
-            label.innerHTML = '<span class="mod-crown">👑</span> ' + username;
+            const crownSpan = document.createElement('span');
+            crownSpan.className = 'mod-crown';
+            crownSpan.textContent = '👑';
+            label.appendChild(crownSpan);
+            label.appendChild(document.createTextNode(' ' + username));
         } else {
             label.textContent = username;
         }
@@ -1768,7 +1777,7 @@ class ConferenceClient {
                         }
                     })
                     .catch(err => {
-                        console.warn(`Video autoplay failed for ${username}:`, err);
+                        console.warn('Video autoplay failed for', username, err);
                         // If muted autoplay still fails, show play button
                         this.addPlayButtonOverlay(container, video, username);
                     });
@@ -1996,7 +2005,7 @@ class ConferenceClient {
                 overlay.remove();
                 console.log(`Video playing for ${username} after user interaction`);
             } catch (err) {
-                console.error(`Still cannot play video for ${username}:`, err);
+                console.error('Still cannot play video for', username, err);
             }
         };
 
@@ -2462,6 +2471,11 @@ class ConferenceClient {
     }
 
     async streamDirectVideo(url) {
+        // Only allow relative paths or http/https URLs
+        if (!/^(https?:\/\/|\/)/.test(url)) {
+            console.warn('streamDirectVideo: rejected URL with unsafe scheme');
+            return;
+        }
         try {
             // Remove any existing stream container
             const existingContainer = document.getElementById('streamVideoContainer');
@@ -3266,19 +3280,34 @@ class ConferenceClient {
         }
     }
 
-    linkifyText(text) {
-        // URL regex pattern that matches http://, https://, and www. URLs
-        const urlPattern = /(\b(https?:\/\/|www\.)[^\s<]+[^\s<.,:;"')\]])/gi;
+    escapeHtml(str) {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
+    }
 
-        // Replace URLs with anchor tags
-        return text.replace(urlPattern, (url) => {
-            let href = url;
-            // Add https:// if the URL starts with www.
-            if (url.startsWith('www.')) {
-                href = 'https://' + url;
+    linkifyText(text) {
+        const urlPattern = /(\b(https?:\/\/|www\.)[^\s<]+[^\s<.,:;"')\]])/gi;
+        const result = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = urlPattern.exec(text)) !== null) {
+            // Escape plain text before this URL
+            if (match.index > lastIndex) {
+                result.push(this.escapeHtml(text.slice(lastIndex, match.index)));
             }
-            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-        });
+            let href = match[0];
+            if (href.startsWith('www.')) href = 'https://' + href;
+            result.push(`<a href="${this.escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(match[0])}</a>`);
+            lastIndex = match.index + match[0].length;
+        }
+
+        result.push(this.escapeHtml(text.slice(lastIndex)));
+        return result.join('');
     }
 
     getNickPrefix(username, isOwn) {

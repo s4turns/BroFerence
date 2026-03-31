@@ -9,6 +9,8 @@ import json
 import logging
 import re
 import ssl
+import os
+import hmac
 from typing import Dict, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -70,9 +72,18 @@ async def init_irc_bridge():
         return False
 
 
-def hash_password(password: str) -> str:
-    """Hash password for storage."""
-    return hashlib.sha256(password.encode()).hexdigest()
+def hash_password(password: str) -> bytes:
+    """Hash password using PBKDF2-HMAC-SHA256 with a random salt."""
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 260000)
+    return salt + dk
+
+
+def verify_password(password: str, stored: bytes) -> bool:
+    """Verify a password against a stored PBKDF2 hash."""
+    salt, dk = stored[:16], stored[16:]
+    check = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 260000)
+    return hmac.compare_digest(check, dk)
 
 
 def log_certificate_info(cert_path: str):
@@ -310,7 +321,7 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
             }))
             return False
 
-        if hash_password(password) != rooms[room_id]['password']:
+        if not verify_password(password, rooms[room_id]['password']):
             await websocket.send(json.dumps({
                 'type': 'error',
                 'message': 'Incorrect password'

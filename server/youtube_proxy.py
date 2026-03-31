@@ -128,15 +128,17 @@ async def stream_video(request):
     is_safe, error_msg = is_safe_url(video_url)
     if not is_safe:
         logger.warning(f"Blocked unsafe URL: {error_msg}")
-        return web.Response(status=403, text=f'Forbidden: {error_msg}')
+        return web.Response(status=403, text='Forbidden')
 
-    logger.info(f"Starting video stream proxy for validated URL: {urllib.parse.urlparse(video_url).hostname}")
+    # Use the decoded, validated URL explicitly
+    validated_url = urllib.parse.unquote(video_url)
+    logger.info(f"Starting video stream proxy for validated URL: {urllib.parse.urlparse(validated_url).hostname}")
 
     try:
         # Use timeout to prevent hanging requests
         timeout = aiohttp.ClientTimeout(total=300, connect=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(video_url) as resp:
+            async with session.get(validated_url) as resp:
                 if resp.status != 200:
                     return web.Response(status=resp.status)
 
@@ -158,7 +160,7 @@ async def stream_video(request):
 
     except Exception as e:
         logger.error(f"Stream error: {e}")
-        return web.Response(status=500, text=str(e))
+        return web.Response(status=500, text='Internal server error')
 
 
 async def health_check(request):

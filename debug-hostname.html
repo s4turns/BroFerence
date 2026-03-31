@@ -13,13 +13,21 @@
         const wsUrl = `${protocol}://${hostname}:8765`;
 
         const info = document.getElementById('info');
-        info.innerHTML = `
-            <p><strong>window.location.hostname:</strong> ${hostname}</p>
-            <p><strong>window.location.href:</strong> ${window.location.href}</p>
-            <p><strong>isLocalhost:</strong> ${isLocalhost}</p>
-            <p><strong>WebSocket URL would be:</strong> ${wsUrl}</p>
-            <p><strong>Protocol (ws/wss):</strong> ${protocol}</p>
-        `;
+        const rows = [
+            ['window.location.hostname:', hostname],
+            ['window.location.href:', window.location.href],
+            ['isLocalhost:', String(isLocalhost)],
+            ['WebSocket URL would be:', wsUrl],
+            ['Protocol (ws/wss):', protocol],
+        ];
+        rows.forEach(([label, value]) => {
+            const p = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = label;
+            p.appendChild(strong);
+            p.appendChild(document.createTextNode(' ' + value));
+            info.appendChild(p);
+        });
 
         console.log('Hostname:', hostname);
         console.log('Full location:', window.location);
