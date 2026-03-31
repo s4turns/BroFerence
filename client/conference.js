@@ -147,6 +147,7 @@ class ConferenceClient {
         document.getElementById('toggleChatBtn').addEventListener('click', () => this.toggleChat());
         document.getElementById('sendMessageBtn').addEventListener('click', () => this.sendChatMessage());
         document.getElementById('inviteLinkBtn').addEventListener('click', () => this.copyInviteLink());
+        document.getElementById('defconBtn').addEventListener('click', () => this.toggleDefcon());
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
@@ -262,6 +263,24 @@ class ConferenceClient {
                 prompt('Copy this invite link:', link);
             });
         }
+    }
+
+    toggleDefcon() {
+        this.defconActive = !this.defconActive;
+        const btn = document.getElementById('defconBtn');
+
+        // Hide or restore all remote video elements
+        document.querySelectorAll('.video-container:not(#localContainer)').forEach(container => {
+            const video = container.querySelector('video');
+            if (video) video.style.display = this.defconActive ? 'none' : '';
+        });
+
+        // Hide or restore local video
+        const localVideo = document.querySelector('#localContainer video');
+        if (localVideo) localVideo.style.display = this.defconActive ? 'none' : '';
+
+        btn.textContent = this.defconActive ? '📺 DEFCON' : '📵 DEFCON';
+        btn.classList.toggle('active', this.defconActive);
     }
 
     setTheme(themeName) {

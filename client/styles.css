@@ -1472,6 +1472,12 @@ body::before {
     text-decoration: none;
 }
 
+#defconBtn.active {
+    background: var(--danger, #dc3545);
+    border-color: var(--danger, #dc3545);
+    color: #fff;
+}
+
 .github-link {
     display: flex;
     align-items: center;
