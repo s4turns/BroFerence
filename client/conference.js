@@ -265,6 +265,14 @@ class ConferenceClient {
         }
     }
 
+    toggleRemoteVideo(peerId, btn) {
+        const container = document.getElementById(`video-${peerId}`);
+        if (!container) return;
+        const hidden = container.classList.toggle('video-hidden');
+        btn.textContent = hidden ? '🙈' : '📹';
+        btn.title = hidden ? 'Show Video' : 'Hide Video';
+    }
+
     toggleDefcon() {
         this.defconActive = !this.defconActive;
         const btn = document.getElementById('defconBtn');
@@ -1829,6 +1837,12 @@ class ConferenceClient {
         muteBtn.title = 'Mute/Unmute';
         muteBtn.onclick = () => this.toggleRemoteMute(peerId, muteBtn);
 
+        // Hide video button
+        const hideVideoBtn = document.createElement('button');
+        hideVideoBtn.textContent = '📹';
+        hideVideoBtn.title = 'Hide/Show Video';
+        hideVideoBtn.onclick = () => this.toggleRemoteVideo(peerId, hideVideoBtn);
+
         // Volume slider
         const volumeSlider = document.createElement('input');
         volumeSlider.type = 'range';
@@ -1839,6 +1853,7 @@ class ConferenceClient {
         volumeSlider.oninput = (e) => this.setRemoteVolume(peerId, e.target.value / 100);
 
         controlsDiv.appendChild(muteBtn);
+        controlsDiv.appendChild(hideVideoBtn);
         controlsDiv.appendChild(volumeSlider);
 
         // Moderator controls are added by refreshModeratorControls() after the
