@@ -737,6 +737,9 @@ class ConferenceClient {
     }
 
     startStatsMonitoring(peerId, pc, container) {
+        // Clear any existing interval for this peer before starting a new one
+        this.stopStatsMonitoring(peerId);
+
         console.log('Starting stats monitoring for peer:', peerId);
 
         // Create signal bars element
