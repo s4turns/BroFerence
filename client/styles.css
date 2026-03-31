@@ -1864,29 +1864,4 @@ body::before {
     gap: 16px;
 }
 
-/* Terminal flicker effect */
-@keyframes flicker {
-    0% {
-        opacity: 0.97;
-    }
-    5% {
-        opacity: 0.98;
-    }
-    10% {
-        opacity: 0.96;
-    }
-    15% {
-        opacity: 0.99;
-    }
-    20% {
-        opacity: 0.97;
-    }
-    100% {
-        opacity: 0.97;
-    }
-}
-
-body {
-    animation: flicker 0.15s infinite;
-}
 
