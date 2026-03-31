@@ -9,6 +9,10 @@
 - **Default video to 720p / 24 fps** — desktop capture constraints changed from 1080p / 30 fps to 720p / 24 fps (`max` still allows 1080p / 30 fps). Significantly reduces encode/decode CPU load in multi-party calls.
 - **Prefer H.264 codec for hardware acceleration** — video transceivers now call `setCodecPreferences()` to favour H.264, which has hardware encode/decode on Apple Silicon. VP8/VP9 fall back to software-only decoding on macOS.
 
+### New Features
+- **Hide remote video** — per-participant toggle button to hide another user's video feed locally. Audio continues normally; the remote user is not notified. Useful for reducing visual clutter or saving resources.
+- **Corporate (Teams) theme** — new light theme inspired by Microsoft Teams. Uses a white/light-gray colour scheme with `Segoe UI` font, disables CRT scanlines and flicker effect, and applies clean rounded styling across all UI elements.
+
 ---
 
 ## v2.3 — 2026-03-25

@@ -1795,6 +1795,12 @@ class ConferenceClient {
         muteBtn.title = 'Mute/Unmute';
         muteBtn.onclick = () => this.toggleRemoteMute(peerId, muteBtn);
 
+        // Hide video button
+        const hideVideoBtn = document.createElement('button');
+        hideVideoBtn.textContent = '📹';
+        hideVideoBtn.title = 'Hide/Show video';
+        hideVideoBtn.onclick = () => this.toggleRemoteVideo(peerId, hideVideoBtn);
+
         // Volume slider
         const volumeSlider = document.createElement('input');
         volumeSlider.type = 'range';
@@ -1805,6 +1811,7 @@ class ConferenceClient {
         volumeSlider.oninput = (e) => this.setRemoteVolume(peerId, e.target.value / 100);
 
         controlsDiv.appendChild(muteBtn);
+        controlsDiv.appendChild(hideVideoBtn);
         controlsDiv.appendChild(volumeSlider);
 
         // Moderator controls are added by refreshModeratorControls() after the
@@ -1935,6 +1942,26 @@ class ConferenceClient {
             button.classList.add('muted');
         } else {
             button.textContent = '🔊';
+            button.classList.remove('muted');
+        }
+    }
+
+    toggleRemoteVideo(peerId, button) {
+        const container = document.getElementById(`video-${peerId}`);
+        if (!container) return;
+
+        const controls = this.remoteAudioControls.get(peerId);
+        if (!controls) return;
+
+        controls.isVideoHidden = !controls.isVideoHidden;
+
+        if (controls.isVideoHidden) {
+            container.classList.add('video-hidden');
+            button.textContent = '🚫';
+            button.classList.add('muted');
+        } else {
+            container.classList.remove('video-hidden');
+            button.textContent = '📹';
             button.classList.remove('muted');
         }
     }
