@@ -85,22 +85,22 @@ class ConferenceClient {
             credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
         };
 
-        // Primary: TURN relay only (hides peer IPs)
+        // Use all candidate types (host, srflx, relay). iceTransportPolicy:'relay'
+        // is not used because RFC 5766 §9.2 mandates 403 when both peers create
+        // permissions for the same TURN server's own IP — hairpin relay on a single
+        // TURN server is impossible by spec. With all candidates, TURN still relays
+        // for peers that need it; ICE selects the best working pair automatically.
         this.iceServers = {
-            iceServers: [turnConfig],
-            iceTransportPolicy: 'relay'
-        };
-
-        // Fallback: allow direct P2P if TURN relay completely fails
-        this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
                 turnConfig
             ]
         };
 
-        console.log('ICE servers configured (relay-first with P2P fallback)');
+        // Fallback kept for reconnect logic compatibility
+        this.iceServersFallback = this.iceServers;
+
+        console.log('ICE servers configured (STUN + TURN, all candidate types)');
     }
 
     initUI() {
@@ -1430,10 +1430,8 @@ class ConferenceClient {
         };
 
         // Handle ICE candidates
-        let relayCandidatesGathered = 0;
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                if (event.candidate.type === 'relay') relayCandidatesGathered++;
                 this.sendMessage({
                     type: 'ice-candidate',
                     targetId: peerId,
@@ -1442,22 +1440,8 @@ class ConferenceClient {
             }
         };
 
-        // Detect TURN unreachable: gathering finishes with zero relay candidates.
-        // With iceTransportPolicy:'relay', if TURN is blocked we gather nothing and
-        // connectionState never fires 'failed' (common on iOS / some mobile networks).
-        // Fall back to P2P immediately in that case.
         pc.onicegatheringstatechange = () => {
             console.log('ICE gathering state for', peerUsername, ':', pc.iceGatheringState);
-            if (pc.iceGatheringState === 'complete' && !usingFallback && relayCandidatesGathered === 0) {
-                console.warn('No TURN relay candidates gathered for', peerUsername, '- TURN unreachable, falling back to P2P');
-                this.turnFailedPeers.add(peerId);
-                setTimeout(() => {
-                    const current = this.peerConnections.get(peerId);
-                    if (current && current.connection === pc) {
-                        this.reconnectWithFallback(peerId).catch(() => {});
-                    }
-                }, 100);
-            }
         };
 
         // Connection state changes
