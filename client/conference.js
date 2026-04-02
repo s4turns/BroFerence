@@ -51,7 +51,9 @@ class ConferenceClient {
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
-        this.audioContext = null;
+        this.micAudioCtx = null;
+        this.micSource = null;
+        this.micDestination = null;
         this.noiseSuppressionNode = null;
         this.processedStream = null;
 
@@ -718,6 +720,9 @@ class ConferenceClient {
                 console.log(`Media stream acquired (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
                 this.localVideo.srcObject = this.localStream;
 
+                // Set up persistent mic audio chain (source → destination graph)
+                await this.setupMicAudioChain();
+
                 // Start monitoring for speaking indicator
                 this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
 
@@ -731,6 +736,43 @@ class ConferenceClient {
         return this.localStream;
     }
 
+    // Creates (or recreates) the persistent mic audio graph:
+    //   micSource → [noiseSuppressionNode →] micDestination
+    // Peers always receive micDestination's track regardless of NS state.
+    async setupMicAudioChain() {
+        const audioTrack = this.localStream && this.localStream.getAudioTracks()[0];
+        if (!audioTrack) return;
+
+        if (!this.micAudioCtx) {
+            this.micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            await this.micAudioCtx.audioWorklet.addModule('noise-processor.js');
+        }
+        if (this.micAudioCtx.state === 'suspended') {
+            await this.micAudioCtx.resume();
+        }
+
+        // Disconnect old source without disturbing the rest of the chain
+        if (this.micSource) {
+            try { this.micSource.disconnect(); } catch (e) {}
+        }
+
+        this.micSource = this.micAudioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
+
+        if (!this.micDestination) {
+            this.micDestination = this.micAudioCtx.createMediaStreamDestination();
+        }
+
+        // Wire: source → noiseSuppressionNode → destination  OR  source → destination
+        if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
+            this.micSource.connect(this.noiseSuppressionNode);
+            this.noiseSuppressionNode.connect(this.micDestination);
+        } else {
+            this.micSource.connect(this.micDestination);
+        }
+
+        this.processedStream = this.micDestination.stream;
+    }
+
     getSharedAudioContext() {
         if (!this._sharedAudioCtx || this._sharedAudioCtx.state === 'closed') {
             this._sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -739,6 +781,8 @@ class ConferenceClient {
     }
 
     monitorAudioLevel(stream, containerElement) {
+        if (!stream || stream.getAudioTracks().length === 0) return;
+
         // Disconnect any existing analyser nodes for this container
         if (containerElement._monitorSource) {
             containerElement._monitorSource.disconnect();
@@ -1420,8 +1464,8 @@ class ConferenceClient {
         activeStream.getTracks().forEach(track => {
             // Use processed audio track if noise suppression is enabled (only for mic audio)
             let trackToAdd = track;
-            if (track.kind === 'audio' && !this.isScreenSharing && this.noiseSuppressionEnabled && this.processedStream) {
-                const processedAudioTrack = this.processedStream.getAudioTracks()[0];
+            if (track.kind === 'audio' && !this.isScreenSharing && this.micDestination) {
+                const processedAudioTrack = this.micDestination.stream.getAudioTracks()[0];
                 if (processedAudioTrack) {
                     trackToAdd = processedAudioTrack;
                 }
@@ -2442,9 +2486,9 @@ class ConferenceClient {
             // Mix mic + screen audio into a single track using Web Audio API
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // Get current mic track (handles noise suppression)
-            const currentMicTrack = (this.noiseSuppressionEnabled && this.processedStream)
-                ? this.processedStream.getAudioTracks()[0]
+            // Get current mic track from the audio chain output
+            const currentMicTrack = this.micDestination
+                ? this.micDestination.stream.getAudioTracks()[0]
                 : this.localStream.getAudioTracks()[0];
 
             const micSource = audioCtx.createMediaStreamSource(new MediaStream([currentMicTrack]));
@@ -2504,9 +2548,9 @@ class ConferenceClient {
     unmixScreenAudio() {
         if (!this.screenAudioContext) return;
 
-        // Restore original mic track
-        const micTrack = (this.noiseSuppressionEnabled && this.processedStream)
-            ? this.processedStream.getAudioTracks()[0]
+        // Restore mic track (always micDestination when chain is set up, else raw)
+        const micTrack = this.micDestination
+            ? this.micDestination.stream.getAudioTracks()[0]
             : this.localStream.getAudioTracks()[0];
 
         this.peerConnections.forEach(peer => {
@@ -2750,9 +2794,8 @@ class ConferenceClient {
         // Find senders BEFORE stopping tracks
         const senderUpdates = [];
         const cameraTrack = this.localStream.getVideoTracks()[0];
-        // Use processed audio if noise suppression is on, otherwise use raw mic
-        const micTrack = (this.noiseSuppressionEnabled && this.processedStream)
-            ? this.processedStream.getAudioTracks()[0]
+        const micTrack = this.micDestination
+            ? this.micDestination.stream.getAudioTracks()[0]
             : this.localStream.getAudioTracks()[0];
 
         this.peerConnections.forEach(peer => {
@@ -2925,20 +2968,16 @@ class ConferenceClient {
 
         if (!this.noiseSuppressionEnabled) {
             try {
-                // Initialize audio context
-                if (!this.audioContext) {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    // Use simple noise gate processor (RNNoise WASM has loading issues in AudioWorklet)
-                    await this.audioContext.audioWorklet.addModule('noise-processor.js');
+                // Ensure mic audio chain is ready (micAudioCtx + worklet already loaded by setupMicAudioChain)
+                if (!this.micAudioCtx) {
+                    await this.setupMicAudioChain();
                 }
-
-                // Resume context if suspended
-                if (this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
+                if (this.micAudioCtx.state === 'suspended') {
+                    await this.micAudioCtx.resume();
                 }
 
                 // Create the noise suppression processor node
-                this.noiseSuppressionNode = new AudioWorkletNode(this.audioContext, 'noise-suppression-processor');
+                this.noiseSuppressionNode = new AudioWorkletNode(this.micAudioCtx, 'noise-suppression-processor');
 
                 // Set up audio level reporting from the processor
                 this.noiseSuppressionNode.port.onmessage = (event) => {
@@ -2946,54 +2985,24 @@ class ConferenceClient {
                         this.handleAudioLevelUpdate(event.data);
                     }
                 };
-
-                // Start the port
                 this.noiseSuppressionNode.port.start();
 
                 // Apply saved threshold setting
                 this.updateNoiseGateThreshold(this.noiseGateThreshold);
 
-                // Get the current audio track
-                const audioTrack = this.localStream.getAudioTracks()[0];
-                if (!audioTrack) {
-                    throw new Error('No audio track available');
-                }
-
-                // Create a new stream from the audio track
-                const sourceStream = new MediaStream([audioTrack]);
-                const source = this.audioContext.createMediaStreamSource(sourceStream);
-                const destination = this.audioContext.createMediaStreamDestination();
-
-                // Connect: source -> noise suppression -> destination
-                source.connect(this.noiseSuppressionNode);
-                this.noiseSuppressionNode.connect(destination);
-
-                // Get the processed audio track
-                const processedAudioTrack = destination.stream.getAudioTracks()[0];
-
-                // Replace audio track in all peer connections
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (sender) {
-                        sender.replaceTrack(processedAudioTrack);
-                    }
-                });
-
-                // Store for later cleanup
-                this.processedStream = destination.stream;
-                this.originalAudioTrack = audioTrack;
+                // Insert NS node into existing chain: micSource → noiseSuppressionNode → micDestination
+                this.micSource.disconnect();
+                this.micSource.connect(this.noiseSuppressionNode);
+                this.noiseSuppressionNode.connect(this.micDestination);
+                // processedStream is already micDestination.stream — no replaceTrack needed
 
                 this.noiseSuppressionEnabled = true;
                 btn.setAttribute('data-enabled', 'true');
                 btn.querySelector('.toggle-status').textContent = 'ON';
 
-                // Show noise gate settings
                 noiseGateSettings.classList.remove('hidden');
-
-                // Display the mic device name
                 this.updateMicDeviceList();
 
-                // Reset warning state
                 this.micConstantlyActiveCount = 0;
                 this.hideMicActiveWarning();
 
@@ -3001,33 +3010,24 @@ class ConferenceClient {
 
             } catch (error) {
                 console.error('Error enabling noise suppression:', error);
-                // Don't alert - just log the error. Noise suppression is optional.
-                throw error; // Re-throw so caller knows it failed
+                throw error;
             }
         } else {
             // Disable noise suppression
             try {
-                // Restore original audio track in all peer connections
-                if (this.originalAudioTrack) {
-                    this.peerConnections.forEach(peer => {
-                        const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                        if (sender) {
-                            sender.replaceTrack(this.originalAudioTrack);
-                        }
-                    });
-                }
-
-                // Cleanup
+                // Remove NS node from chain: micSource → micDestination directly
                 if (this.noiseSuppressionNode) {
+                    this.micSource.disconnect();
                     this.noiseSuppressionNode.disconnect();
                     this.noiseSuppressionNode = null;
+                    this.micSource.connect(this.micDestination);
+                    // processedStream is still micDestination.stream — no replaceTrack needed
                 }
 
                 this.noiseSuppressionEnabled = false;
                 btn.setAttribute('data-enabled', 'false');
                 btn.querySelector('.toggle-status').textContent = 'OFF';
 
-                // Hide noise gate settings
                 noiseGateSettings.classList.add('hidden');
                 this.hideMicActiveWarning();
 
@@ -3165,33 +3165,17 @@ class ConferenceClient {
             // Add new track to local stream
             this.localStream.addTrack(newAudioTrack);
 
-            // If noise suppression is active, re-route through the processor
-            if (this.noiseSuppressionEnabled && this.audioContext && this.noiseSuppressionNode) {
-                const sourceStream = new MediaStream([newAudioTrack]);
-                const source = this.audioContext.createMediaStreamSource(sourceStream);
-                const destination = this.audioContext.createMediaStreamDestination();
+            // Re-wire audio chain with the new source track (handles NS state automatically)
+            await this.setupMicAudioChain();
 
-                // Disconnect old source (node stays connected)
-                this.noiseSuppressionNode.disconnect();
-                source.connect(this.noiseSuppressionNode);
-                this.noiseSuppressionNode.connect(destination);
-
-                const processedTrack = destination.stream.getAudioTracks()[0];
-                this.processedStream = destination.stream;
-                this.originalAudioTrack = newAudioTrack;
-
-                // Replace in all peer connections
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (sender) sender.replaceTrack(processedTrack);
-                });
-            } else {
-                // Replace raw track in all peer connections
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (sender) sender.replaceTrack(newAudioTrack);
-                });
-            }
+            // Replace the destination track in all peer connections
+            const destTrack = this.micDestination
+                ? this.micDestination.stream.getAudioTracks()[0]
+                : newAudioTrack;
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                if (sender) sender.replaceTrack(destTrack);
+            });
 
             // Save preference
             this.saveNoiseGateSetting('preferredMic', deviceId);
@@ -3593,14 +3577,16 @@ class ConferenceClient {
             this.screenStream = null;
         }
 
-        // Clean up noise suppression
+        // Clean up mic audio chain
         if (this.noiseSuppressionNode) {
             this.noiseSuppressionNode.disconnect();
             this.noiseSuppressionNode = null;
         }
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
+        if (this.micAudioCtx) {
+            this.micAudioCtx.close();
+            this.micAudioCtx = null;
+            this.micSource = null;
+            this.micDestination = null;
         }
         this.noiseSuppressionEnabled = false;
         const noiseBtn = document.getElementById('noiseSuppressionBtn');
