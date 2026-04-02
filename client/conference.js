@@ -1,5 +1,5 @@
 // Multi-Participant WebRTC Conference Client with IRC Bridge
-// Version: 2.5
+// Version: 1.6
 
 class ConferenceClient {
     constructor() {

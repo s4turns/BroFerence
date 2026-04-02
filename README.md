@@ -451,7 +451,7 @@ MIT License - feel free to use for personal or commercial projects!
 
 ## Recent Updates
 
-### v2.5 (2026-04-01)
+### v1.6 (2026-04-01)
 - **Per-participant hide video** — 📹 button on each remote stream hides the video and disables the inbound track so the browser skips decoding entirely, reducing CPU/GPU load (closes #16)
 - **DEFCON button** — 📵 toggle in the toolbar kills all video feeds at once; click 📺 to restore. Useful when bandwidth drops or you need to go audio-only fast
 - **Screen share audio mixer** — When screen sharing with system audio, a mixer strip appears on your local tile with independent 🎤 mic and 🖥️ desktop audio sliders (0–100%). Resolves the common issue of desktop audio drowning out voice (issue #7)
@@ -464,7 +464,7 @@ MIT License - feel free to use for personal or commercial projects!
 - **Stats monitoring interval leak fix** — `startStatsMonitoring` now clears any existing interval for a peer before starting a new one, preventing duplicate polling on reconnect
 - **Null crash on screen share stop** — Fixed crash when stopping screen share via the browser's native "Stop sharing" button (`shareTabBtn` optional chaining)
 
-### v2.4 (2026-03-25)
+### v1.5 (2026-03-25)
 - **Low Bandwidth Mode** — New toggle (auto-enabled on mobile) caps video to 480p/15fps, video bitrate to 200kbps, and audio to 32kbps. Can also be toggled from the prejoin screen and the Options menu.
 - **Moderator succession** — When the moderator leaves, the role automatically transfers to the next user in join order. Previously no one received mod after the first moderator left.
 - **iOS/Safari connectivity fix** — Clients on iOS with an unreachable TURN server would silently fail to connect because `iceTransportPolicy: relay` gathers zero candidates and `connectionState` never fires `failed`. Now detects zero relay candidates at ICE gathering completion and immediately falls back to direct P2P.
@@ -473,13 +473,13 @@ MIT License - feel free to use for personal or commercial projects!
 - **Prejoin ON/OFF labels** — Mic, camera, and low bandwidth buttons on the prejoin screen now show a clear ON/OFF status indicator.
 - **UI cleanup** — Chat button moved to top-right header (next to room name); Invite and Bug Report moved to top-left header. Removed keyboard/mouse click suppression and "Highlight my messages" features.
 
-### v2.3 (2026-03-25)
+### v1.4 (2026-03-25)
 - **Fix intermittent "can't see/hear" after extended sessions** — WebRTC `connectionState: disconnected` now triggers an ICE restart after 6 seconds. Firefox, Safari, and mobile browsers often never transition to `failed`, leaving connections silently dead. Previously the peer was simply removed after 20 seconds with no recovery attempt.
 - **WebSocket auto-reconnect** — If the signaling server connection drops (proxy timeout, brief restart, network blip), the client reconnects automatically with exponential backoff (2 s → 30 s cap). The local camera/mic stream is preserved and all peer connections are re-established without a page reload.
 - **Username preserved across reconnects** — Display names no longer reset to "User" when a peer connection is torn down and rebuilt.
 - **Cache-busting for static assets** — `update-vps.sh` now stamps `app.html` asset URLs with the current git commit hash on each deploy, ensuring browsers always load the latest client files.
 
-### v2.2 (2026-02-18)
+### v1.3 (2026-02-18)
 - **Typing Attenuation** - Dedicated keyboard and mouse click suppression using transient/energy-ratio detection
 - **Microphone Device Selector** - Switch input device live (supports NVIDIA Broadcast, RTX Voice, Krisp, etc.)
 - **Version display** - App version shown in status bar footer
@@ -487,14 +487,14 @@ MIT License - feel free to use for personal or commercial projects!
 - Fixed outgoing audio distortion (click suppression now skips during active speech)
 - Fixed mobile users hearing glitchy audio from desktop users
 
-### v2.1.1 (2026-02-05)
+### v1.2.1 (2026-02-05)
 - **Firefox Compatibility** - Fixed remote video autoplay issues on Firefox
 - **IRC Bridge Reconnection** - Auto-reconnect when connection drops or server restarts
 - **IRC Bridge DNS Fix** - Added DNS servers to Docker container for hostname resolution
 - **IRC Status Logging** - Real-time connection status in chat and detailed server logs
 - **Video Autoplay Fix** - All remote videos start muted with unmute overlay for browser compatibility
 
-### v2.1 (2026-02)
+### v1.2 (2026-02)
 - **YouTube/Video Streaming** - Share YouTube videos with participants via built-in proxy
 - **AI Noise Suppression** - Adjustable noise gate (1-80%) with real-time mic level visualization
 - **Per-user Volume Controls** - Adjust volume for each remote participant
@@ -504,7 +504,7 @@ MIT License - feel free to use for personal or commercial projects!
 - Fixed audio track handling during video streaming
 - Fixed new users joining during active stream
 
-### v2.0 (2026-02)
+### v1.1 (2026-02)
 - Multi-domain SSL certificate auto-discovery
 - On-demand IRC bridge (only connects when needed)
 - Verbose SSL certificate logging with domain info
