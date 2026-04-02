@@ -60,6 +60,7 @@ class ConferenceClient {
         this.micConstantlyActiveCount = 0;
         this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
         this.micActiveWarningShown = false;
+        this.hotMicCooldownUntil = 0;
 
         this.initUI();
     }
@@ -156,7 +157,9 @@ class ConferenceClient {
         document.getElementById('changelogOverlay').addEventListener('click', () => this.toggleChangelog());
         document.getElementById('hotMicDismissBtn').addEventListener('click', () => {
             this.hideMicActiveWarning();
-            this.micActiveWarningShown = true; // treat dismiss as "don't show again this session"
+            this.hotMicCooldownUntil = Date.now() + 60000; // suppress for 60s after dismiss
+            const lc = document.getElementById('localContainer');
+            if (lc) lc._hotMicBuffer = []; // reset buffer so re-trigger requires fresh 10s of noise
         });
         document.getElementById('hotMicEnableNoiseBtn').addEventListener('click', () => {
             this.hideMicActiveWarning();
@@ -775,20 +778,26 @@ class ConferenceClient {
                     containerElement.classList.remove('speaking');
                 }
 
-                // Hot mic detection — local stream only, noise suppression off, mic not muted
-                const HOT_MIC_THRESHOLD = 60;
+                // Hot mic / background noise detection — local stream only, noise suppression off
                 if (containerElement.id === 'localContainer' && !this.noiseSuppressionEnabled && this.audioEnabled) {
-                    if (average > HOT_MIC_THRESHOLD) {
-                        containerElement._hotMicCount = (containerElement._hotMicCount || 0) + 1;
-                        // 4 seconds of sustained loud audio (16 × 250ms)
-                        if (containerElement._hotMicCount >= 16 && !this.micActiveWarningShown) {
+                    // Rolling 10-second buffer (40 samples × 250ms)
+                    if (!containerElement._hotMicBuffer) containerElement._hotMicBuffer = [];
+                    const buf = containerElement._hotMicBuffer;
+                    buf.push(average);
+                    if (buf.length > 40) buf.shift();
+
+                    if (buf.length >= 40) {
+                        // "Loud" = above normal speech floor; "silent" = genuinely quiet
+                        const loudCount  = buf.filter(v => v > 25).length;
+                        const silentCount = buf.filter(v => v < 8).length;
+                        // Background noise: 70%+ of samples are loud AND fewer than 10% are silent
+                        // Speech has natural pauses so silentCount stays higher
+                        const isBgNoise = loudCount / 40 > 0.70 && silentCount / 40 < 0.10;
+
+                        if (isBgNoise && !this.micActiveWarningShown && Date.now() > this.hotMicCooldownUntil) {
                             this.showMicActiveWarning();
-                        }
-                    } else {
-                        containerElement._hotMicCount = 0;
-                        if (this.micActiveWarningShown) {
+                        } else if (!isBgNoise && this.micActiveWarningShown) {
                             this.hideMicActiveWarning();
-                            this.micActiveWarningShown = false;
                         }
                     }
                 }
