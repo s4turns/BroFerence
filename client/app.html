@@ -161,6 +161,16 @@
             </div>
         </div>
 
+        <!-- Hot mic warning toast -->
+        <div id="micActiveWarning" class="hotmic-warning hidden">
+            <span class="hotmic-icon">🎤</span>
+            <div class="hotmic-text">
+                <strong>Hot mic!</strong> Your microphone is transmitting loud background audio.
+                <button id="hotMicEnableNoiseBtn" class="hotmic-action">Enable Noise Suppression</button>
+            </div>
+            <button id="hotMicDismissBtn" class="hotmic-dismiss" title="Dismiss">✕</button>
+        </div>
+
         <!-- Main Conference Screen -->
         <div id="conferenceScreen" class="conference-screen" style="display:none;">
             <!-- Video Grid -->

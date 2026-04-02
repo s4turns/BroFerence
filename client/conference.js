@@ -154,6 +154,16 @@ class ConferenceClient {
         document.getElementById('changelogBtn').addEventListener('click', () => this.toggleChangelog());
         document.getElementById('closeChangelogBtn').addEventListener('click', () => this.toggleChangelog());
         document.getElementById('changelogOverlay').addEventListener('click', () => this.toggleChangelog());
+        document.getElementById('hotMicDismissBtn').addEventListener('click', () => {
+            this.hideMicActiveWarning();
+            this.micActiveWarningShown = true; // treat dismiss as "don't show again this session"
+        });
+        document.getElementById('hotMicEnableNoiseBtn').addEventListener('click', () => {
+            this.hideMicActiveWarning();
+            this.micActiveWarningShown = true;
+            this.toggleOptionsMenu();
+            this.toggleNoiseSuppression();
+        });
 
         // Hide noise suppression on mobile (causes issues)
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -763,6 +773,24 @@ class ConferenceClient {
                     containerElement.classList.add('speaking');
                 } else {
                     containerElement.classList.remove('speaking');
+                }
+
+                // Hot mic detection — local stream only, noise suppression off, mic not muted
+                const HOT_MIC_THRESHOLD = 60;
+                if (containerElement.id === 'localContainer' && !this.noiseSuppressionEnabled && this.audioEnabled) {
+                    if (average > HOT_MIC_THRESHOLD) {
+                        containerElement._hotMicCount = (containerElement._hotMicCount || 0) + 1;
+                        // 4 seconds of sustained loud audio (16 × 250ms)
+                        if (containerElement._hotMicCount >= 16 && !this.micActiveWarningShown) {
+                            this.showMicActiveWarning();
+                        }
+                    } else {
+                        containerElement._hotMicCount = 0;
+                        if (this.micActiveWarningShown) {
+                            this.hideMicActiveWarning();
+                            this.micActiveWarningShown = false;
+                        }
+                    }
                 }
 
                 setTimeout(checkAudioLevel, 250);

@@ -2326,6 +2326,83 @@ body::before {
     opacity: 1;
 }
 
+/* Hot mic warning toast */
+.hotmic-warning {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #1a0000;
+    border: 2px solid var(--danger, #ff0040);
+    box-shadow: 0 0 20px rgba(255, 0, 64, 0.5), 0 4px 16px rgba(0,0,0,0.6);
+    padding: 10px 14px;
+    max-width: 520px;
+    width: calc(100vw - 32px);
+    animation: hotmic-pulse 1.5s ease-in-out infinite;
+}
+
+.hotmic-warning.hidden {
+    display: none;
+}
+
+@keyframes hotmic-pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 0, 64, 0.5), 0 4px 16px rgba(0,0,0,0.6); }
+    50%       { box-shadow: 0 0 35px rgba(255, 0, 64, 0.85), 0 4px 16px rgba(0,0,0,0.6); }
+}
+
+.hotmic-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.hotmic-text {
+    flex: 1;
+    font-size: 13px;
+    color: #ffcccc;
+    line-height: 1.5;
+}
+
+.hotmic-text strong {
+    color: #ff6680;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.hotmic-action {
+    display: inline-block;
+    margin-top: 5px;
+    padding: 3px 10px;
+    background: var(--danger, #ff0040);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.hotmic-action:hover {
+    background: #ff3366;
+}
+
+.hotmic-dismiss {
+    background: none;
+    border: none;
+    color: #ff6680;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 4px;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.hotmic-dismiss:hover {
+    opacity: 1;
+}
+
 /* Changelog modal */
 #changelogBtn {
     cursor: pointer;
