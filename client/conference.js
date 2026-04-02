@@ -2254,7 +2254,7 @@ class ConferenceClient {
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
-            document.getElementById('shareTabBtn').classList.remove('active');
+            document.getElementById('shareTabBtn')?.classList.remove('active');
 
             // Restore avatar if video is off
             if (!this.videoEnabled) {
