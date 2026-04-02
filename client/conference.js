@@ -1337,14 +1337,6 @@ class ConferenceClient {
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
-            // Enable AI noise suppression by default (desktop only - can cause issues on mobile)
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            if (!isMobile) {
-                this.toggleNoiseSuppression().catch(err => {
-                    console.warn('Noise suppression not available:', err);
-                });
-            }
-
             // Create or join room
             this.sendMessage({
                 type: 'create-room',
@@ -2419,9 +2411,14 @@ class ConferenceClient {
             const screenSource = audioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
             const dest = audioCtx.createMediaStreamDestination();
 
-            // Connect both sources to the destination (mixes them)
-            micSource.connect(dest);
-            screenSource.connect(dest);
+            // Individual gain nodes for independent volume control
+            this.micGainNode = audioCtx.createGain();
+            this.screenGainNode = audioCtx.createGain();
+
+            micSource.connect(this.micGainNode);
+            this.micGainNode.connect(dest);
+            screenSource.connect(this.screenGainNode);
+            this.screenGainNode.connect(dest);
 
             const mixedTrack = dest.stream.getAudioTracks()[0];
 
@@ -2435,6 +2432,29 @@ class ConferenceClient {
 
             this.screenAudioContext = audioCtx;
             this.screenMixedTrack = mixedTrack;
+
+            // Show audio mixer UI and wire sliders
+            const mixer = document.getElementById('screenAudioMixer');
+            if (mixer) {
+                mixer.classList.remove('hidden');
+                const micSlider = document.getElementById('micGainSlider');
+                const screenSlider = document.getElementById('screenGainSlider');
+                const micVal = document.getElementById('micGainValue');
+                const screenVal = document.getElementById('screenGainValue');
+                micSlider.value = 100;
+                screenSlider.value = 100;
+                micVal.textContent = '100%';
+                screenVal.textContent = '100%';
+                micSlider.oninput = (e) => {
+                    this.micGainNode.gain.value = e.target.value / 100;
+                    micVal.textContent = e.target.value + '%';
+                };
+                screenSlider.oninput = (e) => {
+                    this.screenGainNode.gain.value = e.target.value / 100;
+                    screenVal.textContent = e.target.value + '%';
+                };
+            }
+
             console.log('Screen audio mixed with mic audio');
         } catch (error) {
             console.error('Error mixing screen audio:', error);
@@ -2459,6 +2479,12 @@ class ConferenceClient {
         this.screenAudioContext.close();
         this.screenAudioContext = null;
         this.screenMixedTrack = null;
+        this.micGainNode = null;
+        this.screenGainNode = null;
+
+        const mixer = document.getElementById('screenAudioMixer');
+        if (mixer) mixer.classList.add('hidden');
+
         console.log('Restored original mic audio');
     }
 
