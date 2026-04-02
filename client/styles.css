@@ -2326,6 +2326,81 @@ body::before {
     opacity: 1;
 }
 
+/* Changelog modal */
+#changelogBtn {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+#changelogBtn:hover {
+    color: var(--secondary);
+}
+
+#changelogModal {
+    width: 480px;
+    max-width: 92vw;
+}
+
+.changelog-body {
+    padding: 4px 0 12px;
+    overflow-y: auto;
+    max-height: calc(85vh - 60px);
+}
+
+.changelog-version {
+    padding: 14px 20px 10px;
+    border-bottom: 1px solid var(--gray-light);
+}
+
+.changelog-version:last-child {
+    border-bottom: none;
+}
+
+.changelog-version-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.changelog-tag {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    text-shadow: var(--glow);
+}
+
+.changelog-date {
+    font-size: 11px;
+    color: var(--primary);
+    opacity: 0.5;
+}
+
+.changelog-version ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.changelog-version ul li {
+    font-size: 12px;
+    color: var(--primary);
+    opacity: 0.85;
+    padding-left: 12px;
+    position: relative;
+    line-height: 1.5;
+}
+
+.changelog-version ul li::before {
+    content: '—';
+    position: absolute;
+    left: 0;
+    opacity: 0.4;
+}
+
 /* Screen share audio mixer */
 .screen-audio-mixer {
     position: absolute;

@@ -242,13 +242,140 @@
             <span id="statusText">Disconnected</span>
             <div class="status-footer">
                 <span class="powered-by">Powered by BLCKND</span>
-                <span class="app-version">v2.5</span>
+                <span class="app-version" id="changelogBtn" title="View changelog">v2.5</span>
                 <a href="https://github.com/s4turns/BroFerence" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
                     <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                     </svg>
                 </a>
             </div>
+        </div>
+    </div>
+
+    <!-- Changelog Modal -->
+    <div id="changelogOverlay" class="options-overlay hidden"></div>
+    <div id="changelogModal" class="options-menu hidden">
+        <div class="options-header">
+            <h3>Changelog</h3>
+            <button id="closeChangelogBtn" class="btn-icon">✕</button>
+        </div>
+        <div class="changelog-body">
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.5</span>
+                    <span class="changelog-date">2026-04-01</span>
+                </div>
+                <ul>
+                    <li>Per-participant hide video — disables inbound track decoding to save CPU/GPU</li>
+                    <li>DEFCON button — toggle all video feeds off/on instantly</li>
+                    <li>Screen share audio mixer — independent mic and desktop audio gain sliders</li>
+                    <li>Hardware codec preference — H.264 → VP9 → AV1 → VP8</li>
+                    <li>Corporate (Teams) theme</li>
+                    <li>AI Noise Suppression off by default</li>
+                    <li>TURN external-ip auto-detection; removed relay-only ICE policy</li>
+                    <li>PBKDF2-HMAC-SHA256 room password hashing</li>
+                    <li>XSS / security hardening across client and server</li>
+                    <li>Fixed stats monitoring interval leak on reconnect</li>
+                    <li>Fixed null crash when stopping screen share via browser UI</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.4</span>
+                    <span class="changelog-date">2026-03-25</span>
+                </div>
+                <ul>
+                    <li>Low Bandwidth Mode — 480p/15fps, capped bitrates, mobile auto-enable</li>
+                    <li>Moderator succession — role transfers automatically on mod leave</li>
+                    <li>iOS/Safari fix — zero relay candidates now falls back to direct P2P</li>
+                    <li>WebSocket reconnect no longer drops healthy peers</li>
+                    <li>Prejoin defaults — mic on, camera off</li>
+                    <li>Prejoin ON/OFF labels on mic, camera, and low bandwidth buttons</li>
+                    <li>UI cleanup — chat, invite, and bug report moved to header</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.3</span>
+                    <span class="changelog-date">2026-03-25</span>
+                </div>
+                <ul>
+                    <li>ICE restart after 6s disconnected — fixes silent dead connections on Firefox/Safari/mobile</li>
+                    <li>WebSocket auto-reconnect with exponential backoff (2s → 30s)</li>
+                    <li>Username preserved across reconnects</li>
+                    <li>Cache-busting — asset URLs stamped with git commit hash on deploy</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.2</span>
+                    <span class="changelog-date">2026-02-18</span>
+                </div>
+                <ul>
+                    <li>Microphone device selector — switch live (NVIDIA Broadcast, RTX Voice, Krisp)</li>
+                    <li>Version display in status bar footer</li>
+                    <li>Fixed scratchy audio from Math.exp in audio worklet hot path</li>
+                    <li>Fixed outgoing audio distortion during click suppression</li>
+                    <li>Fixed glitchy audio for mobile users</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.1.1</span>
+                    <span class="changelog-date">2026-02-05</span>
+                </div>
+                <ul>
+                    <li>Firefox remote video autoplay fix</li>
+                    <li>IRC bridge auto-reconnect on drop</li>
+                    <li>IRC bridge DNS fix in Docker</li>
+                    <li>Remote video starts muted with unmute overlay for browser compatibility</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.1</span>
+                    <span class="changelog-date">2026-02</span>
+                </div>
+                <ul>
+                    <li>YouTube/Video streaming — share with participants via built-in proxy</li>
+                    <li>AI Noise Suppression — adjustable noise gate with mic level visualization</li>
+                    <li>Per-user volume controls</li>
+                    <li>Theme selector — Matrix, Cyberpunk, Ocean, Sunset, Amber</li>
+                    <li>Screen share with audio</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v2.0</span>
+                    <span class="changelog-date">2026-02</span>
+                </div>
+                <ul>
+                    <li>Multi-domain SSL certificate auto-discovery</li>
+                    <li>On-demand IRC bridge</li>
+                    <li>Dynamic hostname detection in update script</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v1.0</span>
+                    <span class="changelog-date">2026-01</span>
+                </div>
+                <ul>
+                    <li>Initial release — multi-participant video conferencing</li>
+                    <li>TURN server integration</li>
+                    <li>IRC chat bridge</li>
+                    <li>Matrix-style retro UI</li>
+                </ul>
+            </div>
+
         </div>
     </div>
 

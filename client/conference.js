@@ -151,6 +151,9 @@ class ConferenceClient {
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
+        document.getElementById('changelogBtn').addEventListener('click', () => this.toggleChangelog());
+        document.getElementById('closeChangelogBtn').addEventListener('click', () => this.toggleChangelog());
+        document.getElementById('changelogOverlay').addEventListener('click', () => this.toggleChangelog());
 
         // Hide noise suppression on mobile (causes issues)
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -2872,6 +2875,11 @@ class ConferenceClient {
         const optionsOverlay = document.getElementById('optionsOverlay');
         optionsMenu.classList.toggle('hidden');
         optionsOverlay.classList.toggle('hidden');
+    }
+
+    toggleChangelog() {
+        document.getElementById('changelogModal').classList.toggle('hidden');
+        document.getElementById('changelogOverlay').classList.toggle('hidden');
     }
 
     async toggleNoiseSuppression() {
