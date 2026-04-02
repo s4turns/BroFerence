@@ -271,6 +271,14 @@ class ConferenceClient {
         const hidden = container.classList.toggle('video-hidden');
         btn.textContent = hidden ? '🙈' : '📹';
         btn.title = hidden ? 'Show Video' : 'Hide Video';
+
+        // Disable the inbound video track so the browser skips decoding
+        const videoEl = container.querySelector('video');
+        if (videoEl && videoEl.srcObject) {
+            videoEl.srcObject.getVideoTracks().forEach(track => {
+                track.enabled = !hidden;
+            });
+        }
     }
 
     toggleDefcon() {
