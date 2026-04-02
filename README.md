@@ -10,7 +10,7 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Real-time text chat** - In-app messaging with IRC bridge support
 - **Password-protected rooms** - Secure your private meetings
 - **YouTube/Video streaming** - Share YouTube videos or direct video URLs with participants (Watch Together)
-- **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization
+- **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization (off by default, enable via options)
 - **Microphone Selector** - Switch input device live, including NVIDIA Broadcast / RTX Voice
 - **Low Bandwidth Mode** - Reduces video to 480p/15fps and caps bitrate for mobile or slow connections
 - **Moderator succession** - Moderator role auto-transfers to the next user by join order when mod leaves
@@ -18,10 +18,14 @@ A complete multi-participant WebRTC video conferencing application with Python s
 - **Speaking indicator** - Glowing ring shows who's talking
 - **Connection quality indicator** - Signal bars showing RTT and packet loss
 - **Per-user volume controls** - Adjust volume for each participant individually
+- **Per-participant hide video** - Hide any remote stream with one click; disables track decoding to save CPU/GPU
+- **DEFCON button** - Toggle all video feeds off/on instantly
+- **Screen share audio mixer** - Independent mic and desktop audio sliders when sharing with audio
+- **Hardware codec preference** - Prefers H.264 → VP9 → AV1 → VP8 for hardware-accelerated encoding/decoding
 - **User avatars** - Shows user initial when video is off
 - **Spotlight mode** - Click any video to fullscreen it
 - **Screen sharing** - Share your screen with audio support
-- **Theme selector** - Multiple color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
+- **Theme selector** - Multiple color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate)
 - **Mobile optimized** - Tap-to-unmute for mobile browsers
 - **Dynamic configuration** - Auto-detects localhost vs production
 - **Retro terminal aesthetic** - Customizable color themes
@@ -128,6 +132,9 @@ Access at: **https://your-domain.com/app.html**
 - **Settings** - Access noise suppression, low bandwidth mode, theme selector, and leave room
 - **Spotlight** - Click any participant's video to fullscreen it
 - **Volume Control** - Hover over any participant to adjust their volume
+- **Hide Video** (📹) - Click on any remote participant's controls to hide their video and stop decoding it; click again to restore
+- **DEFCON** (📵/📺) - Toggle all video feeds off or back on with one click
+- **Screen Audio Mixer** - When screen sharing with audio, a mic and desktop audio slider appears on your local tile
 
 ### Invite Links
 
@@ -443,6 +450,19 @@ MIT License - feel free to use for personal or commercial projects!
 - IRC bridge for retro chat integration
 
 ## Recent Updates
+
+### v2.5 (2026-04-01)
+- **Per-participant hide video** — 📹 button on each remote stream hides the video and disables the inbound track so the browser skips decoding entirely, reducing CPU/GPU load (closes #16)
+- **DEFCON button** — 📵 toggle in the toolbar kills all video feeds at once; click 📺 to restore. Useful when bandwidth drops or you need to go audio-only fast
+- **Screen share audio mixer** — When screen sharing with system audio, a mixer strip appears on your local tile with independent 🎤 mic and 🖥️ desktop audio sliders (0–100%). Resolves the common issue of desktop audio drowning out voice (issue #7)
+- **Hardware codec preference** — `setPreferredCodecs()` reorders transceivers to prefer H.264 → VP9 → AV1 → VP8, enabling hardware-accelerated encode/decode where supported and reducing software decoder CPU usage
+- **Corporate (Teams) theme** — Flat dark design with Segoe UI, purple accent (`#6264a7`), no CRT scanlines. Available in the theme selector as "Corporate"
+- **AI Noise Suppression off by default** — No longer auto-enabled on join; enable manually via the options menu if desired
+- **TURN server: external-ip auto-detection** — `update-vps.sh` now sets `external-ip` in coturn config using `curl -4 ifconfig.me`, fixing hairpin relay failures behind NAT. Removed `iceTransportPolicy: relay` (RFC 5766 §9.2 mandates 403 when peer IP matches server IP)
+- **PBKDF2 password hashing** — Room passwords now use PBKDF2-HMAC-SHA256 with a random 16-byte salt (260k iterations) and `hmac.compare_digest` for timing-safe comparison, replacing plain SHA-256
+- **XSS / security hardening** — All user-controlled strings sanitized before DOM insertion; `linkifyText` escapes non-URL segments; URL validation added to `streamDirectVideo`; stack traces no longer leak in HTTP error responses; YouTube proxy SSRF protection hardened
+- **Stats monitoring interval leak fix** — `startStatsMonitoring` now clears any existing interval for a peer before starting a new one, preventing duplicate polling on reconnect
+- **Null crash on screen share stop** — Fixed crash when stopping screen share via the browser's native "Stop sharing" button (`shareTabBtn` optional chaining)
 
 ### v2.4 (2026-03-25)
 - **Low Bandwidth Mode** — New toggle (auto-enabled on mobile) caps video to 480p/15fps, video bitrate to 200kbps, and audio to 32kbps. Can also be toggled from the prejoin screen and the Options menu.
