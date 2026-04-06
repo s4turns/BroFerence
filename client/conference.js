@@ -1374,6 +1374,9 @@ class ConferenceClient {
                 this.videoEnabled = this.prejoinVideoEnabled;
                 this.localVideo.srcObject = this.localStream;
 
+                // Set up persistent mic audio chain
+                await this.setupMicAudioChain();
+
                 // Start monitoring for speaking indicator
                 this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
 
@@ -1420,6 +1423,12 @@ class ConferenceClient {
 
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
+
+            // Auto-enable AI noise suppression on desktop
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (!isMobile) {
+                try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
+            }
 
             // Create or join room
             this.sendMessage({
