@@ -58,7 +58,7 @@ class ConferenceClient {
         this.processedStream = null;
 
         // Noise gate configuration
-        this.noiseGateThreshold = this.loadNoiseGateSetting('threshold', 15); // Default 15% (half of max 30)
+        this.noiseGateThreshold = this.loadNoiseGateSetting('threshold', 25); // Default 25%
         this.micConstantlyActiveCount = 0;
         this.micConstantlyActiveThreshold = 300; // ~5 seconds of constant activity (60fps * 5)
         this.micActiveWarningShown = false;
