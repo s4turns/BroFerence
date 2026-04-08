@@ -71,6 +71,44 @@ class ConferenceClient {
         return 'client_' + Math.random().toString(36).substr(2, 9);
     }
 
+    playJoinSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const gain = ctx.createGain();
+            gain.connect(ctx.destination);
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.15);
+            osc.connect(gain);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.4);
+            osc.onended = () => ctx.close();
+        } catch (e) { /* audio not available */ }
+    }
+
+    playLeaveSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const gain = ctx.createGain();
+            gain.connect(ctx.destination);
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(900, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.2);
+            osc.connect(gain);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.4);
+            osc.onended = () => ctx.close();
+        } catch (e) { /* audio not available */ }
+    }
+
     initICEServers() {
         // Dynamic ICE server configuration based on hostname
         const hostname = window.location.hostname;
@@ -501,6 +539,7 @@ class ConferenceClient {
                 // Store the username for when we receive their offer
                 this.pendingUsernames.set(message.clientId, message.username);
                 this.addChatMessage('System', `${message.username} joined the room`, true);
+                this.playJoinSound();
                 // Wait for them to send offer
                 break;
 
@@ -508,6 +547,7 @@ class ConferenceClient {
                 this.turnFailedPeers.delete(message.clientId);
                 this.removePeerConnection(message.clientId);
                 this.addChatMessage('System', `${message.username} left the room`, true);
+                this.playLeaveSound();
                 this.updateRoomInfo(this.peerConnections.size + 1);
                 break;
 
