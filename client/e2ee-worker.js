@@ -16,7 +16,12 @@ self.onrtctransform = (event) => {
     const { operation } = event.transformer.options;
     const transform = new TransformStream({
         async transform(frame, controller) {
-            if (!cryptoKey) { controller.enqueue(frame); return; }
+            if (!cryptoKey) {
+                    // Encrypt: pass through so outbound frames still flow
+                    // Decrypt: drop — passing ciphertext to the decoder corrupts its state
+                    if (operation === 'encrypt') controller.enqueue(frame);
+                    return;
+                }
             try {
                 if (operation === 'encrypt') {
                     const iv = crypto.getRandomValues(new Uint8Array(12));

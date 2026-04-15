@@ -759,6 +759,11 @@ class ConferenceClient {
                 // E2EE: handle mid-session join when encryption is already active
                 if (message.e2eeEnabled) {
                     this.e2eeEnabled = true;
+                    // Create the worker now (without a key) so that pc.ontrack can attach
+                    // decrypt transforms before the room key arrives. Without this, ontrack
+                    // fires with e2eeWorker=null and no transform is attached, causing
+                    // encrypted frames to reach the decoder as garbage.
+                    this.initMediaE2EEWorker();
                 }
 
                 this.updateE2EEUI();
