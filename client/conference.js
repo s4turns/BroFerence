@@ -1913,10 +1913,22 @@ class ConferenceClient {
         // Handle ICE candidates
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                // Strip raddr/rport from relay candidates before forwarding via signaling —
+                // these fields reveal the real public IP even in relay-only mode.
+                let candidate = event.candidate;
+                if (candidate.candidate && candidate.candidate.includes('typ relay')) {
+                    const sanitized = candidate.candidate.replace(/\s+raddr\s+\S+\s+rport\s+\d+/g, '');
+                    candidate = new RTCIceCandidate({
+                        candidate: sanitized,
+                        sdpMid: candidate.sdpMid,
+                        sdpMLineIndex: candidate.sdpMLineIndex,
+                        usernameFragment: candidate.usernameFragment
+                    });
+                }
                 this.sendMessage({
                     type: 'ice-candidate',
                     targetId: peerId,
-                    data: event.candidate
+                    data: candidate
                 });
             }
         };
