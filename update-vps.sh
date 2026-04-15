@@ -42,8 +42,14 @@ sed -i "s/^user=webrtc:.*/user=webrtc:${TURN_PASSWORD}/" config/turnserver.produ
 if grep -q "^external-ip=" config/turnserver.production.conf; then
     sed -i "s/^external-ip=.*/external-ip=${EXTERNAL_IP}/" config/turnserver.production.conf
 else
-    # Add external-ip after listening-ip line
     sed -i "/^listening-ip=/a external-ip=${EXTERNAL_IP}" config/turnserver.production.conf
+fi
+
+# Update allowed-peer-ip to match external-ip (enables hairpin relay)
+if grep -q "^allowed-peer-ip=" config/turnserver.production.conf; then
+    sed -i "s/^allowed-peer-ip=.*/allowed-peer-ip=${EXTERNAL_IP}/" config/turnserver.production.conf
+else
+    sed -i "/^external-ip=/a allowed-peer-ip=${EXTERNAL_IP}" config/turnserver.production.conf
 fi
 echo "Updated config/turnserver.production.conf"
 
