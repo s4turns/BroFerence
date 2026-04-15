@@ -260,7 +260,8 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
             'password': hash_password(password) if password else None,
             'irc_channel': irc_channel,
             'moderator': moderator_id,  # First user to create the room becomes moderator
-            'banned': set()  # Set of banned client IDs
+            'banned': set(),  # Set of banned client IDs
+            'e2ee_enabled': False
         }
 
         # Initialize IRC bridge if channel specified and not already connected
@@ -412,7 +413,8 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         'hasPassword': rooms[room_id]['password'] is not None,
         'ircChannel': rooms[room_id].get('irc_channel'),
         'isModerator': is_moderator,
-        'moderatorId': rooms[room_id]['moderator']
+        'moderatorId': rooms[room_id]['moderator'],
+        'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False)
     }))
 
     # Notify others in room
@@ -611,7 +613,21 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'audioEnabled': audio_enabled
                 }, exclude=websocket)
 
-        elif msg_type in ['offer', 'answer', 'ice-candidate']:
+        elif msg_type == 'e2ee-toggle':
+            # Moderator toggling end-to-end encryption for the room
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+
+            if room and rooms[room]['moderator'] == client_id:
+                rooms[room]['e2ee_enabled'] = data.get('enabled', False)
+                await broadcast_to_room(room, {
+                    'type': 'e2ee-toggle',
+                    'clientId': client_id,
+                    'enabled': rooms[room]['e2ee_enabled']
+                })
+
+        elif msg_type in ['offer', 'answer', 'ice-candidate', 'public-key', 'e2ee-room-key']:
             # WebRTC signaling messages - relay to target peer
             target_id = data.get('targetId')
             sender_id = clients[websocket]['id']

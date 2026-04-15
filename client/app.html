@@ -54,6 +54,10 @@
                         <span class="toggle-label">📶 Low Bandwidth Mode</span>
                         <span class="toggle-status">OFF</span>
                     </button>
+                    <button id="e2eeToggleBtn" class="options-item options-toggle" data-enabled="false" style="display:none;">
+                        <span class="toggle-label">🔒 End-to-End Encryption</span>
+                        <span class="toggle-status">OFF</span>
+                    </button>
                     <div id="noiseGateSettings" class="noise-gate-settings hidden">
                         <div class="noise-gate-header">
                             <span>🎚️ Noise Gate Settings</span>
@@ -232,7 +236,7 @@
             <!-- Chat Sidebar -->
             <div class="chat-sidebar hidden" id="chatSidebar">
                 <div class="chat-header">
-                    <h3>💬 Chat</h3>
+                    <h3>💬 Chat <span id="e2eeStatusIndicator" class="e2ee-status-indicator hidden" title="End-to-end encrypted">🔒</span></h3>
                     <button id="toggleChatBtn" class="btn-icon">✕</button>
                 </div>
 

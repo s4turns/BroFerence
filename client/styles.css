@@ -2519,4 +2519,32 @@ body::before {
     gap: 16px;
 }
 
+/* E2EE */
+.e2ee-status-indicator {
+    font-size: 12px;
+    margin-left: 4px;
+    opacity: 0.5;
+    vertical-align: middle;
+    transition: opacity 0.3s;
+}
+.e2ee-status-indicator.e2ee-active {
+    opacity: 1;
+    filter: drop-shadow(0 0 4px var(--primary));
+}
+.e2ee-lock-badge {
+    font-size: 10px;
+    margin-left: 4px;
+    opacity: 0.75;
+}
+.chat-message.e2ee-message {
+    border-left: 2px solid var(--secondary);
+    padding-left: 6px;
+}
+.chat-message.e2ee-failed {
+    opacity: 0.55;
+    font-style: italic;
+    border-left: 2px solid var(--danger);
+    padding-left: 6px;
+}
+
 
