@@ -351,14 +351,11 @@ class ConferenceClient {
     }
 
     initICEServers() {
-        // Dynamic ICE server configuration based on hostname
         const hostname = window.location.hostname;
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
-
-        // Use localhost for local development, actual hostname for production
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
-        const turnConfig = {
+        const localTurnConfig = {
             urls: [
                 `turn:${turnServer}:3479`,
                 `turn:${turnServer}:3479?transport=tcp`
@@ -367,19 +364,30 @@ class ConferenceClient {
             credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
         };
 
-        // All candidate types. iceTransportPolicy:'relay' cannot be used with a single
-        // coturn server — coturn blocks CREATE_PERMISSION to its own external IP (403),
-        // making hairpin relay impossible. All-candidates lets ICE use TURN where needed.
-        this.iceServers = {
+        // Default fallback: local coturn + STUN, all candidate types
+        this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                turnConfig
+                localTurnConfig
             ]
         };
+        this.iceServers = this.iceServersFallback;
 
-        this.iceServersFallback = this.iceServers;
-
-        console.log('ICE servers configured (STUN + TURN, all candidate types)');
+        // Fetch Metered.ca TURN credentials asynchronously.
+        // These will be ready long before the user joins a room.
+        fetch('https://blcknd.metered.live/api/v1/turn/credentials?apiKey=0e1c1edef81bb9dcbfa9ce98954f8cb14f4c')
+            .then(r => r.json())
+            .then(iceServers => {
+                // Primary: Metered relay-only — hides real IPs, distributed infra avoids hairpin
+                this.iceServers = {
+                    iceServers,
+                    iceTransportPolicy: 'relay'
+                };
+                console.log('ICE servers configured (Metered.ca relay-only, IP privacy enabled)');
+            })
+            .catch(err => {
+                console.warn('Metered.ca TURN fetch failed, using local TURN fallback:', err);
+            });
     }
 
     initUI() {
