@@ -3958,3 +3958,4 @@ class ConferenceClient {
 
 // Initialize the conference client (constructor has side effects - sets up event listeners)
 const _client = new ConferenceClient();
+window._client = _client; // expose for console debugging
