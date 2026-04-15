@@ -234,6 +234,10 @@ class ConferenceClient {
             indicator.classList.toggle('hidden', !this.e2eeEnabled);
             indicator.classList.toggle('e2ee-active', this.e2eeEnabled);
         }
+        const banner = document.getElementById('e2eeBanner');
+        if (banner) {
+            banner.classList.toggle('hidden', !this.e2eeEnabled);
+        }
         const btn = document.getElementById('e2eeToggleBtn');
         if (btn) {
             btn.setAttribute('data-enabled', String(this.e2eeEnabled));
