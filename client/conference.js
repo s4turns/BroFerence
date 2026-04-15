@@ -28,11 +28,11 @@ class ConferenceClient {
 
         // E2EE state
         this.e2eeEnabled = false;
-        this.e2eeKeyPair = null;         // CryptoKeyPair { privateKey, publicKey }
-        this.e2eeRoomKey = null;         // CryptoKey (AES-GCM-256) — shared room key
-        this.peerPublicKeys = new Map(); // Map<clientId, CryptoKey>
-        this.peerSharedKeys = new Map(); // Map<clientId, CryptoKey> per-pair AES-GCM
-        this.e2eePendingRoomKey = false; // true when E2EE is on but room key not yet received
+        this.e2eeKeyPair = null;          // CryptoKeyPair { privateKey, publicKey }
+        this.e2eeRoomKey = null;          // CryptoKey (AES-GCM-256) — shared room key
+        this.peerPublicKeys = new Map();  // Map<clientId, CryptoKey>
+        this.peerSharedKeys = new Map();  // Map<clientId, CryptoKey> per-pair AES-GCM
+        this.pendingRoomKeyData = null;   // { peerId, data } queued if room key arrives before shared key is ready
         this.localStatsInterval = null; // Interval for local connection stats
         this.localStream = null;
         this.screenStream = null;
@@ -79,6 +79,30 @@ class ConferenceClient {
         return 'client_' + Math.random().toString(36).substr(2, 9);
     }
 
+    // --- Crypto helpers ---
+
+    b64ToBytes(b64) {
+        return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    }
+
+    bytesToB64(bytes) {
+        return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    }
+
+    async aesGcmEncrypt(key, data) {
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+        return { iv: this.bytesToB64(iv), ciphertext: this.bytesToB64(new Uint8Array(ciphertext)) };
+    }
+
+    async aesGcmDecrypt(key, encData) {
+        const iv = this.b64ToBytes(encData.iv);
+        const ciphertext = this.b64ToBytes(encData.ciphertext);
+        return window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    }
+
+    // --- E2EE ---
+
     async initE2EE() {
         if (!window.crypto?.subtle) return;
         try {
@@ -96,8 +120,7 @@ class ConferenceClient {
         if (!this.e2eeKeyPair) return;
         try {
             const raw = await window.crypto.subtle.exportKey('raw', this.e2eeKeyPair.publicKey);
-            const pubKeyB64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
-            this.sendMessage({ type: 'public-key', targetId, data: { publicKey: pubKeyB64 } });
+            this.sendMessage({ type: 'public-key', targetId, data: { publicKey: this.bytesToB64(raw) } });
         } catch (e) {
             console.warn('sendPublicKey failed:', e);
         }
@@ -106,11 +129,16 @@ class ConferenceClient {
     async receivePublicKey(peerId, pubKeyB64) {
         if (!this.e2eeKeyPair) return;
         try {
-            const raw = Uint8Array.from(atob(pubKeyB64), c => c.charCodeAt(0));
             const importedKey = await window.crypto.subtle.importKey(
-                'raw', raw, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+                'raw', this.b64ToBytes(pubKeyB64), { name: 'ECDH', namedCurve: 'P-256' }, true, []);
             this.peerPublicKeys.set(peerId, importedKey);
             await this.deriveSharedKey(peerId);
+            // If a room key arrived before the shared key was ready, apply it now
+            if (this.pendingRoomKeyData?.peerId === peerId) {
+                const pending = this.pendingRoomKeyData;
+                this.pendingRoomKeyData = null;
+                await this.receiveRoomKey(pending.peerId, pending.data);
+            }
             if (this.isModerator && this.e2eeEnabled && this.e2eeRoomKey) {
                 await this.sendRoomKeyToPeer(peerId);
             }
@@ -129,10 +157,13 @@ class ConferenceClient {
             const hkdfKey = await window.crypto.subtle.importKey(
                 'raw', ecdhBits, { name: 'HKDF' }, false, ['deriveKey']);
             const sortedIds = [this.clientId, peerId].sort().join(':');
-            const info = new TextEncoder().encode('broference-e2ee-pair-v1:' + sortedIds);
-            const salt = new TextEncoder().encode('broference-e2ee-salt-v1');
+            const enc = new TextEncoder();
             const pairKey = await window.crypto.subtle.deriveKey(
-                { name: 'HKDF', hash: 'SHA-256', salt, info },
+                {
+                    name: 'HKDF', hash: 'SHA-256',
+                    salt: enc.encode('broference-e2ee-salt-v1'),
+                    info: enc.encode('broference-e2ee-pair-v1:' + sortedIds)
+                },
                 hkdfKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
             this.peerSharedKeys.set(peerId, pairKey);
         } catch (e) {
@@ -146,9 +177,8 @@ class ConferenceClient {
     }
 
     async distributeRoomKey() {
-        for (const peerId of this.peerConnections.keys()) {
-            if (this.peerSharedKeys.has(peerId)) await this.sendRoomKeyToPeer(peerId);
-        }
+        const peers = [...this.peerConnections.keys()].filter(id => this.peerSharedKeys.has(id));
+        await Promise.all(peers.map(peerId => this.sendRoomKeyToPeer(peerId)));
     }
 
     async sendRoomKeyToPeer(peerId) {
@@ -156,30 +186,25 @@ class ConferenceClient {
         if (!pairKey || !this.e2eeRoomKey) return;
         try {
             const rawRoomKey = await window.crypto.subtle.exportKey('raw', this.e2eeRoomKey);
-            const iv = window.crypto.getRandomValues(new Uint8Array(12));
-            const ciphertext = await window.crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, pairKey, rawRoomKey);
-            this.sendMessage({ type: 'e2ee-room-key', targetId: peerId, data: {
-                iv: btoa(String.fromCharCode(...iv)),
-                key: btoa(String.fromCharCode(...new Uint8Array(ciphertext)))
-            }});
+            const encrypted = await this.aesGcmEncrypt(pairKey, rawRoomKey);
+            this.sendMessage({ type: 'e2ee-room-key', targetId: peerId, data: encrypted });
         } catch (e) {
             console.warn('sendRoomKeyToPeer failed:', e);
         }
     }
 
     async receiveRoomKey(peerId, data) {
-        if (peerId !== this.moderatorId) return; // only accept from current moderator
+        if (peerId !== this.moderatorId) return;
         const pairKey = this.peerSharedKeys.get(peerId);
-        if (!pairKey) return;
+        if (!pairKey) {
+            // Shared key not ready yet — queue and retry after deriveSharedKey completes
+            this.pendingRoomKeyData = { peerId, data };
+            return;
+        }
         try {
-            const iv = Uint8Array.from(atob(data.iv), c => c.charCodeAt(0));
-            const enc = Uint8Array.from(atob(data.key), c => c.charCodeAt(0));
-            const rawRoomKey = await window.crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv }, pairKey, enc);
+            const rawRoomKey = await this.aesGcmDecrypt(pairKey, data);
             this.e2eeRoomKey = await window.crypto.subtle.importKey(
                 'raw', rawRoomKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-            this.e2eePendingRoomKey = false;
             this.addChatMessage('System', 'Encryption key received. Chat is now end-to-end encrypted.', true);
         } catch (e) {
             console.warn('receiveRoomKey failed:', e);
@@ -187,21 +212,11 @@ class ConferenceClient {
     }
 
     async encryptMessage(text) {
-        const plaintext = new TextEncoder().encode(text);
-        const iv = window.crypto.getRandomValues(new Uint8Array(12));
-        const ciphertext = await window.crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv }, this.e2eeRoomKey, plaintext);
-        return {
-            iv: btoa(String.fromCharCode(...iv)),
-            ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext)))
-        };
+        return this.aesGcmEncrypt(this.e2eeRoomKey, new TextEncoder().encode(text));
     }
 
     async decryptMessage(encData) {
-        const iv = Uint8Array.from(atob(encData.iv), c => c.charCodeAt(0));
-        const ciphertext = Uint8Array.from(atob(encData.ciphertext), c => c.charCodeAt(0));
-        const plaintext = await window.crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv }, this.e2eeRoomKey, ciphertext);
+        const plaintext = await this.aesGcmDecrypt(this.e2eeRoomKey, encData);
         return new TextDecoder().decode(plaintext);
     }
 
@@ -211,16 +226,13 @@ class ConferenceClient {
             if (this.isModerator) {
                 await this.generateRoomKey();
                 await this.distributeRoomKey();
-            } else {
-                this.e2eePendingRoomKey = true;
             }
             this.addChatMessage('System', '🔒 End-to-end encryption enabled.', true);
         } else {
             this.e2eeRoomKey = null;
-            this.e2eePendingRoomKey = false;
             this.addChatMessage('System', '🔓 End-to-end encryption disabled.', true);
         }
-        this.updateE2EEStatus();
+        this.updateE2EEUI();
     }
 
     async toggleE2EE() {
@@ -228,40 +240,32 @@ class ConferenceClient {
         this.sendMessage({ type: 'e2ee-toggle', enabled: !this.e2eeEnabled });
     }
 
-    updateE2EEStatus() {
-        const indicator = document.getElementById('e2eeStatusIndicator');
-        if (indicator) {
-            indicator.classList.toggle('hidden', !this.e2eeEnabled);
-            indicator.classList.toggle('e2ee-active', this.e2eeEnabled);
-        }
-        const banner = document.getElementById('e2eeBanner');
-        if (banner) {
-            banner.classList.toggle('hidden', !this.e2eeEnabled);
-        }
+    updateE2EEUI() {
+        const on = this.e2eeEnabled;
+        document.getElementById('e2eeStatusIndicator')?.classList.toggle('hidden', !on);
+        document.getElementById('e2eeStatusIndicator')?.classList.toggle('e2ee-active', on);
+        document.getElementById('e2eeBanner')?.classList.toggle('hidden', !on);
         const btn = document.getElementById('e2eeToggleBtn');
         if (btn) {
-            btn.setAttribute('data-enabled', String(this.e2eeEnabled));
-            btn.querySelector('.toggle-status').textContent = this.e2eeEnabled ? 'ON' : 'OFF';
+            btn.style.display = this.isModerator ? '' : 'none';
+            btn.setAttribute('data-enabled', String(on));
+            btn.querySelector('.toggle-status').textContent = on ? 'ON' : 'OFF';
         }
     }
 
-    updateE2EEButtonVisibility() {
-        const btn = document.getElementById('e2eeToggleBtn');
-        if (btn) btn.style.display = this.isModerator ? '' : 'none';
-    }
+    // --- Notification sounds ---
 
-    playJoinSound() {
+    playSoundTone(startFreq, endFreq, rampDuration) {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const gain = ctx.createGain();
             gain.connect(ctx.destination);
             gain.gain.setValueAtTime(0.15, ctx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-
             const osc = ctx.createOscillator();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(600, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.15);
+            osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + rampDuration);
             osc.connect(gain);
             osc.start(ctx.currentTime);
             osc.stop(ctx.currentTime + 0.4);
@@ -269,24 +273,8 @@ class ConferenceClient {
         } catch (e) { /* audio not available */ }
     }
 
-    playLeaveSound() {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const gain = ctx.createGain();
-            gain.connect(ctx.destination);
-            gain.gain.setValueAtTime(0.15, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-
-            const osc = ctx.createOscillator();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(900, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.2);
-            osc.connect(gain);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.4);
-            osc.onended = () => ctx.close();
-        } catch (e) { /* audio not available */ }
-    }
+    playJoinSound()  { this.playSoundTone(600, 900, 0.15); }
+    playLeaveSound() { this.playSoundTone(900, 500, 0.2);  }
 
     initICEServers() {
         // Dynamic ICE server configuration based on hostname
@@ -702,21 +690,15 @@ class ConferenceClient {
                     this.addChatMessage('System', 'You are the moderator of this room', true);
                 }
 
-                // E2EE: send our public key to all existing peers
-                for (const user of message.users) {
-                    await this.sendPublicKey(user.id);
-                }
+                // E2EE: send our public key to all existing peers in parallel
+                await Promise.all(message.users.map(u => this.sendPublicKey(u.id)));
 
                 // E2EE: handle mid-session join when encryption is already active
                 if (message.e2eeEnabled) {
                     this.e2eeEnabled = true;
-                    if (!this.isModerator) {
-                        this.e2eePendingRoomKey = true;
-                    }
-                    this.updateE2EEStatus();
                 }
 
-                this.updateE2EEButtonVisibility();
+                this.updateE2EEUI();
 
                 // Send initial video and audio state to other users
                 setTimeout(() => {
@@ -798,7 +780,7 @@ class ConferenceClient {
                     this.isModerator = false;
                     // Remove all mod controls from existing containers
                     document.querySelectorAll('[data-mod-control]').forEach(el => el.remove());
-                    this.updateE2EEButtonVisibility();
+                    this.updateE2EEUI();
                 }
                 // Add crown to the new moderator's label
                 const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
@@ -826,7 +808,7 @@ class ConferenceClient {
                 this.moderatorUsername = this.username;
                 this.addChatMessage('System', 'You are now a moderator! Hover over users to see moderator controls.', true);
                 this.refreshModeratorControls();
-                this.updateE2EEButtonVisibility();
+                this.updateE2EEUI();
                 // Re-key if E2EE was active under the previous moderator
                 if (this.e2eeEnabled) {
                     this.addChatMessage('System', 'Regenerating encryption keys after moderator change...', true);
@@ -3907,9 +3889,8 @@ class ConferenceClient {
         this.e2eeRoomKey = null;
         this.peerPublicKeys.clear();
         this.peerSharedKeys.clear();
-        this.e2eePendingRoomKey = false;
-        this.updateE2EEStatus();
-        this.updateE2EEButtonVisibility();
+        this.pendingRoomKeyData = null;
+        this.updateE2EEUI();
 
         // Close WebSocket connection
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
