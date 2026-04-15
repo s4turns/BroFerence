@@ -367,23 +367,19 @@ class ConferenceClient {
             credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
         };
 
-        // Force TURN relay only — hides real IPs from peers. Coturn is configured with
-        // allowed-peer-ip=<external-ip> to permit hairpin relay (both peers on same server).
-        // If relay fails, reconnectWithFallback() recreates the PC with all candidates (P2P).
+        // All candidate types. iceTransportPolicy:'relay' cannot be used with a single
+        // coturn server — coturn blocks CREATE_PERMISSION to its own external IP (403),
+        // making hairpin relay impossible. All-candidates lets ICE use TURN where needed.
         this.iceServers = {
-            iceServers: [turnConfig],
-            iceTransportPolicy: 'relay'
-        };
-
-        // Fallback: all candidate types if relay is unreachable
-        this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 turnConfig
             ]
         };
 
-        console.log('ICE servers configured (TURN relay-only, hairpin enabled)');
+        this.iceServersFallback = this.iceServers;
+
+        console.log('ICE servers configured (STUN + TURN, all candidate types)');
     }
 
     initUI() {
