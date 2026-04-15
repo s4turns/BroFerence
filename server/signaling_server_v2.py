@@ -561,12 +561,16 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
 
             if room:
                 # Broadcast to WebRTC users
-                await broadcast_to_room(room, {
+                broadcast_msg = {
                     'type': 'chat-message',
                     'username': username,
                     'message': msg_content,
                     'timestamp': asyncio.get_event_loop().time()
-                })
+                }
+                # Pass through E2EE payload opaquely if present
+                if 'encrypted' in data:
+                    broadcast_msg['encrypted'] = data['encrypted']
+                await broadcast_to_room(room, broadcast_msg)
 
                 # Send to IRC if bridged
                 if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
