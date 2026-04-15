@@ -290,10 +290,12 @@ class ConferenceClient {
                 this.applyMediaTransformsToAll();
             }
             this.addChatMessage('System', '🔒 End-to-end encryption enabled.', true);
+            this.speakText('End to end encrypted');
         } else {
             this.e2eeRoomKey = null;
             this.removeMediaTransforms();
             this.addChatMessage('System', '🔓 End-to-end encryption disabled.', true);
+            this.speakText('Encryption disabled');
         }
         this.updateE2EEUI();
     }
@@ -338,6 +340,15 @@ class ConferenceClient {
 
     playJoinSound()  { this.playSoundTone(600, 900, 0.15); }
     playLeaveSound() { this.playSoundTone(900, 500, 0.2);  }
+
+    speakText(text) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.volume = 0.8;
+        u.rate = 1.05;
+        window.speechSynthesis.speak(u);
+    }
 
     initICEServers() {
         // Dynamic ICE server configuration based on hostname
@@ -1923,6 +1934,13 @@ class ConferenceClient {
                 }
                 // Clear TURN failure flag so TURN is retried if they disconnect and reconnect
                 this.turnFailedPeers.delete(peerId);
+                // Re-apply E2EE transforms now that the connection is fully established.
+                // Chrome can reject the worker's pipeTo promise if transforms are set too
+                // early (during ICE negotiation). Re-applying here guarantees the pipeline
+                // is wired correctly on a stable connection.
+                if (this.e2eeEnabled && this.e2eeWorker) {
+                    this.applyMediaTransformsToPeer(peerId);
+                }
             } else if (pc.connectionState === 'failed') {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
                 this.turnFailedPeers.add(peerId);

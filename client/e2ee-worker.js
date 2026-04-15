@@ -62,5 +62,7 @@ self.onrtctransform = (event) => {
             }
         }
     });
-    event.transformer.readable.pipeThrough(transform).pipeTo(event.transformer.writable);
+    // Suppress rejection when this transform is replaced by a newer one (the browser
+    // closes the underlying streams, causing pipeTo to reject with InvalidStateError).
+    event.transformer.readable.pipeThrough(transform).pipeTo(event.transformer.writable).catch(() => {});
 };
