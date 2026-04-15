@@ -33,6 +33,8 @@ class ConferenceClient {
         this.peerPublicKeys = new Map();  // Map<clientId, CryptoKey>
         this.peerSharedKeys = new Map();  // Map<clientId, CryptoKey> per-pair AES-GCM
         this.pendingRoomKeyData = null;   // { peerId, data } queued if room key arrives before shared key is ready
+        this.e2eeWorker = null;           // Web Worker for media frame encryption
+        this.e2eeRawKey = null;           // ArrayBuffer of room key — posted to worker
         this.localStatsInterval = null; // Interval for local connection stats
         this.localStream = null;
         this.screenStream = null;
@@ -174,6 +176,8 @@ class ConferenceClient {
     async generateRoomKey() {
         this.e2eeRoomKey = await window.crypto.subtle.generateKey(
             { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+        this.e2eeRawKey = await window.crypto.subtle.exportKey('raw', this.e2eeRoomKey);
+        this.e2eeWorker?.postMessage({ type: 'set-key', rawKey: this.e2eeRawKey });
     }
 
     async distributeRoomKey() {
@@ -203,8 +207,12 @@ class ConferenceClient {
         }
         try {
             const rawRoomKey = await this.aesGcmDecrypt(pairKey, data);
+            this.e2eeRawKey = rawRoomKey;
             this.e2eeRoomKey = await window.crypto.subtle.importKey(
                 'raw', rawRoomKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+            this.e2eeWorker?.postMessage({ type: 'set-key', rawKey: this.e2eeRawKey });
+            this.initMediaE2EEWorker();
+            this.applyMediaTransformsToAll();
             this.addChatMessage('System', 'Encryption key received. Chat is now end-to-end encrypted.', true);
         } catch (e) {
             console.warn('receiveRoomKey failed:', e);
@@ -220,16 +228,71 @@ class ConferenceClient {
         return new TextDecoder().decode(plaintext);
     }
 
+    // --- Media E2EE (Insertable Streams) ---
+
+    mediaE2EESupported() {
+        return typeof RTCRtpScriptTransform !== 'undefined';
+    }
+
+    initMediaE2EEWorker() {
+        if (this.e2eeWorker || !this.mediaE2EESupported()) return;
+        this.e2eeWorker = new Worker('e2ee-worker.js');
+        if (this.e2eeRawKey) {
+            this.e2eeWorker.postMessage({ type: 'set-key', rawKey: this.e2eeRawKey });
+        }
+    }
+
+    applyMediaTransformsToPeer(peerId) {
+        if (!this.e2eeWorker) return;
+        const peer = this.peerConnections.get(peerId);
+        if (!peer) return;
+        peer.connection.getSenders().forEach(sender => {
+            if (!sender.track) return;
+            try {
+                sender.transform = new RTCRtpScriptTransform(
+                    this.e2eeWorker, { operation: 'encrypt', kind: sender.track.kind });
+            } catch (e) { console.warn('Could not set sender transform:', e); }
+        });
+        peer.connection.getReceivers().forEach(receiver => {
+            if (!receiver.track) return;
+            try {
+                receiver.transform = new RTCRtpScriptTransform(
+                    this.e2eeWorker, { operation: 'decrypt', kind: receiver.track.kind });
+            } catch (e) { console.warn('Could not set receiver transform:', e); }
+        });
+    }
+
+    applyMediaTransformsToAll() {
+        for (const peerId of this.peerConnections.keys()) {
+            this.applyMediaTransformsToPeer(peerId);
+        }
+    }
+
+    removeMediaTransforms() {
+        this.peerConnections.forEach(peer => {
+            peer.connection.getSenders().forEach(s => { try { s.transform = null; } catch {} });
+            peer.connection.getReceivers().forEach(r => { try { r.transform = null; } catch {} });
+        });
+        if (this.e2eeWorker) {
+            this.e2eeWorker.terminate();
+            this.e2eeWorker = null;
+        }
+        this.e2eeRawKey = null;
+    }
+
     async handleE2EEToggle(enabled) {
         this.e2eeEnabled = enabled;
         if (enabled) {
             if (this.isModerator) {
-                await this.generateRoomKey();
+                await this.generateRoomKey();   // also stores e2eeRawKey + posts to worker
+                this.initMediaE2EEWorker();
                 await this.distributeRoomKey();
+                this.applyMediaTransformsToAll();
             }
             this.addChatMessage('System', '🔒 End-to-end encryption enabled.', true);
         } else {
             this.e2eeRoomKey = null;
+            this.removeMediaTransforms();
             this.addChatMessage('System', '🔓 End-to-end encryption disabled.', true);
         }
         this.updateE2EEUI();
@@ -1778,6 +1841,17 @@ class ConferenceClient {
         // Prefer hardware-accelerated codecs (H.264 > VP9 > AV1 > VP8)
         this.setPreferredCodecs(pc);
 
+        // Attach encrypt transforms if E2EE is active
+        if (this.e2eeEnabled && this.e2eeWorker) {
+            pc.getSenders().forEach(sender => {
+                if (!sender.track) return;
+                try {
+                    sender.transform = new RTCRtpScriptTransform(
+                        this.e2eeWorker, { operation: 'encrypt', kind: sender.track.kind });
+                } catch (e) { console.warn('Could not set sender transform:', e); }
+            });
+        }
+
         // Handle incoming tracks
         let streamAdded = false;
         pc.ontrack = (event) => {
@@ -1804,6 +1878,14 @@ class ConferenceClient {
                     console.log('Adding', event.track.kind, 'track directly to existing stream for', peerId);
                     videoEl.srcObject.addTrack(event.track);
                 }
+            }
+
+            // Attach decrypt transform if E2EE is active
+            if (this.e2eeEnabled && this.e2eeWorker) {
+                try {
+                    event.receiver.transform = new RTCRtpScriptTransform(
+                        this.e2eeWorker, { operation: 'decrypt', kind: event.track.kind });
+                } catch (e) { console.warn('Could not set receiver transform:', e); }
             }
         };
 
@@ -3890,6 +3972,7 @@ class ConferenceClient {
         this.peerPublicKeys.clear();
         this.peerSharedKeys.clear();
         this.pendingRoomKeyData = null;
+        this.removeMediaTransforms();
         this.updateE2EEUI();
 
         // Close WebSocket connection
