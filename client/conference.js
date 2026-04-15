@@ -367,22 +367,20 @@ class ConferenceClient {
             credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
         };
 
-        // Primary: force TURN relay only. If relay fails, reconnectWithFallback()
-        // tears down the PC and recreates with iceServersFallback (all candidates).
+        // All candidate types (host, srflx, relay). iceTransportPolicy:'relay' is not used
+        // because RFC 5766 §9.2 + coturn hairpin protection causes 403 Forbidden IP when
+        // both peers are on the same TURN server — relay-only forces a broken fallback loop.
+        // With all candidates, TURN relay is still used for peers that need it; ICE picks best.
         this.iceServers = {
-            iceServers: [turnConfig],
-            iceTransportPolicy: 'relay'
-        };
-
-        // Fallback: all candidate types (host, srflx, relay) — pure P2P if TURN is unreachable
-        this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 turnConfig
             ]
         };
 
-        console.log('ICE servers configured (TURN relay primary, P2P fallback)');
+        this.iceServersFallback = this.iceServers;
+
+        console.log('ICE servers configured (STUN + TURN, all candidate types)');
     }
 
     initUI() {
