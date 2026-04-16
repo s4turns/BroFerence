@@ -49,8 +49,6 @@ class ConferenceClient {
         this.videoEnabled = true;
         this.chatVisible = false;
         this.unreadMessageCount = 0;
-        this.spotlightMode = false;
-        this.spotlightPeerId = null;
         this.clearedMessages = [];
         this.moderatorUsername = null;
         // Prejoin state
@@ -2727,7 +2725,6 @@ class ConferenceClient {
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
-            document.getElementById('shareTabBtn')?.classList.remove('active');
 
             // Restore avatar if video is off
             if (!this.videoEnabled) {
@@ -2788,78 +2785,6 @@ class ConferenceClient {
         } catch (error) {
             if (error.name !== 'NotAllowedError') {
                 console.error('Error sharing YouTube window:', error);
-            }
-        }
-    }
-
-    async shareTabWithAudio() {
-        // If already sharing, stop it
-        if (this.isScreenSharing) {
-            await this.toggleScreenShare();
-            return;
-        }
-
-        try {
-            // Request tab capture specifically with audio
-            // preferCurrentTab hints to browser to show current tab option first
-            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    displaySurface: 'browser', // Prefer browser tab
-                    cursor: 'always'
-                },
-                audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false,
-                    sampleRate: 48000
-                },
-                preferCurrentTab: true, // Chrome 94+ - prefer current tab
-                selfBrowserSurface: 'include', // Chrome 107+ - include current tab
-                systemAudio: 'include' // Include system audio
-            });
-
-            // Check if we got audio
-            const audioTracks = this.screenStream.getAudioTracks();
-            if (audioTracks.length === 0) {
-                console.warn('No audio captured - user may need to check "Share audio" option');
-                this.addChatMessage('System', '⚠️ No audio captured. When sharing, check "Share tab audio" or "Share system audio" option.', true);
-            } else {
-                console.log('Tab audio captured successfully');
-                this.addChatMessage('System', '🎬 Sharing tab with audio', true);
-            }
-
-            // Replace video track in all peer connections
-            const screenVideoTrack = this.screenStream.getVideoTracks()[0];
-            this.peerConnections.forEach(peer => {
-                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(screenVideoTrack);
-                }
-            });
-
-            // Mix tab audio with mic audio and replace audio track (no renegotiation needed)
-            this.mixScreenAudio(this.screenStream);
-
-            // Update local video
-            this.localVideo.srcObject = this.screenStream;
-
-            // Handle stream end
-            screenVideoTrack.onended = () => {
-                this.toggleScreenShare(); // Use existing cleanup logic
-            };
-
-            this.isScreenSharing = true;
-            document.getElementById('shareTabBtn').classList.add('active');
-            document.getElementById('localContainer').classList.remove('no-video');
-
-            console.log('Tab sharing with audio started');
-
-        } catch (error) {
-            console.error('Error sharing tab:', error);
-            if (error.name === 'NotAllowedError') {
-                // User cancelled
-            } else {
-                alert('Could not share tab. Try using "Share Screen" instead.');
             }
         }
     }
@@ -3064,7 +2989,7 @@ class ConferenceClient {
             const peerAudioTrack = peerDest.stream.getAudioTracks()[0];
 
             // Capture video track from element
-            const capturedStream = video.captureStream();
+            const capturedStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
             const videoTrack = capturedStream.getVideoTracks()[0];
 
             // Combine video track with peer audio track
@@ -3605,113 +3530,6 @@ class ConferenceClient {
         } else {
             badge.style.display = 'none';
         }
-    }
-
-    toggleSpotlight(peerId) {
-        if (this.spotlightMode && this.spotlightPeerId === peerId) {
-            // Exit spotlight mode
-            this.exitSpotlightMode();
-        } else {
-            // Enter spotlight mode for this peer
-            this.enterSpotlightMode(peerId);
-        }
-    }
-
-    enterSpotlightMode(peerId) {
-        this.spotlightMode = true;
-        this.spotlightPeerId = peerId;
-
-        // Hide all other video containers (including local)
-        const allContainers = this.videoGrid.querySelectorAll('.video-container');
-        allContainers.forEach(container => {
-            if (container.id === `video-${peerId}`) {
-                container.classList.remove('spotlight-hidden');
-                container.classList.add('spotlight-active');
-            } else {
-                container.classList.add('spotlight-hidden');
-                container.classList.remove('spotlight-active');
-            }
-        });
-
-        // Add exit spotlight button
-        this.addExitSpotlightButton();
-
-        // Change grid layout for spotlight
-        this.videoGrid.classList.add('spotlight-mode');
-    }
-
-    exitSpotlightMode() {
-        this.spotlightMode = false;
-        this.spotlightPeerId = null;
-
-        // Show all video containers
-        const allContainers = this.videoGrid.querySelectorAll('.video-container');
-        allContainers.forEach(container => {
-            container.classList.remove('spotlight-hidden');
-            container.classList.remove('spotlight-active');
-        });
-
-        // Remove exit button
-        const exitBtn = document.getElementById('exitSpotlightBtn');
-        if (exitBtn) exitBtn.remove();
-
-        // Restore grid layout
-        this.videoGrid.classList.remove('spotlight-mode');
-    }
-
-    addExitSpotlightButton() {
-        // Remove existing button if any
-        const existing = document.getElementById('exitSpotlightBtn');
-        if (existing) existing.remove();
-
-        const exitBtn = document.createElement('button');
-        exitBtn.id = 'exitSpotlightBtn';
-        exitBtn.className = 'btn btn-secondary exit-spotlight-btn';
-        exitBtn.innerHTML = '⬅️ Back to Grid';
-        exitBtn.onclick = () => this.exitSpotlightMode();
-
-        this.videoGrid.appendChild(exitBtn);
-    }
-
-    toggleFullscreen() {
-        const videoGrid = this.videoGrid;
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-
-        if (!document.fullscreenElement) {
-            // Enter fullscreen - just the video grid
-            if (videoGrid.requestFullscreen) {
-                videoGrid.requestFullscreen();
-            } else if (videoGrid.webkitRequestFullscreen) {
-                videoGrid.webkitRequestFullscreen(); // Safari
-            } else if (videoGrid.msRequestFullscreen) {
-                videoGrid.msRequestFullscreen(); // IE11
-            }
-            fullscreenBtn.classList.add('active');
-            fullscreenBtn.querySelector('.icon').textContent = '⛶';
-        } else {
-            // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen(); // Safari
-            } else if (document.msExitFullscreen) {
-                document.msExitFullscreen(); // IE11
-            }
-            fullscreenBtn.classList.remove('active');
-            fullscreenBtn.querySelector('.icon').textContent = '⛶';
-        }
-
-        // Listen for fullscreen changes (for when user presses ESC)
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                fullscreenBtn.classList.remove('active');
-            }
-        });
-        document.addEventListener('webkitfullscreenchange', () => {
-            if (!document.webkitFullscreenElement) {
-                fullscreenBtn.classList.remove('active');
-            }
-        });
     }
 
     async sendChatMessage() {
