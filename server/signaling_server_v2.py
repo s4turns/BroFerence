@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # Store connected clients: {websocket: {'id': str, 'room': str, 'username': str}}
 clients: Dict[WebSocketServerProtocol, dict] = {}
 
-# Store rooms: {room_id: {'users': Set[websocket], 'password': Optional[str], 'irc_channel': Optional[str], 'moderator': Optional[str], 'banned': Set[str]}}
+# Store rooms: {room_id: {'users': list[websocket], 'password': Optional[bytes], 'irc_channel': Optional[str],
+#               'moderator': Optional[str], 'co_mods': set[str], 'banned': set[str], 'e2ee_enabled': bool}}
 rooms: Dict[str, dict] = {}
 
 # IRC bridge instance
@@ -256,11 +257,12 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
     """Create a new room."""
     if room_id not in rooms:
         rooms[room_id] = {
-            'users': [],  # Ordered list — join order determines moderator succession
+            'users': [],        # Ordered list — join order determines owner succession
             'password': hash_password(password) if password else None,
             'irc_channel': irc_channel,
-            'moderator': moderator_id,  # First user to create the room becomes moderator
-            'banned': set(),  # Set of banned client IDs
+            'moderator': moderator_id,  # Primary owner (first creator or successor)
+            'co_mods': set(),   # Additional co-moderators promoted by the owner
+            'banned': set(),
             'e2ee_enabled': False
         }
 
@@ -403,7 +405,9 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     logger.info(f"Client {client_id} ({username}) joined room {room_id}. Room size: {len(rooms[room_id]['users'])}")
 
     # Check if user is moderator
-    is_moderator = (rooms[room_id]['moderator'] == client_id)
+    is_moderator = is_privileged(rooms[room_id], client_id)
+    is_owner = (rooms[room_id]['moderator'] == client_id)
+    co_mod_ids = list(rooms[room_id].get('co_mods', set()))
 
     # Send room info to joining client
     await websocket.send(json.dumps({
@@ -413,7 +417,9 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         'hasPassword': rooms[room_id]['password'] is not None,
         'ircChannel': rooms[room_id].get('irc_channel'),
         'isModerator': is_moderator,
+        'isOwner': is_owner,
         'moderatorId': rooms[room_id]['moderator'],
+        'coModIds': co_mod_ids,
         'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False)
     }))
 
@@ -432,29 +438,50 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
 
 
 async def transfer_mod_if_needed(room_id: str, departing_client_id: str):
-    """If the departing user was the moderator, pass the role to the next user by join order."""
+    """On departure: clean up co-mod status; if owner left, pass owner role."""
     if room_id not in rooms:
         return
     room = rooms[room_id]
+
+    # Always clean up co-mod status if the departing user had it
+    room['co_mods'].discard(departing_client_id)
+
+    # If departing user was not the owner, nothing more to do
     if room['moderator'] != departing_client_id:
         return
+
     if not room['users']:
         room['moderator'] = None
         return
-    new_mod_ws = room['users'][0]
+
+    # Prefer the oldest co-mod as next owner; fall back to first user by join order
+    new_mod_ws = None
+    for ws in room['users']:
+        info = clients.get(ws)
+        if info and info['id'] in room['co_mods']:
+            new_mod_ws = ws
+            break
+    if new_mod_ws is None:
+        new_mod_ws = room['users'][0]
+
     new_mod_info = clients.get(new_mod_ws)
     if not new_mod_info:
         return
     new_mod_id = new_mod_info['id']
     new_mod_username = new_mod_info['username']
+
+    # Promote to owner — remove from co_mods if they were one
+    room['co_mods'].discard(new_mod_id)
     room['moderator'] = new_mod_id
+
     await new_mod_ws.send(json.dumps({'type': 'you-are-moderator'}))
     await broadcast_to_room(room_id, {
         'type': 'moderator-promoted',
         'moderatorId': new_mod_id,
-        'username': new_mod_username
+        'username': new_mod_username,
+        'coModIds': list(room['co_mods'])
     })
-    logger.info(f"Moderator transferred to {new_mod_username} ({new_mod_id}) in room {room_id}")
+    logger.info(f"Owner transferred to {new_mod_username} ({new_mod_id}) in room {room_id}")
 
 
 async def leave_room(websocket: WebSocketServerProtocol):
@@ -508,6 +535,22 @@ async def relay_to_peer(target_id: str, message: dict):
         if info['id'] == target_id:
             await websocket.send(json.dumps(message))
             return True
+    return False
+
+
+def is_privileged(room: dict, client_id: str) -> bool:
+    """True if client_id is the owner or a co-moderator."""
+    return room.get('moderator') == client_id or client_id in room.get('co_mods', set())
+
+
+def can_act_on(room: dict, actor_id: str, target_id: str) -> bool:
+    """True if actor may perform mod actions on target.
+    Owner can act on anyone. Co-mods can only act on regular users."""
+    if room.get('moderator') == actor_id:
+        return True
+    if actor_id in room.get('co_mods', set()):
+        return (target_id != room.get('moderator') and
+                target_id not in room.get('co_mods', set()))
     return False
 
 
@@ -623,7 +666,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             room = client_info['room']
             client_id = client_info['id']
 
-            if room and rooms[room]['moderator'] == client_id:
+            if room and rooms[room]['moderator'] == client_id:  # only owner controls E2EE
                 rooms[room]['e2ee_enabled'] = data.get('enabled', False)
                 await broadcast_to_room(room, {
                     'type': 'e2ee-toggle',
@@ -659,14 +702,11 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 logger.warning(f"Could not relay {msg_type} to {target_id}")
 
         elif msg_type == 'kick-user':
-            # Moderator kicking a user
             client_info = clients[websocket]
             room = client_info['room']
+            target_id = data.get('targetId')
 
-            if room and rooms[room]['moderator'] == client_info['id']:
-                target_id = data.get('targetId')
-
-                # Find and disconnect the target user
+            if room and can_act_on(rooms[room], client_info['id'], target_id):
                 for ws, info in list(clients.items()):
                     if info['id'] == target_id and info['room'] == room:
                         await ws.send(json.dumps({
@@ -678,21 +718,16 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
-                    'message': 'Only moderator can kick users'
+                    'message': 'Only moderators can kick users'
                 }))
 
         elif msg_type == 'ban-user':
-            # Moderator banning a user
             client_info = clients[websocket]
             room = client_info['room']
+            target_id = data.get('targetId')
 
-            if room and rooms[room]['moderator'] == client_info['id']:
-                target_id = data.get('targetId')
-
-                # Add to banned list
+            if room and can_act_on(rooms[room], client_info['id'], target_id):
                 rooms[room]['banned'].add(target_id)
-
-                # Find and disconnect the target user
                 for ws, info in list(clients.items()):
                     if info['id'] == target_id and info['room'] == room:
                         await ws.send(json.dumps({
@@ -701,12 +736,11 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         }))
                         await ws.close()
                         break
-
                 logger.info(f"User {target_id} banned from room {room}")
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
-                    'message': 'Only moderator can ban users'
+                    'message': 'Only moderators can ban users'
                 }))
 
         elif msg_type == 'change-name':
@@ -735,50 +769,106 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
 
         elif msg_type == 'promote-moderator':
-            # Moderator promoting another user to moderator
+            # Owner transferring primary ownership to another user
             client_info = clients[websocket]
             room = client_info['room']
 
             if room and rooms[room]['moderator'] == client_info['id']:
                 target_id = data.get('targetId')
 
-                # Find target user
                 for ws, info in clients.items():
                     if info['id'] == target_id and info['room'] == room:
-                        # Transfer moderator role
+                        rooms[room]['co_mods'].discard(target_id)
                         rooms[room]['moderator'] = target_id
 
-                        # Notify the target user
-                        await ws.send(json.dumps({
-                            'type': 'you-are-moderator'
-                        }))
-
-                        # Broadcast to room
+                        await ws.send(json.dumps({'type': 'you-are-moderator'}))
                         await broadcast_to_room(room, {
                             'type': 'moderator-promoted',
                             'moderatorId': target_id,
-                            'username': info['username']
+                            'username': info['username'],
+                            'coModIds': list(rooms[room]['co_mods'])
                         })
 
-                        # Send IRC notification if bridged
                         if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                            await irc_bridge.send_message(room, "System", f"{info['username']} is now a moderator")
+                            await irc_bridge.send_message(room, "System", f"{info['username']} is now the room owner")
 
-                        logger.info(f"User {target_id} promoted to moderator in room {room}")
+                        logger.info(f"Ownership transferred to {target_id} in room {room}")
                         break
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
-                    'message': 'Only moderator can promote users'
+                    'message': 'Only the room owner can transfer ownership'
                 }))
 
-        elif msg_type == 'moderator-change-name':
-            # Moderator changing another user's name
+        elif msg_type == 'add-co-mod':
+            # Owner adding a co-moderator
             client_info = clients[websocket]
             room = client_info['room']
 
             if room and rooms[room]['moderator'] == client_info['id']:
                 target_id = data.get('targetId')
+
+                for ws, info in clients.items():
+                    if info['id'] == target_id and info['room'] == room:
+                        if target_id == rooms[room]['moderator']:
+                            break  # Already the owner, no-op
+                        rooms[room]['co_mods'].add(target_id)
+
+                        await ws.send(json.dumps({'type': 'you-are-co-mod'}))
+                        await broadcast_to_room(room, {
+                            'type': 'co-mod-added',
+                            'coModId': target_id,
+                            'username': info['username']
+                        })
+
+                        if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
+                            await irc_bridge.send_message(room, "System", f"{info['username']} is now a co-moderator")
+
+                        logger.info(f"User {target_id} added as co-mod in room {room}")
+                        break
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only the room owner can add co-moderators'
+                }))
+
+        elif msg_type == 'remove-co-mod':
+            # Owner removing a co-moderator
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                target_id = data.get('targetId')
+
+                if target_id in rooms[room]['co_mods']:
+                    rooms[room]['co_mods'].discard(target_id)
+                    target_username = None
+                    for ws, info in clients.items():
+                        if info['id'] == target_id and info['room'] == room:
+                            target_username = info['username']
+                            await ws.send(json.dumps({'type': 'co-mod-removed-self'}))
+                            break
+
+                    await broadcast_to_room(room, {
+                        'type': 'co-mod-removed',
+                        'coModId': target_id,
+                        'username': target_username or target_id
+                    })
+                    logger.info(f"User {target_id} removed as co-mod in room {room}")
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only the room owner can remove co-moderators'
+                }))
+
+        elif msg_type == 'moderator-change-name':
+            # Moderator (owner or co-mod) changing another user's name
+            client_info = clients[websocket]
+            room = client_info['room']
+            target_id_rename = data.get('targetId')
+
+            if room and can_act_on(rooms[room], client_info['id'], target_id_rename):
+                target_id = target_id_rename
                 new_username = data.get('newUsername', '').strip()
 
                 if new_username:
@@ -811,7 +901,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
-                    'message': 'Only moderator can change user names'
+                    'message': 'Only moderators can change user names'
                 }))
 
         else:

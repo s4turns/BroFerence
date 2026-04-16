@@ -9,7 +9,9 @@ class ConferenceClient {
         this.username = null;
         this.currentRoom = null;
         this.isModerator = false;
+        this.isOwner = false;
         this.moderatorId = null;
+        this.coModIds = new Set();
 
         // WebSocket reconnection
         this.wsReconnectAttempts = 0;
@@ -77,6 +79,11 @@ class ConferenceClient {
 
     generateId() {
         return 'client_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    updateModStatus() {
+        this.isOwner = this.clientId === this.moderatorId;
+        this.isModerator = this.isOwner || this.coModIds.has(this.clientId);
     }
 
     // --- Crypto helpers ---
@@ -196,7 +203,7 @@ class ConferenceClient {
     }
 
     async receiveRoomKey(peerId, data) {
-        if (peerId !== this.moderatorId) return;
+        if (peerId !== this.moderatorId && !this.coModIds.has(peerId)) return;
         const pairKey = this.peerSharedKeys.get(peerId);
         if (!pairKey) {
             // Shared key not ready yet — queue and retry after deriveSharedKey completes
@@ -730,9 +737,10 @@ class ConferenceClient {
         switch (message.type) {
             case 'room-joined':
                 this.currentRoom = message.roomId;
-                this.isModerator = message.isModerator || false;
                 this.moderatorId = message.moderatorId;
-                this.moderatorUsername = this.isModerator
+                this.coModIds = new Set(message.coModIds || []);
+                this.updateModStatus();
+                this.moderatorUsername = this.isOwner
                     ? this.username
                     : (message.users.find(u => u.id === this.moderatorId)?.username || null);
                 this.updateRoomInfo(message.users.length + 1);
@@ -763,8 +771,10 @@ class ConferenceClient {
                 }
 
                 // Show moderator status
-                if (this.isModerator) {
+                if (this.isOwner) {
                     this.addChatMessage('System', 'You are the moderator of this room', true);
+                } else if (this.isModerator) {
+                    this.addChatMessage('System', 'You are a co-moderator of this room', true);
                 }
 
                 // E2EE: send our public key to all existing peers in parallel
@@ -820,13 +830,13 @@ class ConferenceClient {
                 const peer = this.peerConnections.get(message.clientId);
                 if (peer) {
                     peer.username = message.newUsername;
-                    // Update the video label
                     const label = document.querySelector(`#video-${message.clientId} .video-label`);
                     if (label) {
+                        label.textContent = message.newUsername;
                         if (message.clientId === this.moderatorId) {
-                            label.textContent = `👑 ${message.newUsername}`;
-                        } else {
-                            label.textContent = message.newUsername;
+                            this.applyLabelBadge(message.clientId, message.newUsername, 'owner', label);
+                        } else if (this.coModIds.has(message.clientId)) {
+                            this.applyLabelBadge(message.clientId, message.newUsername, 'co-mod', label);
                         }
                     }
                     // Update the avatar
@@ -853,51 +863,84 @@ class ConferenceClient {
                 this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
 
-            case 'moderator-promoted':
-                // Update moderator status for a user
+            case 'moderator-promoted': {
+                // Primary ownership transferred to another user
+                const wasPrivileged = this.isModerator;
                 this.moderatorId = message.moderatorId;
                 this.moderatorUsername = message.username;
-                // If WE were the moderator, we no longer are
-                if (this.isModerator && message.moderatorId !== this.clientId) {
-                    this.isModerator = false;
-                    // Remove all mod controls from existing containers
+                if (message.coModIds !== undefined) {
+                    this.coModIds = new Set(message.coModIds);
+                } else {
+                    this.coModIds.delete(message.moderatorId);
+                }
+                this.updateModStatus();
+                if (wasPrivileged && !this.isModerator) {
                     document.querySelectorAll('[data-mod-control]').forEach(el => el.remove());
                     this.updateE2EEUI();
+                } else if (this.isModerator) {
+                    this.refreshModeratorControls();
                 }
-                // Add crown to the new moderator's label
-                const modLabel = document.querySelector(`#video-${message.moderatorId} .video-label`);
-                if (modLabel && !modLabel.querySelector('.mod-crown')) {
-                    modLabel.textContent = '';
-                    const crownSpan = document.createElement('span');
-                    crownSpan.className = 'mod-crown';
-                    crownSpan.textContent = '👑';
-                    modLabel.appendChild(crownSpan);
-                    modLabel.appendChild(document.createTextNode(' ' + message.username));
-                }
-                // Remove crown from any other label that had it
+                // Move crown: remove from old owner, add to new
                 document.querySelectorAll('.video-label .mod-crown').forEach(crown => {
                     const label = crown.closest('.video-label');
                     if (label && !label.closest(`#video-${message.moderatorId}`)) {
-                        label.textContent = label.textContent.replace('👑 ', '').trim();
+                        crown.remove();
                     }
                 });
-                this.addChatMessage('System', `${message.username} is now a moderator`, true);
+                this.applyLabelBadge(message.moderatorId, message.username, 'owner');
+                this.addChatMessage('System', `${message.username} is now the room owner`, true);
                 break;
+            }
 
             case 'you-are-moderator':
-                // You have been promoted to moderator
-                this.isModerator = true;
+                // You have become the new room owner
+                this.moderatorId = this.clientId;
+                this.updateModStatus();
                 this.moderatorUsername = this.username;
-                this.addChatMessage('System', 'You are now a moderator! Hover over users to see moderator controls.', true);
+                this.addChatMessage('System', 'You are now the room owner! Hover over users to see moderator controls.', true);
                 this.refreshModeratorControls();
                 this.updateE2EEUI();
-                // Re-key if E2EE was active under the previous moderator
                 if (this.e2eeEnabled) {
-                    this.addChatMessage('System', 'Regenerating encryption keys after moderator change...', true);
+                    this.addChatMessage('System', 'Regenerating encryption keys after owner change...', true);
                     this.sendMessage({ type: 'e2ee-toggle', enabled: false });
                     setTimeout(() => this.sendMessage({ type: 'e2ee-toggle', enabled: true }), 300);
                 }
                 break;
+
+            case 'you-are-co-mod':
+                // We were promoted to co-moderator
+                this.coModIds.add(this.clientId);
+                this.updateModStatus();
+                this.addChatMessage('System', 'You are now a co-moderator! You can kick and rename users.', true);
+                this.refreshModeratorControls();
+                break;
+
+            case 'co-mod-removed-self':
+                // We were demoted from co-moderator
+                this.coModIds.delete(this.clientId);
+                this.updateModStatus();
+                document.querySelectorAll('[data-mod-control]').forEach(el => el.remove());
+                this.addChatMessage('System', 'Your co-moderator status has been removed.', true);
+                this.updateE2EEUI();
+                break;
+
+            case 'co-mod-added': {
+                // Another user was made a co-mod
+                this.coModIds.add(message.coModId);
+                this.applyLabelBadge(message.coModId, message.username, 'co-mod');
+                this.addChatMessage('System', `${message.username} is now a co-moderator`, true);
+                if (this.isOwner) this.refreshModeratorControls();
+                break;
+            }
+
+            case 'co-mod-removed': {
+                // Another user lost co-mod status
+                this.coModIds.delete(message.coModId);
+                this.applyLabelBadge(message.coModId, message.username, 'none');
+                this.addChatMessage('System', `${message.username} is no longer a co-moderator`, true);
+                if (this.isOwner) this.refreshModeratorControls();
+                break;
+            }
 
             case 'public-key':
                 await this.receivePublicKey(message.senderId, message.data.publicKey);
@@ -2155,15 +2198,11 @@ class ConferenceClient {
 
         const label = document.createElement('div');
         label.className = 'video-label';
-        // Add crown for moderator
+        label.textContent = username;
         if (peerId === this.moderatorId) {
-            const crownSpan = document.createElement('span');
-            crownSpan.className = 'mod-crown';
-            crownSpan.textContent = '👑';
-            label.appendChild(crownSpan);
-            label.appendChild(document.createTextNode(' ' + username));
-        } else {
-            label.textContent = username;
+            this.applyLabelBadge(peerId, username, 'owner', label);
+        } else if (this.coModIds.has(peerId)) {
+            this.applyLabelBadge(peerId, username, 'co-mod', label);
         }
 
         // Add avatar for when video is off
@@ -2332,8 +2371,8 @@ class ConferenceClient {
         return controlsDiv;
     }
 
-    // Add/ensure moderator controls on every remote video container.
-    // Safe to call multiple times — skips containers that already have them.
+    // Add/refresh moderator controls on every remote video container.
+    // Clears and rebuilds — handles owner/co-mod permission differences.
     refreshModeratorControls() {
         if (!this.isModerator) return;
 
@@ -2341,16 +2380,42 @@ class ConferenceClient {
             const audioControls = document.querySelector(`#video-${peerId} .remote-audio-controls`);
             if (!audioControls) return;
 
-            // Skip if mod controls already present
-            if (audioControls.querySelector('[data-mod-control]')) return;
+            // Always rebuild mod controls so buttons reflect current role
+            audioControls.querySelectorAll('[data-mod-control]').forEach(el => el.remove());
 
-            if (peerId !== this.moderatorId) {
+            const targetIsOwner = peerId === this.moderatorId;
+            const targetIsCoMod = this.coModIds.has(peerId);
+
+            // Co-mods cannot act on the owner or other co-mods
+            if (!this.isOwner && (targetIsOwner || targetIsCoMod)) return;
+
+            // Owner: transfer ownership button (only on non-mod users)
+            if (this.isOwner && !targetIsCoMod) {
                 const promoteBtn = document.createElement('button');
                 promoteBtn.textContent = '👑';
-                promoteBtn.title = 'Promote to moderator';
+                promoteBtn.title = 'Transfer ownership';
                 promoteBtn.dataset.modControl = 'promote';
                 promoteBtn.onclick = () => this.promoteToModerator(peerId);
                 audioControls.appendChild(promoteBtn);
+            }
+
+            // Owner: add/remove co-mod button
+            if (this.isOwner) {
+                if (targetIsCoMod) {
+                    const demoteBtn = document.createElement('button');
+                    demoteBtn.textContent = '🛡️';
+                    demoteBtn.title = 'Remove co-moderator';
+                    demoteBtn.dataset.modControl = 'demote-comod';
+                    demoteBtn.onclick = () => this.removeCoMod(peerId);
+                    audioControls.appendChild(demoteBtn);
+                } else {
+                    const coModBtn = document.createElement('button');
+                    coModBtn.textContent = '🛡️';
+                    coModBtn.title = 'Add as co-moderator';
+                    coModBtn.dataset.modControl = 'add-comod';
+                    coModBtn.onclick = () => this.addCoMod(peerId);
+                    audioControls.appendChild(coModBtn);
+                }
             }
 
             const renameBtn = document.createElement('button');
@@ -2365,15 +2430,18 @@ class ConferenceClient {
             kickBtn.dataset.modControl = 'kick';
             kickBtn.onclick = () => this.kickUser(peerId);
 
-            const banBtn = document.createElement('button');
-            banBtn.textContent = '🚫';
-            banBtn.title = 'Ban user';
-            banBtn.dataset.modControl = 'ban';
-            banBtn.onclick = () => this.banUser(peerId);
-
             audioControls.appendChild(renameBtn);
             audioControls.appendChild(kickBtn);
-            audioControls.appendChild(banBtn);
+
+            // Ban button: owner only
+            if (this.isOwner) {
+                const banBtn = document.createElement('button');
+                banBtn.textContent = '🚫';
+                banBtn.title = 'Ban user';
+                banBtn.dataset.modControl = 'ban';
+                banBtn.onclick = () => this.banUser(peerId);
+                audioControls.appendChild(banBtn);
+            }
         });
     }
 
@@ -2406,27 +2474,57 @@ class ConferenceClient {
     }
 
     promoteToModerator(targetId) {
-        if (!this.isModerator) {
-            alert('Only moderator can promote users');
-            return;
-        }
-
+        if (!this.isOwner) return;
         const peer = this.peerConnections.get(targetId);
         if (!peer) return;
+        if (confirm(`Transfer room ownership to ${peer.username}? You will lose owner status.`)) {
+            this.sendMessage({ type: 'promote-moderator', targetId });
+        }
+    }
 
-        if (confirm(`Promote ${peer.username} to moderator?`)) {
-            this.sendMessage({
-                type: 'promote-moderator',
-                targetId: targetId
-            });
+    addCoMod(targetId) {
+        if (!this.isOwner) return;
+        const peer = this.peerConnections.get(targetId);
+        if (!peer) return;
+        if (confirm(`Make ${peer.username} a co-moderator?`)) {
+            this.sendMessage({ type: 'add-co-mod', targetId });
+        }
+    }
+
+    removeCoMod(targetId) {
+        if (!this.isOwner) return;
+        const peer = this.peerConnections.get(targetId);
+        if (!peer) return;
+        if (confirm(`Remove co-moderator status from ${peer.username}?`)) {
+            this.sendMessage({ type: 'remove-co-mod', targetId });
+        }
+    }
+
+    // Apply or update the badge (crown/shield/none) on a remote video label.
+    // Pass an existing label element to update in-place, or omit to find it by peerId.
+    applyLabelBadge(peerId, username, role, labelEl) {
+        const label = labelEl || document.querySelector(`#video-${peerId} .video-label`);
+        if (!label) return;
+        label.innerHTML = '';
+        if (role === 'owner') {
+            const span = document.createElement('span');
+            span.className = 'mod-crown';
+            span.textContent = '👑';
+            label.appendChild(span);
+            label.appendChild(document.createTextNode(' ' + username));
+        } else if (role === 'co-mod') {
+            const span = document.createElement('span');
+            span.className = 'mod-badge';
+            span.textContent = '🛡️';
+            label.appendChild(span);
+            label.appendChild(document.createTextNode(' ' + username));
+        } else {
+            label.textContent = username;
         }
     }
 
     moderatorChangeName(targetId) {
-        if (!this.isModerator) {
-            alert('Only moderator can change user names');
-            return;
-        }
+        if (!this.isModerator) return;
 
         const peer = this.peerConnections.get(targetId);
         if (!peer) return;

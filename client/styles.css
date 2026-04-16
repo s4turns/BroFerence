@@ -598,6 +598,10 @@ body::before {
     filter: drop-shadow(0 0 3px gold);
 }
 
+.mod-badge {
+    filter: drop-shadow(0 0 3px var(--primary));
+}
+
 .video-avatar {
     position: absolute;
     top: 50%;
