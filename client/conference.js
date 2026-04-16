@@ -383,12 +383,13 @@ class ConferenceClient {
         fetch('https://blcknd.metered.live/api/v1/turn/credentials?apiKey=0e1c1edef81bb9dcbfa9ce98954f8cb14f4c')
             .then(r => r.json())
             .then(iceServers => {
-                // Primary: Metered relay-only — hides real IPs, distributed infra avoids hairpin
+                // Metered relay + coturn as relay fallback if Metered TURN is unreachable.
+                // relay-only preserves IP privacy; coturn allowed-peer-ip handles hairpin.
                 this.iceServers = {
-                    iceServers,
+                    iceServers: [...iceServers, localTurnConfig],
                     iceTransportPolicy: 'relay'
                 };
-                console.log('ICE servers configured (Metered.ca relay-only, IP privacy enabled)');
+                console.log('ICE servers configured (Metered.ca + coturn relay, IP privacy enabled)');
             })
             .catch(err => {
                 console.warn('Metered.ca TURN fetch failed, using local TURN fallback:', err);
