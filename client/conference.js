@@ -380,7 +380,14 @@ class ConferenceClient {
             credential: '98iKctn6qPZBuUYwFt2uRMUZNu8ziJib'
         };
 
-        // Default fallback: both coturn servers + STUN, all candidate types
+        // Relay-only via both coturn servers. Asymmetric paths (server1↔server2)
+        // handle same-NAT hairpin without needing a third-party TURN provider.
+        this.iceServers = {
+            iceServers: [localTurnConfig, turn2Config],
+            iceTransportPolicy: 'relay'
+        };
+
+        // P2P fallback used only after relay exhaustion (ICE restart cycle)
         this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -388,24 +395,6 @@ class ConferenceClient {
                 turn2Config
             ]
         };
-        this.iceServers = this.iceServersFallback;
-
-        // Fetch Metered.ca TURN credentials asynchronously.
-        // These will be ready long before the user joins a room.
-        fetch('https://blcknd.metered.live/api/v1/turn/credentials?apiKey=0e1c1edef81bb9dcbfa9ce98954f8cb14f4c')
-            .then(r => r.json())
-            .then(iceServers => {
-                // Metered relay + both coturn servers as relay fallbacks.
-                // relay-only preserves IP privacy; asymmetric relay paths handle hairpin.
-                this.iceServers = {
-                    iceServers: [...iceServers, localTurnConfig, turn2Config],
-                    iceTransportPolicy: 'relay'
-                };
-                console.log('ICE servers configured (Metered.ca + 2x coturn relay, IP privacy enabled)');
-            })
-            .catch(err => {
-                console.warn('Metered.ca TURN fetch failed, using coturn fallback:', err);
-            });
     }
 
     initUI() {
