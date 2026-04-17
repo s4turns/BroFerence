@@ -360,20 +360,32 @@ class ConferenceClient {
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
+        // PRIMARY_TURN_CREDENTIAL rotated by update-vps.sh on each deploy
+        const PRIMARY_TURN_CREDENTIAL = 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3';
         const localTurnConfig = {
             urls: [
                 `turn:${turnServer}:3479`,
                 `turn:${turnServer}:3479?transport=tcp`
             ],
             username: 'webrtc',
-            credential: 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3'
+            credential: PRIMARY_TURN_CREDENTIAL
         };
 
-        // Default fallback: local coturn + STUN, all candidate types
+        const turn2Config = {
+            urls: [
+                'turn:174.138.183.167:3479',
+                'turn:174.138.183.167:3479?transport=tcp'
+            ],
+            username: 'webrtc',
+            credential: '98iKctn6qPZBuUYwFt2uRMUZNu8ziJib'
+        };
+
+        // Default fallback: both coturn servers + STUN, all candidate types
         this.iceServersFallback = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                localTurnConfig
+                localTurnConfig,
+                turn2Config
             ]
         };
         this.iceServers = this.iceServersFallback;
@@ -383,16 +395,16 @@ class ConferenceClient {
         fetch('https://blcknd.metered.live/api/v1/turn/credentials?apiKey=0e1c1edef81bb9dcbfa9ce98954f8cb14f4c')
             .then(r => r.json())
             .then(iceServers => {
-                // Metered relay + coturn as relay fallback if Metered TURN is unreachable.
-                // relay-only preserves IP privacy; coturn allowed-peer-ip handles hairpin.
+                // Metered relay + both coturn servers as relay fallbacks.
+                // relay-only preserves IP privacy; asymmetric relay paths handle hairpin.
                 this.iceServers = {
-                    iceServers: [...iceServers, localTurnConfig],
+                    iceServers: [...iceServers, localTurnConfig, turn2Config],
                     iceTransportPolicy: 'relay'
                 };
-                console.log('ICE servers configured (Metered.ca + coturn relay, IP privacy enabled)');
+                console.log('ICE servers configured (Metered.ca + 2x coturn relay, IP privacy enabled)');
             })
             .catch(err => {
-                console.warn('Metered.ca TURN fetch failed, using local TURN fallback:', err);
+                console.warn('Metered.ca TURN fetch failed, using coturn fallback:', err);
             });
     }
 

@@ -53,8 +53,8 @@ else
 fi
 echo "Updated config/turnserver.production.conf"
 
-# Update conference.js
-sed -i "s/credential: '[^']*'/credential: '${TURN_PASSWORD}'/" client/conference.js
+# Update primary TURN credential in conference.js (leave turn2Config untouched)
+sed -i "s/const PRIMARY_TURN_CREDENTIAL = '[^']*'/const PRIMARY_TURN_CREDENTIAL = '${TURN_PASSWORD}'/" client/conference.js
 echo "Updated client/conference.js"
 
 # Rebuild and restart Docker containers
