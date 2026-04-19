@@ -3769,8 +3769,7 @@ class ConferenceClient {
     }
 
     updateRoomInfo(participantCount) {
-        document.getElementById('roomName').textContent = `Room: ${this.currentRoom}`;
-        document.getElementById('participantCount').textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
+        document.title = `${this.currentRoom} - BroFerence`;
         document.getElementById('roomInfo').style.display = 'flex';
         this.updateVideoGridLayout();
     }
