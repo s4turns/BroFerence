@@ -2791,6 +2791,9 @@ class ConferenceClient {
                 // Hide avatar when screen sharing (screen is visible content)
                 document.getElementById('localContainer').classList.remove('no-video');
 
+                // Tell remote peers to hide our avatar
+                this.sendMessage({ type: 'video-state', videoEnabled: true });
+
                 console.log('Screen sharing started');
 
             } catch (error) {
@@ -2830,6 +2833,9 @@ class ConferenceClient {
             if (!this.videoEnabled) {
                 document.getElementById('localContainer').classList.add('no-video');
             }
+
+            // Tell remote peers to restore correct avatar state
+            this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
 
             console.log('Screen sharing stopped');
         }
