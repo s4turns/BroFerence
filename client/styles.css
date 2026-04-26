@@ -189,46 +189,151 @@ body::before {
     line-height: normal;
 }
 
-/* Join Screen */
+/* Join Screen / Landing Page */
 .join-screen, .prejoin-screen {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px 20px;
-    background: radial-gradient(circle at center, #001a00 0%, #000000 100%);
+    padding: 40px 24px;
+    background: radial-gradient(circle at 30% 50%, #001a00 0%, #000000 70%);
+    overflow-y: auto;
 }
 
-.join-card, .prejoin-card {
-    background: var(--darker);
-    padding: 24px 32px;
-    border: 2px solid var(--primary);
-    box-shadow: 0 0 20px var(--shadow-lg), inset 0 0 20px rgba(0, 255, 65, 0.1);
-    max-width: 450px;
+/* Two-column landing layout */
+.landing-layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 48px;
+    max-width: 960px;
     width: 100%;
     animation: slideUp 0.4s ease-out;
 }
 
 @keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
-.join-card h2 {
-    margin-bottom: 20px;
+/* Left column */
+.landing-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 24px;
+}
+
+.landing-logo {
+    font-size: 36px;
+    font-weight: 900;
     color: var(--primary);
-    text-align: center;
-    font-size: 24px;
+    text-shadow: var(--glow-strong);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+
+.landing-logo-bracket {
+    color: var(--secondary);
+    opacity: 0.6;
+}
+
+.landing-tagline {
+    font-size: 15px;
+    color: var(--secondary);
+    line-height: 1.6;
+    margin: 0;
+    opacity: 0.85;
+}
+
+.landing-features {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.landing-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(0, 255, 65, 0.15);
+    background: rgba(0, 255, 65, 0.03);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.landing-feature:hover {
+    border-color: rgba(0, 255, 65, 0.35);
+    background: rgba(0, 255, 65, 0.06);
+}
+
+.lf-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.landing-feature strong {
+    display: block;
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.landing-feature span {
+    display: block;
+    color: var(--secondary);
+    font-size: 12px;
+    opacity: 0.75;
+    line-height: 1.5;
+}
+
+/* Right column: join form */
+.landing-form {
+    background: var(--darker);
+    padding: 28px 32px;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 30px var(--shadow-lg), inset 0 0 20px rgba(0, 255, 65, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.landing-form h2 {
+    margin: 0 0 22px;
+    color: var(--primary);
+    font-size: 18px;
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
     text-shadow: var(--glow-strong);
+    text-align: center;
+}
+
+.landing-join-btn {
+    width: 100%;
+    margin-top: 6px;
+    font-size: 15px;
+    padding: 12px;
+    letter-spacing: 1px;
+}
+
+.landing-notice {
+    margin: 14px 0 0;
+    font-size: 11px;
+    color: var(--secondary);
+    opacity: 0.55;
+    text-align: center;
+    line-height: 1.5;
+}
+
+.form-label-hint {
+    font-weight: 400;
+    opacity: 0.55;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
 }
 
 .form-group {
@@ -254,6 +359,7 @@ body::before {
     font-size: 14px;
     transition: all 0.3s ease;
     font-family: 'Courier New', monospace;
+    box-sizing: border-box;
 }
 
 .form-group input:focus {
@@ -1650,12 +1756,28 @@ body::before {
         font-size: 16px !important;
     }
 
-    .join-card {
-        padding: 20px 16px;
+    /* Landing page: stack to single column on tablet */
+    .landing-layout {
+        grid-template-columns: 1fr;
+        gap: 28px;
     }
 
-    .join-card h2 {
-        font-size: 20px;
+    .landing-info {
+        gap: 16px;
+    }
+
+    .landing-logo {
+        font-size: 26px;
+    }
+
+    .landing-features {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .landing-form {
+        padding: 20px 20px;
     }
 
     .video-grid {
@@ -1726,15 +1848,27 @@ body::before {
         max-height: 92vh;
     }
 
-    /* Join card: minimal padding */
-    .join-card, .prejoin-card {
-        padding: 16px 12px;
-        margin: 0 8px;
+    /* Landing: single column, compact */
+    .landing-layout {
+        gap: 20px;
     }
 
-    .join-card h2 {
-        font-size: 18px;
-        margin-bottom: 14px;
+    .landing-features {
+        grid-template-columns: 1fr;
+    }
+
+    .landing-form {
+        padding: 16px 14px;
+    }
+
+    .landing-form h2 {
+        font-size: 16px;
+        margin-bottom: 16px;
+    }
+
+    .prejoin-card {
+        padding: 16px 12px;
+        margin: 0 8px;
     }
 
     /* Tighter video grid */
@@ -2312,6 +2446,22 @@ body::before {
 [data-theme="corporate"] .join-screen,
 [data-theme="corporate"] .prejoin-screen {
     background: #f3f2f1;
+}
+
+[data-theme="corporate"] .landing-form {
+    background: #ffffff;
+    border-color: var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+[data-theme="corporate"] .landing-feature {
+    border-color: var(--border);
+    background: #ffffff;
+}
+
+[data-theme="corporate"] .landing-feature:hover {
+    border-color: var(--primary);
+    background: #f0f4ff;
 }
 
 [data-theme="corporate"] .prejoin-preview {

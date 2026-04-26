@@ -129,32 +129,90 @@
 
         <!-- Join Screen -->
         <div id="joinScreen" class="join-screen">
-            <div class="join-card">
-                <h2>Join or Create a Room</h2>
+            <div class="landing-layout">
 
-                <div class="form-group">
-                    <label for="usernameInput">Your Name:</label>
-                    <input type="text" id="usernameInput" placeholder="Enter your name" required autofocus>
+                <!-- Left: app info -->
+                <div class="landing-info">
+                    <div class="landing-logo">
+                        <span class="landing-logo-bracket">[</span>BroFerence<span class="landing-logo-bracket">]</span>
+                    </div>
+                    <p class="landing-tagline">Private, encrypted video conferencing.<br>No accounts. No tracking. Just join.</p>
+
+                    <div class="landing-features">
+                        <div class="landing-feature">
+                            <span class="lf-icon">🔒</span>
+                            <div>
+                                <strong>End-to-End Encrypted</strong>
+                                <span>All audio and video is encrypted between participants — the server never sees your media.</span>
+                            </div>
+                        </div>
+                        <div class="landing-feature">
+                            <span class="lf-icon">📡</span>
+                            <div>
+                                <strong>Works Through Any NAT</strong>
+                                <span>Dual TURN relay servers ensure you connect even on strict corporate or mobile networks.</span>
+                            </div>
+                        </div>
+                        <div class="landing-feature">
+                            <span class="lf-icon">🖥️</span>
+                            <div>
+                                <strong>Screen Sharing</strong>
+                                <span>Share your screen or a specific window with full audio mixing support.</span>
+                            </div>
+                        </div>
+                        <div class="landing-feature">
+                            <span class="lf-icon">🎙️</span>
+                            <div>
+                                <strong>AI Noise Suppression</strong>
+                                <span>Real-time AI filtering removes background noise and echo from your mic.</span>
+                            </div>
+                        </div>
+                        <div class="landing-feature">
+                            <span class="lf-icon">📶</span>
+                            <div>
+                                <strong>Low Bandwidth Mode</strong>
+                                <span>Automatically reduces quality on slow connections to keep calls stable.</span>
+                            </div>
+                        </div>
+                        <div class="landing-feature">
+                            <span class="lf-icon">▶️</span>
+                            <div>
+                                <strong>Watch Together</strong>
+                                <span>Stream YouTube videos or direct media URLs to everyone in the room in sync.</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="roomInput">Room Name:</label>
-                    <input type="text" id="roomInput" placeholder="Enter room name" value="">
+                <!-- Right: join form -->
+                <div class="landing-form">
+                    <h2>Join or Create a Room</h2>
+
+                    <div class="form-group">
+                        <label for="usernameInput">Your Name</label>
+                        <input type="text" id="usernameInput" placeholder="Enter your name" required autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="roomInput">Room Name</label>
+                        <input type="text" id="roomInput" placeholder="Enter room name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="passwordInput">Room Password <span class="form-label-hint">(optional)</span></label>
+                        <input type="password" id="passwordInput" placeholder="Leave empty for public room">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ircChannelInput">IRC Bridge <span class="form-label-hint">(optional)</span></label>
+                        <input type="text" id="ircChannelInput" placeholder="#channel on irc.blcknd.network">
+                    </div>
+
+                    <button id="joinBtn" class="btn btn-primary landing-join-btn">Continue →</button>
+
+                    <p class="landing-notice">Rooms are created instantly. Share the room name with anyone you want to invite.</p>
                 </div>
 
-                <div class="form-group">
-                    <label for="ircChannelInput">IRC Channel (optional):</label>
-                    <input type="text" id="ircChannelInput" placeholder="#channel on irc.blcknd.network">
-                    <small>Bridge chat to IRC channel</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="passwordInput">Password (optional):</label>
-                    <input type="password" id="passwordInput" placeholder="Leave empty for public room">
-                    <small>Set password to create protected room</small>
-                </div>
-
-                <button id="joinBtn" class="btn btn-primary">Continue</button>
             </div>
         </div>
 
