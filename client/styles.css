@@ -976,6 +976,34 @@ body::before {
     color: var(--primary);
 }
 
+.options-email-input {
+    background: var(--darker);
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 6px 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    outline: none;
+    flex: 1;
+    min-width: 0;
+}
+
+.options-email-input:focus {
+    box-shadow: var(--glow);
+}
+
+.options-email-input::placeholder {
+    color: var(--primary);
+    opacity: 0.4;
+}
+
+.video-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
 .options-item-danger:hover {
     background: var(--danger);
     color: #000;

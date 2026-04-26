@@ -904,6 +904,17 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'message': 'Only moderators can change user names'
                 }))
 
+        elif msg_type == 'gravatar':
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+            if room:
+                await broadcast_to_room(room, {
+                    'type': 'gravatar',
+                    'clientId': client_id,
+                    'hash': data.get('hash', '')
+                }, exclude=websocket)
+
         else:
             logger.warning(f"Unknown message type: {msg_type}")
 

@@ -59,6 +59,8 @@ class ConferenceClient {
         this.prejoinVideoEnabled = false;
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
         this.videoQuality = localStorage.getItem('broference-video-quality') || '720';
+        this.gravatarHash = localStorage.getItem('broference-gravatar-hash') || null;
+        this.peerGravatarHashes = new Map();
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
@@ -324,6 +326,68 @@ class ConferenceClient {
         }
     }
 
+    // --- Gravatar ---
+
+    md5(str) {
+        const s = unescape(encodeURIComponent(str));
+        let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476;
+        const msg = [];
+        for (let i = 0; i < s.length; i++) msg.push(s.charCodeAt(i));
+        msg.push(0x80);
+        while (msg.length % 64 !== 56) msg.push(0);
+        const bits = s.length * 8;
+        msg.push(bits & 0xFF, (bits >> 8) & 0xFF, (bits >> 16) & 0xFF, (bits >> 24) & 0xFF, 0, 0, 0, 0);
+        const r = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+        const K = Array.from({length: 64}, (_, i) => (Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0);
+        for (let i = 0; i < msg.length; i += 64) {
+            const w = Array.from({length: 16}, (_, j) => msg[i+j*4] | (msg[i+j*4+1] << 8) | (msg[i+j*4+2] << 16) | (msg[i+j*4+3] << 24));
+            let [a, b, c, d] = [h0, h1, h2, h3];
+            for (let j = 0; j < 64; j++) {
+                let f, g;
+                if      (j < 16) { f = (b & c) | (~b & d); g = j; }
+                else if (j < 32) { f = (d & b) | (~d & c); g = (5 * j + 1) % 16; }
+                else if (j < 48) { f = b ^ c ^ d;           g = (3 * j + 5) % 16; }
+                else             { f = c ^ (b | ~d);         g = (7 * j) % 16; }
+                f = (f + a + K[j] + w[g]) >>> 0;
+                a = d; d = c; c = b;
+                b = (b + ((f << r[j]) | (f >>> (32 - r[j])))) >>> 0;
+            }
+            h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+        }
+        return [h0, h1, h2, h3].map(h =>
+            Array.from({length: 4}, (_, i) => ((h >> (i * 8)) & 0xFF).toString(16).padStart(2, '0')).join('')
+        ).join('');
+    }
+
+    setGravatar(email) {
+        const hash = this.md5(email.trim().toLowerCase());
+        this.gravatarHash = hash;
+        localStorage.setItem('broference-gravatar-hash', hash);
+        localStorage.setItem('broference-gravatar-email', email.trim());
+
+        // Update own local avatar
+        const localAvatar = document.getElementById('localAvatar');
+        if (localAvatar) this.applyGravatarToAvatar(localAvatar, hash);
+
+        // Broadcast to peers if in a room
+        if (this.currentRoom) {
+            this.sendMessage({ type: 'gravatar', hash });
+        }
+    }
+
+    applyGravatarToAvatar(el, hash) {
+        const url = `https://www.gravatar.com/avatar/${hash}?d=mp&s=200`;
+        el.textContent = '';
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        img.onerror = () => {
+            el.removeChild(img);
+            el.textContent = el.dataset.initial || '?';
+        };
+        el.appendChild(img);
+    }
+
     // --- Notification sounds ---
 
     playSoundTone(startFreq, endFreq, rampDuration) {
@@ -542,11 +606,25 @@ class ConferenceClient {
             });
         }
 
-        // Set default username
-        this.usernameInput.value = `User_${this.clientId.substr(-4)}`;
+        // Restore saved nickname, fall back to generated default
+        const savedUsername = localStorage.getItem('broference-username');
+        this.usernameInput.value = savedUsername || `User_${this.clientId.substr(-4)}`;
 
         // Check for URL parameters (invite links)
         this.handleInviteLink();
+
+        // Gravatar email input
+        const gravatarInput = document.getElementById('gravatarEmailInput');
+        if (gravatarInput) {
+            const savedEmail = localStorage.getItem('broference-gravatar-email') || '';
+            gravatarInput.value = savedEmail;
+            const applyGravatar = () => {
+                const email = gravatarInput.value.trim();
+                if (email) this.setGravatar(email);
+            };
+            gravatarInput.addEventListener('change', applyGravatar);
+            gravatarInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyGravatar(); });
+        }
 
     }
 
@@ -802,16 +880,13 @@ class ConferenceClient {
 
                 this.updateE2EEUI();
 
-                // Send initial video and audio state to other users
+                // Send initial video, audio state, and gravatar to other users
                 setTimeout(() => {
-                    this.sendMessage({
-                        type: 'video-state',
-                        videoEnabled: this.videoEnabled
-                    });
-                    this.sendMessage({
-                        type: 'audio-state',
-                        audioEnabled: this.audioEnabled
-                    });
+                    this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
+                    this.sendMessage({ type: 'audio-state', audioEnabled: this.audioEnabled });
+                    if (this.gravatarHash) {
+                        this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
+                    }
                 }, 500);
                 break;
 
@@ -822,6 +897,10 @@ class ConferenceClient {
                 this.playJoinSound();
                 // E2EE: exchange public keys with the new user
                 await this.sendPublicKey(message.clientId);
+                // Send our gravatar hash so the new peer can render our avatar
+                if (this.gravatarHash) {
+                    this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
+                }
                 // Wait for them to send offer
                 break;
 
@@ -832,8 +911,18 @@ class ConferenceClient {
                 this.playLeaveSound();
                 this.peerPublicKeys.delete(message.clientId);
                 this.peerSharedKeys.delete(message.clientId);
+                this.peerGravatarHashes.delete(message.clientId);
                 this.updateRoomInfo(this.peerConnections.size + 1);
                 break;
+
+            case 'gravatar': {
+                const { clientId, hash } = message;
+                if (!clientId || !hash) break;
+                this.peerGravatarHashes.set(clientId, hash);
+                const avatarEl = document.querySelector(`#video-${clientId} .video-avatar`);
+                if (avatarEl) this.applyGravatarToAvatar(avatarEl, hash);
+                break;
+            }
 
             case 'name-changed':
                 // Update the display name for a user
@@ -1564,6 +1653,7 @@ class ConferenceClient {
         }
 
         this.username = username;
+        localStorage.setItem('broference-username', username);
 
         // Show prejoin screen
         document.getElementById('joinScreen').style.display = 'none';
@@ -1797,7 +1887,12 @@ class ConferenceClient {
             // Set local avatar and label
             const localAvatar = document.getElementById('localAvatar');
             if (localAvatar && this.username) {
-                localAvatar.textContent = this.username.charAt(0).toUpperCase();
+                localAvatar.dataset.initial = this.username.charAt(0).toUpperCase();
+                if (this.gravatarHash) {
+                    this.applyGravatarToAvatar(localAvatar, this.gravatarHash);
+                } else {
+                    localAvatar.textContent = this.username.charAt(0).toUpperCase();
+                }
             }
             const localLabel = document.querySelector('#localContainer .video-label');
             if (localLabel && this.username) {
@@ -2235,7 +2330,13 @@ class ConferenceClient {
         // Add avatar for when video is off
         const avatar = document.createElement('div');
         avatar.className = 'video-avatar';
-        avatar.textContent = username.charAt(0).toUpperCase();
+        avatar.dataset.initial = username.charAt(0).toUpperCase();
+        const existingHash = this.peerGravatarHashes.get(peerId);
+        if (existingHash) {
+            this.applyGravatarToAvatar(avatar, existingHash);
+        } else {
+            avatar.textContent = username.charAt(0).toUpperCase();
+        }
         container.appendChild(avatar);
 
         // Monitor video track to show/hide avatar
@@ -3872,6 +3973,7 @@ class ConferenceClient {
         if (newName && newName.trim() && newName !== this.username) {
             const oldName = this.username;
             this.username = newName.trim();
+            localStorage.setItem('broference-username', this.username);
 
             // Update local video label
             const localLabel = document.querySelector('#localContainer .video-label');
