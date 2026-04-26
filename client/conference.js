@@ -58,6 +58,7 @@ class ConferenceClient {
         this.prejoinAudioEnabled = true;
         this.prejoinVideoEnabled = false;
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
+        this.videoQuality = localStorage.getItem('broference-video-quality') || '720';
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
@@ -509,6 +510,13 @@ class ConferenceClient {
             lowBandwidthBtn.setAttribute('data-enabled', String(this.lowBandwidthMode));
             lowBandwidthBtn.querySelector('.toggle-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
             lowBandwidthBtn.addEventListener('click', () => this.toggleLowBandwidth());
+        }
+
+        // Video quality selector
+        const videoQualitySelect = document.getElementById('videoQualitySelect');
+        if (videoQualitySelect) {
+            videoQualitySelect.value = this.videoQuality;
+            videoQualitySelect.addEventListener('change', () => this.setVideoQuality(videoQualitySelect.value));
         }
 
         // Chat input enter key
@@ -1060,15 +1068,15 @@ class ConferenceClient {
             if (this.isMobileDevice()) c.facingMode = 'user';
             return c;
         }
-        return this.isMobileDevice() ? {
-            facingMode: 'user',
-            width: { ideal: 640, max: 1280 },
-            height: { ideal: 480, max: 720 }
-        } : {
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 24, max: 30 }
+        if (this.isMobileDevice()) {
+            return { facingMode: 'user', width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 } };
+        }
+        const qualityMap = {
+            '480':  { width: { ideal: 854,  max: 854  }, height: { ideal: 480,  max: 480  }, frameRate: { ideal: 24, max: 30 } },
+            '720':  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720,  max: 720  }, frameRate: { ideal: 24, max: 30 } },
+            '1080': { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 24, max: 30 } },
         };
+        return qualityMap[this.videoQuality] || qualityMap['720'];
     }
 
     getAudioConstraints() {
@@ -1673,6 +1681,23 @@ class ConferenceClient {
 
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
     }
+
+    setVideoQuality(quality) {
+        this.videoQuality = quality;
+        localStorage.setItem('broference-video-quality', quality);
+
+        const stream = this.localStream || this.prejoinStream;
+        if (stream) {
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.applyConstraints(this.getVideoConstraints()).catch(err => {
+                    console.warn('Could not apply video quality constraints:', err);
+                });
+            }
+        }
+        console.log('Video quality set to:', quality + 'p');
+    }
+
 
     setPreferredCodecs(pc) {
         // Prefer H.264 for video — it has the widest hardware decoder support
