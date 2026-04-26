@@ -1358,6 +1358,10 @@ class ConferenceClient {
                     <span class="stat-value loss-value">--</span>
                 </div>
                 <div class="stat-row">
+                    <span class="stat-label">Audio:</span>
+                    <span class="stat-value audio-value">--</span>
+                </div>
+                <div class="stat-row">
                     <span class="stat-label">Res:</span>
                     <span class="stat-value res-value">--</span>
                 </div>
@@ -1371,12 +1375,15 @@ class ConferenceClient {
 
         const rttSpan = signalBars.querySelector('.rtt-value');
         const lossSpan = signalBars.querySelector('.loss-value');
+        const audioSpan = signalBars.querySelector('.audio-value');
         const resSpan = signalBars.querySelector('.res-value');
         const fpsSpan = signalBars.querySelector('.fps-value');
 
-        // Track previous values for packet loss calculation
+        // Track previous values for packet loss and audio bitrate calculation
         let prevPacketsReceived = 0;
         let prevPacketsLost = 0;
+        let prevAudioBytes = 0;
+        let prevAudioTime = Date.now();
 
         const updateStats = async () => {
             try {
@@ -1387,6 +1394,7 @@ class ConferenceClient {
                 let frameWidth = null;
                 let frameHeight = null;
                 let fps = null;
+                let audioBytesReceived = 0;
 
                 stats.forEach(report => {
                     // Get RTT from candidate-pair
@@ -1403,6 +1411,10 @@ class ConferenceClient {
                         if (report.frameWidth) frameWidth = report.frameWidth;
                         if (report.frameHeight) frameHeight = report.frameHeight;
                         if (report.framesPerSecond !== undefined) fps = Math.round(report.framesPerSecond);
+                    }
+
+                    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+                        audioBytesReceived = report.bytesReceived || 0;
                     }
                 });
 
@@ -1425,15 +1437,13 @@ class ConferenceClient {
                 if (rtt !== null) {
                     const rttMs = Math.round(rtt);
                     rttSpan.textContent = `${rttMs}ms`;
-
-                    // RTT color coding
                     rttSpan.className = 'stat-value rtt-value';
                     if (rttMs < 100) {
                         rttSpan.classList.add('stat-good');
-                    } else if (rttMs < 200) {
+                    } else if (rttMs < 300) {
                         rttSpan.classList.add('stat-warning');
                         signalQuality = Math.min(signalQuality, 3);
-                    } else if (rttMs < 400) {
+                    } else if (rttMs < 500) {
                         rttSpan.classList.add('stat-warning');
                         signalQuality = Math.min(signalQuality, 2);
                     } else {
@@ -1442,7 +1452,6 @@ class ConferenceClient {
                     }
                 }
 
-                // Update loss display
                 lossSpan.textContent = `${lossPercent.toFixed(1)}%`;
                 lossSpan.className = 'stat-value loss-value';
                 if (lossPercent < 1) {
@@ -1457,6 +1466,19 @@ class ConferenceClient {
                     lossSpan.classList.add('stat-bad');
                     signalQuality = Math.min(signalQuality, 1);
                 }
+
+                // Audio bitrate
+                const now = Date.now();
+                const deltaBytes = audioBytesReceived - prevAudioBytes;
+                const deltaSec = (now - prevAudioTime) / 1000;
+                const audioKbps = deltaSec > 0 ? Math.round((deltaBytes * 8) / deltaSec / 1000) : 0;
+                prevAudioBytes = audioBytesReceived;
+                prevAudioTime = now;
+                audioSpan.textContent = audioKbps > 0 ? `${audioKbps} kbps` : '--';
+                audioSpan.className = 'stat-value audio-value';
+                if (audioKbps >= 128) audioSpan.classList.add('stat-good');
+                else if (audioKbps >= 48) audioSpan.classList.add('stat-warning');
+                else if (audioKbps > 0) audioSpan.classList.add('stat-bad');
 
                 // Update resolution and FPS
                 resSpan.textContent = (frameWidth && frameHeight) ? `${frameWidth}×${frameHeight}` : '--';
@@ -1518,6 +1540,10 @@ class ConferenceClient {
                     <span class="stat-value loss-value">--</span>
                 </div>
                 <div class="stat-row">
+                    <span class="stat-label">Audio:</span>
+                    <span class="stat-value audio-value">--</span>
+                </div>
+                <div class="stat-row">
                     <span class="stat-label">Res:</span>
                     <span class="stat-value res-value">--</span>
                 </div>
@@ -1531,8 +1557,11 @@ class ConferenceClient {
 
         const rttSpan = signalBars.querySelector('.rtt-value');
         const lossSpan = signalBars.querySelector('.loss-value');
+        const audioSpan = signalBars.querySelector('.audio-value');
         const resSpan = signalBars.querySelector('.res-value');
         const fpsSpan = signalBars.querySelector('.fps-value');
+        let prevAudioBytesSent = 0;
+        let prevAudioTime = Date.now();
 
         const updateLocalStats = async () => {
             if (this.peerConnections.size === 0) {
@@ -1548,6 +1577,7 @@ class ConferenceClient {
             let frameWidth = null;
             let frameHeight = null;
             let fps = null;
+            let totalAudioBytesSent = 0;
 
             for (const [_peerId, peer] of this.peerConnections) {
                 try {
@@ -1568,6 +1598,9 @@ class ConferenceClient {
                         if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
                             totalPacketsLost += report.packetsLost || 0;
                         }
+                        if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+                            totalAudioBytesSent += report.bytesSent || 0;
+                        }
                     });
                 } catch (_e) {
                     // Peer connection might be closed
@@ -1585,10 +1618,10 @@ class ConferenceClient {
                 rttSpan.className = 'stat-value rtt-value';
                 if (avgRtt < 100) {
                     rttSpan.classList.add('stat-good');
-                } else if (avgRtt < 200) {
+                } else if (avgRtt < 300) {
                     rttSpan.classList.add('stat-warning');
                     signalQuality = Math.min(signalQuality, 3);
-                } else if (avgRtt < 400) {
+                } else if (avgRtt < 500) {
                     rttSpan.classList.add('stat-warning');
                     signalQuality = Math.min(signalQuality, 2);
                 } else {
@@ -1611,6 +1644,19 @@ class ConferenceClient {
                 lossSpan.classList.add('stat-bad');
                 signalQuality = Math.min(signalQuality, 1);
             }
+
+            // Audio bitrate (outbound)
+            const now = Date.now();
+            const deltaBytes = totalAudioBytesSent - prevAudioBytesSent;
+            const deltaSec = (now - prevAudioTime) / 1000;
+            const audioKbps = deltaSec > 0 ? Math.round((deltaBytes * 8) / deltaSec / 1000) : 0;
+            prevAudioBytesSent = totalAudioBytesSent;
+            prevAudioTime = now;
+            audioSpan.textContent = audioKbps > 0 ? `${audioKbps} kbps` : '--';
+            audioSpan.className = 'stat-value audio-value';
+            if (audioKbps >= 128) audioSpan.classList.add('stat-good');
+            else if (audioKbps >= 48) audioSpan.classList.add('stat-warning');
+            else if (audioKbps > 0) audioSpan.classList.add('stat-bad');
 
             // Update resolution and FPS
             resSpan.textContent = (frameWidth && frameHeight) ? `${frameWidth}×${frameHeight}` : '--';
