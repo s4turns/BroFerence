@@ -923,8 +923,11 @@ body::before {
     background: transparent;
     border: 1px solid var(--primary);
     color: var(--primary);
-    padding: 12px 16px;
-    text-align: left;
+    padding: 0 16px;
+    height: 44px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
     cursor: pointer;
     font-size: 14px;
     font-family: 'Courier New', monospace;
@@ -979,7 +982,6 @@ body::before {
 }
 
 .options-item-link {
-    display: block;
     text-decoration: none;
 }
 
