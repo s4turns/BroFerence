@@ -1872,7 +1872,7 @@ class ConferenceClient {
 
     applyBandwidthToSenders() {
         const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
-        const audioBitrate = this.lowBandwidthMode ? 32000 : undefined;  // 32kbps or uncapped
+        const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000; // 64kbps mobile/low-band, 128kbps desktop
 
         this.peerConnections.forEach((peer) => {
             peer.connection.getSenders().forEach(sender => {
@@ -2046,9 +2046,7 @@ class ConferenceClient {
                         parameters.encodings[0].dtx = 'enabled';
                     }
 
-                    if (this.lowBandwidthMode) {
-                        parameters.encodings[0].maxBitrate = 32000; // 32kbps audio cap
-                    }
+                    parameters.encodings[0].maxBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000;
 
                     sender.setParameters(parameters).catch(err => {
                         console.warn('Could not set audio encoding parameters:', err);
