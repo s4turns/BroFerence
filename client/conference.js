@@ -491,6 +491,12 @@ class ConferenceClient {
         document.getElementById('prejoinLowBandwidthBtn').addEventListener('click', () => this.toggleLowBandwidth());
         document.getElementById('prejoinBackBtn').addEventListener('click', () => this.hidePrejoinScreen());
         document.getElementById('prejoinJoinBtn').addEventListener('click', () => this.joinRoom());
+        document.getElementById('prejoinMicSelect').addEventListener('change', (e) => {
+            if (e.target.value) this.prejoinSwitchDevice('audio', e.target.value);
+        });
+        document.getElementById('prejoinCameraSelect').addEventListener('change', (e) => {
+            if (e.target.value) this.prejoinSwitchDevice('video', e.target.value);
+        });
         document.getElementById('toggleAudioBtn').addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn').addEventListener('click', () => this.toggleVideo());
         document.getElementById('shareScreenBtn').addEventListener('click', () => this.toggleScreenShare());
@@ -581,6 +587,20 @@ class ConferenceClient {
         if (videoQualitySelect) {
             videoQualitySelect.value = this.videoQuality;
             videoQualitySelect.addEventListener('change', () => this.setVideoQuality(videoQualitySelect.value));
+        }
+
+        // Options menu camera and mic selectors
+        const cameraDeviceSelect = document.getElementById('cameraDeviceSelect');
+        if (cameraDeviceSelect) {
+            cameraDeviceSelect.addEventListener('change', (e) => {
+                if (e.target.value) this.switchCamera(e.target.value);
+            });
+        }
+        const micDeviceSelectOptions = document.getElementById('micDeviceSelectOptions');
+        if (micDeviceSelectOptions) {
+            micDeviceSelectOptions.addEventListener('change', (e) => {
+                if (e.target.value) this.switchMicrophone(e.target.value);
+            });
         }
 
         // Chat input enter key
@@ -1736,6 +1756,9 @@ class ConferenceClient {
                 lwBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
                 lwBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
             }
+
+            // Populate device selectors
+            await this.updatePrejoinDeviceLists(this.prejoinStream);
         } catch (error) {
             console.error('Error accessing media devices:', error);
             alert('Could not access camera/microphone. You can still join but others will not see or hear you.');
@@ -2924,9 +2947,13 @@ class ConferenceClient {
         if (!this.isScreenSharing) {
             try {
                 // Request screen sharing with system audio
+                const screenQuality = this.getVideoConstraints();
                 this.screenStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
-                        cursor: "always"
+                        cursor: 'always',
+                        width: screenQuality.width,
+                        height: screenQuality.height,
+                        frameRate: screenQuality.frameRate
                     },
                     audio: {
                         echoCancellation: true,
@@ -3543,8 +3570,14 @@ class ConferenceClient {
     toggleOptionsMenu() {
         const optionsMenu = document.getElementById('optionsMenu');
         const optionsOverlay = document.getElementById('optionsOverlay');
+        const isOpening = optionsMenu.classList.contains('hidden');
         optionsMenu.classList.toggle('hidden');
         optionsOverlay.classList.toggle('hidden');
+        if (isOpening) {
+            this.updateCameraDeviceList();
+            this.updateMicDeviceList();
+            this.updateMicDeviceListOptions();
+        }
     }
 
     toggleChangelog() {
@@ -3712,6 +3745,135 @@ class ConferenceClient {
             });
         } catch (error) {
             console.warn('Could not enumerate mic devices:', error);
+        }
+    }
+
+    async updateMicDeviceListOptions() {
+        const select = document.getElementById('micDeviceSelectOptions');
+        if (!select) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(d => d.kind === 'audioinput');
+            const audioTrack = this.localStream?.getAudioTracks()[0];
+            const currentDeviceId = audioTrack ? audioTrack.getSettings().deviceId : null;
+            select.innerHTML = '';
+            audioInputs.forEach((device, i) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Microphone ${i + 1}`;
+                if (device.deviceId === currentDeviceId) option.selected = true;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.warn('Could not enumerate mic devices:', error);
+        }
+    }
+
+    async updateCameraDeviceList() {
+        const select = document.getElementById('cameraDeviceSelect');
+        if (!select) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoInputs = devices.filter(d => d.kind === 'videoinput');
+            const videoTrack = this.localStream?.getVideoTracks()[0];
+            const currentDeviceId = videoTrack ? videoTrack.getSettings().deviceId : null;
+            select.innerHTML = '';
+            videoInputs.forEach((device, i) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Camera ${i + 1}`;
+                if (device.deviceId === currentDeviceId) option.selected = true;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.warn('Could not enumerate camera devices:', error);
+        }
+    }
+
+    async switchCamera(deviceId) {
+        try {
+            const constraints = { ...this.getVideoConstraints(), deviceId: { exact: deviceId } };
+            const newStream = await navigator.mediaDevices.getUserMedia({ video: constraints });
+            const newVideoTrack = newStream.getVideoTracks()[0];
+
+            const oldVideoTrack = this.localStream?.getVideoTracks()[0];
+            if (oldVideoTrack) {
+                oldVideoTrack.stop();
+                this.localStream.removeTrack(oldVideoTrack);
+            }
+            this.localStream.addTrack(newVideoTrack);
+
+            // Update local video preview
+            if (this.localVideo) this.localVideo.srcObject = this.localStream;
+
+            // Replace track in all peer connections
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(newVideoTrack);
+            });
+
+            localStorage.setItem('broference-preferred-camera', deviceId);
+            console.log('Switched camera to:', newVideoTrack.label);
+        } catch (error) {
+            console.error('Error switching camera:', error);
+        }
+    }
+
+    async updatePrejoinDeviceLists(stream) {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(d => d.kind === 'audioinput');
+            const videoInputs = devices.filter(d => d.kind === 'videoinput');
+
+            const currentMicId = stream?.getAudioTracks()[0]?.getSettings().deviceId;
+            const currentCamId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
+
+            const micSel = document.getElementById('prejoinMicSelect');
+            micSel.innerHTML = '';
+            audioInputs.forEach((d, i) => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || `Microphone ${i + 1}`;
+                if (d.deviceId === currentMicId) opt.selected = true;
+                micSel.appendChild(opt);
+            });
+
+            const camSel = document.getElementById('prejoinCameraSelect');
+            camSel.innerHTML = '';
+            videoInputs.forEach((d, i) => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || `Camera ${i + 1}`;
+                if (d.deviceId === currentCamId) opt.selected = true;
+                camSel.appendChild(opt);
+            });
+        } catch (error) {
+            console.warn('Could not enumerate devices for prejoin:', error);
+        }
+    }
+
+    async prejoinSwitchDevice(kind, deviceId) {
+        if (!this.prejoinStream) return;
+        try {
+            const constraints = kind === 'audio'
+                ? { audio: { ...this.getAudioConstraints(), deviceId: { exact: deviceId } } }
+                : { video: { ...this.getVideoConstraints(), deviceId: { exact: deviceId } } };
+
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const newTrack = kind === 'audio' ? newStream.getAudioTracks()[0] : newStream.getVideoTracks()[0];
+
+            // Stop and replace old track
+            const oldTracks = kind === 'audio' ? this.prejoinStream.getAudioTracks() : this.prejoinStream.getVideoTracks();
+            oldTracks.forEach(t => { t.stop(); this.prejoinStream.removeTrack(t); });
+            this.prejoinStream.addTrack(newTrack);
+
+            // Preserve enabled state for video
+            if (kind === 'video') newTrack.enabled = this.prejoinVideoEnabled;
+            if (kind === 'audio') newTrack.enabled = this.prejoinAudioEnabled;
+
+            document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
+        } catch (error) {
+            console.error(`Error switching prejoin ${kind} device:`, error);
         }
     }
 
