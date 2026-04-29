@@ -1174,6 +1174,27 @@ class ConferenceClient {
                     }
                 }
                 break;
+
+            case 'noise-gate-set': {
+                const { enabled, threshold } = message;
+                if (threshold !== null && threshold !== undefined) {
+                    const t = Math.min(80, Math.max(1, parseInt(threshold)));
+                    this.noiseGateThreshold = t;
+                    this.updateNoiseGateThreshold(t);
+                    this.saveNoiseGateSetting('threshold', t);
+                    const gateSlider = document.getElementById('gateThresholdSlider');
+                    const gateValue  = document.getElementById('gateThresholdValue');
+                    const gateLine   = document.getElementById('gateThresholdLine');
+                    if (gateSlider) gateSlider.value = t;
+                    if (gateValue)  gateValue.textContent = `${t}%`;
+                    if (gateLine)   gateLine.style.left = `${t}%`;
+                }
+                if (enabled !== null && enabled !== undefined) {
+                    if (enabled && !this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
+                    else if (!enabled && this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
+                }
+                break;
+            }
         }
     }
 

@@ -94,6 +94,7 @@ def get_admin_state() -> dict:
                 users_out.append({
                     'id': info['id'],
                     'username': info['username'],
+                    'ip': info.get('ip', ''),
                     'isMod': room.get('moderator') == info['id'],
                     'isCoMod': info['id'] in room.get('co_mods', set()),
                 })
@@ -254,10 +255,12 @@ def find_ssl_certificates() -> Tuple[str, str]:
 
 async def register_client(websocket: WebSocketServerProtocol, client_id: str, username: str = None):
     """Register a new client connection."""
+    ip = websocket.remote_address[0] if websocket.remote_address else 'unknown'
     clients[websocket] = {
         'id': client_id,
         'room': None,
-        'username': username or f"User_{client_id[:8]}"
+        'username': username or f"User_{client_id[:8]}",
+        'ip': ip,
     }
     logger.info(f"Client {client_id} ({clients[websocket]['username']}) connected. Total clients: {len(clients)}")
 
@@ -1012,9 +1015,11 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             target_username = data.get('username', target_id)
             if room_id in rooms:
                 rooms[room_id]['banned'].add(target_id)
+                target_ip = next((info.get('ip', '') for ws, info in clients.items() if info['id'] == target_id), '')
                 ban_records.append({
                     'clientId': target_id,
                     'username': target_username,
+                    'ip': target_ip,
                     'room': room_id,
                     'bannedAt': datetime.now(timezone.utc).isoformat(),
                     'bannedBy': 'admin',
@@ -1082,6 +1087,22 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 })
                 logger.info(f'Admin removed mod from {target_id} in {room_id}')
                 await broadcast_admin_state()
+
+        elif msg_type == 'admin-set-noise-gate':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            enabled = data.get('enabled')      # bool or None
+            threshold = data.get('threshold')  # int 1-80 or None
+            for ws, info in clients.items():
+                if info['id'] == target_id:
+                    await ws.send(json.dumps({
+                        'type': 'noise-gate-set',
+                        'enabled': enabled,
+                        'threshold': threshold,
+                    }))
+                    logger.info(f'Admin set noise gate for {target_id}: enabled={enabled}, threshold={threshold}')
+                    break
 
         else:
             logger.warning(f"Unknown message type: {msg_type}")

@@ -98,7 +98,11 @@
   .role-comod { background: #001a2a; color: var(--info); border: 1px solid var(--info); }
   .role-user { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
   .user-id { font-size: 11px; color: var(--muted); font-family: monospace; }
-  .action-btns { display: flex; gap: 6px; }
+  .user-ip { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .action-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ng-row { display: flex; gap: 4px; align-items: center; margin-top: 5px; flex-wrap: wrap; }
+  .ng-input { width: 46px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); padding: 3px 5px; font-family: inherit; font-size: 11px; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; font-size: 11px; }
 
   /* ── Ban table ── */
   .ban-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -316,15 +320,24 @@ function renderRooms() {
       const modBtn = u.isMod
         ? `<button class="btn btn-warn btn-sm" onclick="removeMod('${esc(roomId)}','${esc(u.id)}')">Remove Mod</button>`
         : `<button class="btn btn-info btn-sm" onclick="setMod('${esc(roomId)}','${esc(u.id)}')">Make Mod</button>`;
+      const uid = esc(u.id);
       return `<tr>
         <td>${esc(u.username)}</td>
-        <td class="user-id">${esc(u.id.substring(0,12))}…</td>
+        <td class="user-ip">${esc(u.ip || '—')}</td>
         <td>${roleLabel}</td>
-        <td><div class="action-btns">
-          <button class="btn btn-danger btn-sm" onclick="kick('${esc(roomId)}','${esc(u.id)}')">Kick</button>
-          <button class="btn btn-danger btn-sm" onclick="ban('${esc(roomId)}','${esc(u.id)}','${esc(u.username)}')">Ban</button>
-          ${modBtn}
-        </div></td>
+        <td>
+          <div class="action-btns">
+            <button class="btn btn-danger btn-sm" onclick="kick('${esc(roomId)}','${uid}')">Kick</button>
+            <button class="btn btn-danger btn-sm" onclick="ban('${esc(roomId)}','${uid}','${esc(u.username)}')">Ban</button>
+            ${modBtn}
+          </div>
+          <div class="ng-row">
+            <button class="btn btn-info btn-sm" onclick="setNoiseGate('${uid}',true,null)">🎙 Gate On</button>
+            <button class="btn btn-warn btn-sm" onclick="setNoiseGate('${uid}',false,null)">🔇 Gate Off</button>
+            <input type="number" class="ng-input" id="ng-${uid}" min="1" max="80" value="25" title="Threshold %">
+            <button class="btn btn-ghost btn-sm" onclick="applyGateThreshold('${uid}')">Set%</button>
+          </div>
+        </td>
       </tr>`;
     }).join('');
 
@@ -341,7 +354,7 @@ function renderRooms() {
         ${room.users.length === 0
           ? '<div class="empty-msg" style="padding:16px">No users</div>'
           : `<table class="user-table">
-              <thead><tr><th>Username</th><th>Client ID</th><th>Role</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Username</th><th>IP</th><th>Role</th><th>Actions / Noise Gate</th></tr></thead>
               <tbody>${userRows}</tbody>
             </table>`}
       </div>
@@ -359,7 +372,7 @@ function renderBans() {
     const date = b.bannedAt ? new Date(b.bannedAt).toLocaleString() : '—';
     return `<tr>
       <td>${esc(b.username)}</td>
-      <td class="user-id">${esc(b.clientId.substring(0,12))}…</td>
+      <td class="user-ip">${esc(b.ip || '—')}</td>
       <td>${esc(b.room)}</td>
       <td>${esc(b.bannedBy || '—')}</td>
       <td>${date}</td>
@@ -367,7 +380,7 @@ function renderBans() {
     </tr>`;
   }).join('');
   container.innerHTML = `<table class="ban-table">
-    <thead><tr><th>Username</th><th>Client ID</th><th>Room</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
+    <thead><tr><th>Username</th><th>IP</th><th>Room</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -376,6 +389,20 @@ function toggleRoom(roomId) {
   if (openRooms.has(roomId)) openRooms.delete(roomId);
   else openRooms.add(roomId);
   renderRooms();
+}
+
+function setNoiseGate(targetId, enabled, threshold) {
+  const msg = { type: 'admin-set-noise-gate', targetId };
+  if (enabled !== null) msg.enabled = enabled;
+  if (threshold !== null) msg.threshold = threshold;
+  send(msg);
+}
+
+function applyGateThreshold(targetId) {
+  const input = document.getElementById('ng-' + targetId);
+  if (!input) return;
+  const val = Math.min(80, Math.max(1, parseInt(input.value) || 25));
+  setNoiseGate(targetId, null, val);
 }
 
 function esc(str) {
