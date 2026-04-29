@@ -1756,7 +1756,7 @@ body::before {
         font-size: 16px !important;
     }
 
-    /* Landing page: stack to single column on tablet */
+    /* Landing page: stack to single column on tablet, form first */
     .landing-layout {
         grid-template-columns: 1fr;
         gap: 28px;
@@ -1764,6 +1764,12 @@ body::before {
 
     .landing-info {
         gap: 16px;
+        order: 2;
+    }
+
+    .landing-form {
+        order: 1;
+        padding: 20px 20px;
     }
 
     .landing-logo {
@@ -1774,10 +1780,6 @@ body::before {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
-    }
-
-    .landing-form {
-        padding: 20px 20px;
     }
 
     .video-grid {
@@ -1848,13 +1850,28 @@ body::before {
         max-height: 92vh;
     }
 
-    /* Landing: single column, compact */
-    .landing-layout {
-        gap: 20px;
+    .join-screen {
+        padding: 16px 12px;
+        align-items: flex-start;
     }
 
-    .landing-features {
-        grid-template-columns: 1fr;
+    /* Landing: form only — hide features and tagline on phones */
+    .landing-layout {
+        gap: 12px;
+    }
+
+    .landing-features,
+    .landing-tagline {
+        display: none;
+    }
+
+    .landing-info {
+        gap: 8px;
+    }
+
+    .landing-logo {
+        font-size: 22px;
+        text-align: center;
     }
 
     .landing-form {
