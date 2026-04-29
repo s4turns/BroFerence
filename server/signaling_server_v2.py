@@ -1027,13 +1027,13 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 await broadcast_admin_state()
 
         elif msg_type == 'admin-unban':
+            global ban_records
             if websocket not in admin_clients:
                 return
             target_id = data.get('targetId')
             room_id = data.get('roomId')
             if room_id in rooms:
                 rooms[room_id]['banned'].discard(target_id)
-            global ban_records
             ban_records = [r for r in ban_records if not (r['clientId'] == target_id and r['room'] == room_id)]
             logger.info(f'Admin unbanned {target_id} from {room_id}')
             await broadcast_admin_state()
