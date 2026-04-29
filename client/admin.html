@@ -172,6 +172,10 @@
 let ws = null;
 let state = { rooms: {}, bans: [], totalClients: 0 };
 let openRooms = new Set();
+let ngValues = {};         // persists noise-gate threshold inputs across re-renders
+let activeSecret = '';
+let reconnectTimer = null;
+let inShell = false;
 
 // ── Connection ─────────────────────────────────────────────────────────────
 function connect() {
@@ -179,9 +183,13 @@ function connect() {
   const secret = document.getElementById('secret').value.trim();
   if (!url || !secret) return;
 
-  // Save URL for reconnect
   localStorage.setItem('admin-ws-url', url);
+  activeSecret = secret;
+  openSocket(url, secret);
+}
 
+function openSocket(url, secret) {
+  if (ws) { try { ws.close(); } catch(_) {} }
   ws = new WebSocket(url);
 
   ws.onopen = () => {
@@ -201,11 +209,27 @@ function connect() {
     }
   };
 
-  ws.onclose = () => setConnStatus(false);
-  ws.onerror = () => { showLoginError('Could not connect to server.'); };
+  ws.onclose = () => {
+    setConnStatus(false);
+    if (inShell) scheduleReconnect();
+  };
+  ws.onerror = () => {
+    if (!inShell) showLoginError('Could not connect to server.');
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    const url = localStorage.getItem('admin-ws-url');
+    if (url && activeSecret && inShell) openSocket(url, activeSecret);
+  }, 3000);
 }
 
 function logout() {
+  inShell = false;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (ws) ws.close();
   document.getElementById('shell').style.display = 'none';
   document.getElementById('login').style.display = 'flex';
@@ -220,14 +244,14 @@ function requestState() {
 function setConnStatus(online) {
   document.getElementById('dot').className = 'status-dot' + (online ? '' : ' offline');
   document.getElementById('connStatus').innerHTML =
-    `<span class="status-dot${online ? '' : ' offline'}"></span>${online ? 'Connected' : 'Disconnected'}`;
+    `<span class="status-dot${online ? '' : ' offline'}"></span>${online ? 'Connected' : (reconnectTimer ? 'Reconnecting…' : 'Disconnected')}`;
 }
 
 function showShell() {
+  inShell = true;
   document.getElementById('login').style.display = 'none';
   document.getElementById('shell').style.display = 'flex';
   setConnStatus(true);
-  // Auto-refresh every 10s
   setInterval(requestState, 10000);
 }
 
@@ -334,7 +358,7 @@ function renderRooms() {
           <div class="ng-row">
             <button class="btn btn-info btn-sm" onclick="setNoiseGate('${uid}',true,null)">🎙 Gate On</button>
             <button class="btn btn-warn btn-sm" onclick="setNoiseGate('${uid}',false,null)">🔇 Gate Off</button>
-            <input type="number" class="ng-input" id="ng-${uid}" min="1" max="80" value="25" title="Threshold %">
+            <input type="number" class="ng-input" id="ng-${uid}" min="1" max="80" value="${ngValues[u.id] || 25}" title="Threshold %" onchange="ngValues['${u.id}']=parseInt(this.value)||25">
             <button class="btn btn-ghost btn-sm" onclick="applyGateThreshold('${uid}')">Set%</button>
           </div>
         </td>
@@ -402,6 +426,7 @@ function applyGateThreshold(targetId) {
   const input = document.getElementById('ng-' + targetId);
   if (!input) return;
   const val = Math.min(80, Math.max(1, parseInt(input.value) || 25));
+  ngValues[targetId] = val;
   setNoiseGate(targetId, null, val);
 }
 
