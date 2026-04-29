@@ -607,6 +607,7 @@ def can_act_on(room: dict, actor_id: str, target_id: str) -> bool:
 
 async def handle_message(websocket: WebSocketServerProtocol, message: str):
     """Handle incoming WebSocket messages."""
+    global ban_records
     try:
         data = json.loads(message)
         msg_type = data.get('type')
@@ -1027,7 +1028,6 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 await broadcast_admin_state()
 
         elif msg_type == 'admin-unban':
-            global ban_records
             if websocket not in admin_clients:
                 return
             target_id = data.get('targetId')
