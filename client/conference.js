@@ -410,6 +410,7 @@ class ConferenceClient {
 
     playJoinSound()  { this.playSoundTone(600, 900, 0.15); }
     playLeaveSound() { this.playSoundTone(900, 500, 0.2);  }
+    playChatSound()  { this.playSoundTone(1000, 1200, 0.05); }
 
     speakText(text) {
         if (!window.speechSynthesis) return;
@@ -1088,6 +1089,7 @@ class ConferenceClient {
             case 'chat-message': {
                 const isIRC = message.username.includes('(IRC)');
                 const isOwn = message.username === this.username;
+                if (!isOwn) this.playChatSound();
                 if (message.encrypted) {
                     if (!this.e2eeRoomKey) {
                         this.addChatMessage(message.username, '[encrypted message]', false, isIRC, isOwn, false, true);
