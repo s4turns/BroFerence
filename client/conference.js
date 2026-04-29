@@ -436,7 +436,7 @@ class ConferenceClient {
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
         // PRIMARY_TURN_CREDENTIAL rotated by update-vps.sh on each deploy
-        const PRIMARY_TURN_CREDENTIAL = 'hLBTE9M6osBZuOWy7FQHTVIpZIvISo3';
+        const PRIMARY_TURN_CREDENTIAL = 'M6vxdxo7HkzpvTxVWX0auQe8vkVFUPi';
         const localTurnConfig = {
             urls: [
                 `turn:${turnServer}:3479`,
@@ -1142,17 +1142,16 @@ class ConferenceClient {
                 alert('Error: ' + message.message);
                 break;
 
-            case 'video-state':
+            case 'video-state': {
                 // Update remote user's video container based on their video state
-                console.log('Received video-state:', message.clientId, 'enabled:', message.videoEnabled);
                 const remoteContainer = document.getElementById(`video-${message.clientId}`);
                 if (remoteContainer) {
-                    console.log('Found container, toggling no-video class');
+                    // Store signaled state so onmute won't override it during replaceTrack transitions
+                    remoteContainer.dataset.signaledVideoEnabled = message.videoEnabled ? 'true' : 'false';
                     remoteContainer.classList.toggle('no-video', !message.videoEnabled);
-                } else {
-                    console.log('Container not found for', message.clientId);
                 }
                 break;
+            }
 
             case 'audio-state':
                 // Show/hide muted indicator for remote user
@@ -2427,11 +2426,11 @@ class ConferenceClient {
 
             // Listen for track state changes
             videoTrack.onmute = () => {
-                console.log(`Video track muted for ${username}`);
+                // Don't show avatar if peer signaled their video is on (e.g. screen sharing via replaceTrack)
+                if (container.dataset.signaledVideoEnabled === 'true') return;
                 container.classList.add('no-video');
             };
             videoTrack.onunmute = () => {
-                console.log(`Video track unmuted for ${username}`);
                 container.classList.remove('no-video');
             };
             videoTrack.onended = () => {
