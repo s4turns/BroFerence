@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BroFerence Admin</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --primary: #00ff88;
+    --danger: #ff4444;
+    --warn: #ffaa00;
+    --info: #44aaff;
+    --text: #e0e0e0;
+    --muted: #666;
+    --radius: 6px;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; font-size: 14px; min-height: 100vh; }
+
+  /* ── Login ── */
+  #login { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-card { background: var(--surface); border: 1px solid var(--primary); border-radius: var(--radius); padding: 36px; width: 360px; }
+  .login-card h1 { color: var(--primary); font-size: 1.4rem; margin-bottom: 6px; }
+  .login-card p { color: var(--muted); font-size: 0.8rem; margin-bottom: 24px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; color: var(--muted); font-size: 0.75rem; margin-bottom: 4px; }
+  .field input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 8px 10px; font-family: inherit; font-size: 13px; }
+  .field input:focus { outline: none; border-color: var(--primary); }
+  .btn { cursor: pointer; border: none; border-radius: 4px; padding: 9px 18px; font-family: inherit; font-size: 13px; font-weight: bold; }
+  .btn-primary { background: var(--primary); color: #000; width: 100%; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-danger { background: var(--danger); color: #fff; padding: 5px 12px; font-size: 12px; }
+  .btn-danger:hover { opacity: 0.8; }
+  .btn-warn { background: var(--warn); color: #000; padding: 5px 12px; font-size: 12px; }
+  .btn-warn:hover { opacity: 0.8; }
+  .btn-info { background: var(--info); color: #000; padding: 5px 12px; font-size: 12px; }
+  .btn-info:hover { opacity: 0.8; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  #loginError { color: var(--danger); font-size: 12px; margin-top: 10px; display: none; }
+
+  /* ── Shell ── */
+  #shell { display: none; flex-direction: column; min-height: 100vh; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; }
+  .topbar h1 { color: var(--primary); font-size: 1rem; flex: 1; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); display: inline-block; margin-right: 6px; }
+  .status-dot.offline { background: var(--danger); }
+  #connStatus { font-size: 12px; color: var(--muted); }
+  .topbar-right { display: flex; gap: 10px; align-items: center; }
+  #lastRefresh { font-size: 11px; color: var(--muted); }
+  .refresh-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 12px; }
+  .refresh-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .tab { padding: 10px 20px; cursor: pointer; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; font-family: inherit; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  .content { flex: 1; padding: 20px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Stats bar ── */
+  .stats-bar { display: flex; gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 18px; }
+  .stat-card .val { font-size: 1.6rem; font-weight: bold; color: var(--primary); }
+  .stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Room list ── */
+  .room-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+  .room-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; user-select: none; }
+  .room-header:hover { background: var(--surface2); }
+  .room-name { font-weight: bold; color: var(--primary); flex: 1; font-size: 0.95rem; }
+  .room-meta { font-size: 11px; color: var(--muted); display: flex; gap: 10px; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+  .badge-lock { background: #2a2000; color: var(--warn); border: 1px solid var(--warn); }
+  .badge-e2ee { background: #002a0a; color: var(--primary); border: 1px solid var(--primary); }
+  .chevron { color: var(--muted); font-size: 12px; transition: transform 0.15s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .room-body { display: none; border-top: 1px solid var(--border); }
+  .room-body.open { display: block; }
+
+  /* ── User table ── */
+  .user-table { width: 100%; border-collapse: collapse; }
+  .user-table th { text-align: left; padding: 8px 16px; font-size: 11px; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .user-table td { padding: 9px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .user-table tr:last-child td { border-bottom: none; }
+  .user-table tr:hover td { background: var(--surface2); }
+  .user-role { font-size: 11px; padding: 2px 6px; border-radius: 3px; display: inline-block; }
+  .role-owner { background: #1a0e00; color: var(--warn); border: 1px solid var(--warn); }
+  .role-comod { background: #001a2a; color: var(--info); border: 1px solid var(--info); }
+  .role-user { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .user-id { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .action-btns { display: flex; gap: 6px; }
+
+  /* ── Ban table ── */
+  .ban-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .ban-table th { text-align: left; padding: 10px 16px; font-size: 11px; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .ban-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .ban-table tr:last-child td { border-bottom: none; }
+  .ban-table tr:hover td { background: var(--surface2); }
+  .empty-msg { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login">
+  <div class="login-card">
+    <h1>⚙ BroFerence Admin</h1>
+    <p>Enter server address and admin secret to connect.</p>
+    <div class="field">
+      <label>WebSocket URL</label>
+      <input id="wsUrl" type="text" placeholder="wss://blcknd.net:8765">
+    </div>
+    <div class="field">
+      <label>Admin Secret</label>
+      <input id="secret" type="password" placeholder="••••••••••••••••">
+    </div>
+    <button class="btn btn-primary" onclick="connect()">Connect</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- Shell -->
+<div id="shell">
+  <div class="topbar">
+    <h1>⚙ BroFerence Admin</h1>
+    <div id="connStatus"><span class="status-dot" id="dot"></span>Connected</div>
+    <div class="topbar-right">
+      <span id="lastRefresh"></span>
+      <button class="refresh-btn" onclick="requestState()">↻ Refresh</button>
+      <button class="refresh-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('rooms')">Rooms</button>
+    <button class="tab" onclick="showTab('bans')">Bans</button>
+  </div>
+
+  <div class="content">
+    <!-- Rooms -->
+    <div id="panel-rooms" class="panel active">
+      <div class="stats-bar">
+        <div class="stat-card"><div class="val" id="statRooms">0</div><div class="lbl">Active Rooms</div></div>
+        <div class="stat-card"><div class="val" id="statUsers">0</div><div class="lbl">Connected Users</div></div>
+        <div class="stat-card"><div class="val" id="statBans">0</div><div class="lbl">Total Bans</div></div>
+      </div>
+      <div id="roomList"></div>
+    </div>
+
+    <!-- Bans -->
+    <div id="panel-bans" class="panel">
+      <div id="banList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let ws = null;
+let state = { rooms: {}, bans: [], totalClients: 0 };
+let openRooms = new Set();
+
+// ── Connection ─────────────────────────────────────────────────────────────
+function connect() {
+  const url = document.getElementById('wsUrl').value.trim();
+  const secret = document.getElementById('secret').value.trim();
+  if (!url || !secret) return;
+
+  // Save URL for reconnect
+  localStorage.setItem('admin-ws-url', url);
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'admin-auth', secret }));
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'admin-authed') {
+      showShell();
+    } else if (msg.type === 'admin-auth-failed') {
+      showLoginError('Invalid admin secret.');
+      ws.close();
+    } else if (msg.type === 'admin-state') {
+      state = msg;
+      render();
+    }
+  };
+
+  ws.onclose = () => setConnStatus(false);
+  ws.onerror = () => { showLoginError('Could not connect to server.'); };
+}
+
+function logout() {
+  if (ws) ws.close();
+  document.getElementById('shell').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+}
+
+function requestState() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'admin-get-state' }));
+  }
+}
+
+function setConnStatus(online) {
+  document.getElementById('dot').className = 'status-dot' + (online ? '' : ' offline');
+  document.getElementById('connStatus').innerHTML =
+    `<span class="status-dot${online ? '' : ' offline'}"></span>${online ? 'Connected' : 'Disconnected'}`;
+}
+
+function showShell() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('shell').style.display = 'flex';
+  setConnStatus(true);
+  // Auto-refresh every 10s
+  setInterval(requestState, 10000);
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['rooms','bans'][i] === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ── Admin actions ──────────────────────────────────────────────────────────
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function kick(roomId, userId) {
+  if (!confirm('Kick this user?')) return;
+  send({ type: 'admin-kick', roomId, targetId: userId });
+}
+
+function ban(roomId, userId, username) {
+  if (!confirm(`Ban ${username} from ${roomId}?`)) return;
+  send({ type: 'admin-ban', roomId, targetId: userId, username });
+}
+
+function unban(roomId, userId) {
+  if (!confirm('Remove this ban?')) return;
+  send({ type: 'admin-unban', roomId, targetId: userId });
+  // Optimistic update
+  state.bans = state.bans.filter(b => !(b.clientId === userId && b.room === roomId));
+  renderBans();
+}
+
+function setMod(roomId, userId) {
+  if (!confirm('Make this user the room moderator?')) return;
+  send({ type: 'admin-set-mod', roomId, targetId: userId });
+}
+
+function removeMod(roomId, userId) {
+  if (!confirm('Remove moderator status from this user?')) return;
+  send({ type: 'admin-remove-mod', roomId, targetId: userId });
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  renderStats();
+  renderRooms();
+  renderBans();
+}
+
+function renderStats() {
+  const roomCount = Object.keys(state.rooms).length;
+  let userCount = 0;
+  for (const r of Object.values(state.rooms)) userCount += r.users.length;
+  document.getElementById('statRooms').textContent = roomCount;
+  document.getElementById('statUsers').textContent = userCount;
+  document.getElementById('statBans').textContent = state.bans.length;
+}
+
+function renderRooms() {
+  const container = document.getElementById('roomList');
+  const roomIds = Object.keys(state.rooms);
+  if (roomIds.length === 0) {
+    container.innerHTML = '<div class="empty-msg">No active rooms.</div>';
+    return;
+  }
+  container.innerHTML = roomIds.map(roomId => {
+    const room = state.rooms[roomId];
+    const isOpen = openRooms.has(roomId);
+    const badges = [
+      room.hasPassword ? '<span class="badge badge-lock">🔒 Password</span>' : '',
+      room.e2eeEnabled ? '<span class="badge badge-e2ee">🔐 E2EE</span>' : '',
+    ].filter(Boolean).join(' ');
+
+    const userRows = room.users.map(u => {
+      const roleLabel = u.isMod
+        ? '<span class="user-role role-owner">Owner</span>'
+        : u.isCoMod
+          ? '<span class="user-role role-comod">Co-Mod</span>'
+          : '<span class="user-role role-user">User</span>';
+      const modBtn = u.isMod
+        ? `<button class="btn btn-warn btn-sm" onclick="removeMod('${esc(roomId)}','${esc(u.id)}')">Remove Mod</button>`
+        : `<button class="btn btn-info btn-sm" onclick="setMod('${esc(roomId)}','${esc(u.id)}')">Make Mod</button>`;
+      return `<tr>
+        <td>${esc(u.username)}</td>
+        <td class="user-id">${esc(u.id.substring(0,12))}…</td>
+        <td>${roleLabel}</td>
+        <td><div class="action-btns">
+          <button class="btn btn-danger btn-sm" onclick="kick('${esc(roomId)}','${esc(u.id)}')">Kick</button>
+          <button class="btn btn-danger btn-sm" onclick="ban('${esc(roomId)}','${esc(u.id)}','${esc(u.username)}')">Ban</button>
+          ${modBtn}
+        </div></td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="room-card">
+      <div class="room-header" onclick="toggleRoom('${esc(roomId)}')">
+        <span class="room-name"># ${esc(roomId)}</span>
+        <div class="room-meta">
+          <span>${room.users.length} user${room.users.length !== 1 ? 's' : ''}</span>
+          ${badges}
+        </div>
+        <span class="chevron${isOpen ? ' open' : ''}">▼</span>
+      </div>
+      <div class="room-body${isOpen ? ' open' : ''}">
+        ${room.users.length === 0
+          ? '<div class="empty-msg" style="padding:16px">No users</div>'
+          : `<table class="user-table">
+              <thead><tr><th>Username</th><th>Client ID</th><th>Role</th><th>Actions</th></tr></thead>
+              <tbody>${userRows}</tbody>
+            </table>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderBans() {
+  const container = document.getElementById('banList');
+  if (state.bans.length === 0) {
+    container.innerHTML = '<div class="empty-msg">No bans.</div>';
+    return;
+  }
+  const rows = state.bans.map(b => {
+    const date = b.bannedAt ? new Date(b.bannedAt).toLocaleString() : '—';
+    return `<tr>
+      <td>${esc(b.username)}</td>
+      <td class="user-id">${esc(b.clientId.substring(0,12))}…</td>
+      <td>${esc(b.room)}</td>
+      <td>${esc(b.bannedBy || '—')}</td>
+      <td>${date}</td>
+      <td><button class="btn btn-warn btn-sm" onclick="unban('${esc(b.room)}','${esc(b.clientId)}')">Unban</button></td>
+    </tr>`;
+  }).join('');
+  container.innerHTML = `<table class="ban-table">
+    <thead><tr><th>Username</th><th>Client ID</th><th>Room</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function toggleRoom(roomId) {
+  if (openRooms.has(roomId)) openRooms.delete(roomId);
+  else openRooms.add(roomId);
+  renderRooms();
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.onload = () => {
+  const saved = localStorage.getItem('admin-ws-url');
+  if (saved) document.getElementById('wsUrl').value = saved;
+  document.getElementById('secret').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+};
+</script>
+</body>
+</html>

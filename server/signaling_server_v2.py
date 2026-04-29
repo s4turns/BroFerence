@@ -11,13 +11,14 @@ import re
 import ssl
 import os
 import hmac
+import secrets
 from typing import Dict, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
 from irc_bridge import IRCBridge
 import hashlib
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
@@ -33,6 +34,15 @@ rooms: Dict[str, dict] = {}
 
 # IRC bridge instance
 irc_bridge: Optional[IRCBridge] = None
+
+# Admin WebSocket connections (authenticated)
+admin_clients: set = set()
+
+# Ban records for admin panel display: list of dicts with metadata
+ban_records: list = []
+
+# Admin secret — read from env or auto-generate
+ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
 
 
 async def init_irc_bridge():
@@ -71,6 +81,45 @@ async def init_irc_bridge():
         logger.error(f"Traceback: {traceback.format_exc()}")
         irc_bridge = None
         return False
+
+
+def get_admin_state() -> dict:
+    """Build the full state snapshot sent to admin clients."""
+    rooms_out = {}
+    for room_id, room in rooms.items():
+        users_out = []
+        for ws in room['users']:
+            info = clients.get(ws)
+            if info:
+                users_out.append({
+                    'id': info['id'],
+                    'username': info['username'],
+                    'isMod': room.get('moderator') == info['id'],
+                    'isCoMod': info['id'] in room.get('co_mods', set()),
+                })
+        rooms_out[room_id] = {
+            'users': users_out,
+            'moderatorId': room.get('moderator'),
+            'coModIds': list(room.get('co_mods', set())),
+            'hasPassword': room['password'] is not None,
+            'e2eeEnabled': room.get('e2ee_enabled', False),
+            'bannedCount': len(room.get('banned', set())),
+        }
+    return {
+        'type': 'admin-state',
+        'rooms': rooms_out,
+        'bans': ban_records,
+        'totalClients': len(clients),
+    }
+
+
+async def broadcast_admin_state():
+    """Push updated state to all connected admin clients."""
+    if not admin_clients:
+        return
+    state = get_admin_state()
+    msg = json.dumps(state)
+    await asyncio.gather(*[ws.send(msg) for ws in list(admin_clients)], return_exceptions=True)
 
 
 def hash_password(password: str) -> bytes:
@@ -251,6 +300,7 @@ async def unregister_client(websocket: WebSocketServerProtocol):
 
         del clients[websocket]
         logger.info(f"Client {client_id} disconnected. Total clients: {len(clients)}")
+        await broadcast_admin_state()
 
 
 async def create_room(room_id: str, password: Optional[str] = None, irc_channel: Optional[str] = None, moderator_id: Optional[str] = None):
@@ -403,6 +453,7 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     ]
 
     logger.info(f"Client {client_id} ({username}) joined room {room_id}. Room size: {len(rooms[room_id]['users'])}")
+    await broadcast_admin_state()
 
     # Check if user is moderator
     is_moderator = is_privileged(rooms[room_id], client_id)
@@ -728,15 +779,25 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
 
             if room and can_act_on(rooms[room], client_info['id'], target_id):
                 rooms[room]['banned'].add(target_id)
+                target_username = target_id
                 for ws, info in list(clients.items()):
                     if info['id'] == target_id and info['room'] == room:
+                        target_username = info['username']
                         await ws.send(json.dumps({
                             'type': 'banned',
                             'message': 'You have been banned from this room'
                         }))
                         await ws.close()
                         break
+                ban_records.append({
+                    'clientId': target_id,
+                    'username': target_username,
+                    'room': room,
+                    'bannedAt': datetime.now(timezone.utc).isoformat(),
+                    'bannedBy': client_info['username'],
+                })
                 logger.info(f"User {target_id} banned from room {room}")
+                await broadcast_admin_state()
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
@@ -915,6 +976,113 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'hash': data.get('hash', '')
                 }, exclude=websocket)
 
+        # ── Admin commands ─────────────────────────────────────────────────────
+        elif msg_type == 'admin-auth':
+            secret = data.get('secret', '')
+            if hmac.compare_digest(secret, ADMIN_SECRET):
+                admin_clients.add(websocket)
+                await websocket.send(json.dumps({'type': 'admin-authed'}))
+                await websocket.send(json.dumps(get_admin_state()))
+                logger.info('Admin client authenticated')
+            else:
+                await websocket.send(json.dumps({'type': 'admin-auth-failed'}))
+
+        elif msg_type == 'admin-get-state':
+            if websocket in admin_clients:
+                await websocket.send(json.dumps(get_admin_state()))
+
+        elif msg_type == 'admin-kick':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            for ws, info in list(clients.items()):
+                if info['id'] == target_id and info['room'] == room_id:
+                    await ws.send(json.dumps({'type': 'kicked', 'message': 'You have been kicked by an admin'}))
+                    await ws.close()
+                    logger.info(f'Admin kicked {target_id} from {room_id}')
+                    break
+
+        elif msg_type == 'admin-ban':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            target_username = data.get('username', target_id)
+            if room_id in rooms:
+                rooms[room_id]['banned'].add(target_id)
+                ban_records.append({
+                    'clientId': target_id,
+                    'username': target_username,
+                    'room': room_id,
+                    'bannedAt': datetime.now(timezone.utc).isoformat(),
+                    'bannedBy': 'admin',
+                })
+                for ws, info in list(clients.items()):
+                    if info['id'] == target_id and info['room'] == room_id:
+                        await ws.send(json.dumps({'type': 'banned', 'message': 'You have been banned by an admin'}))
+                        await ws.close()
+                        break
+                logger.info(f'Admin banned {target_id} from {room_id}')
+                await broadcast_admin_state()
+
+        elif msg_type == 'admin-unban':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            if room_id in rooms:
+                rooms[room_id]['banned'].discard(target_id)
+            global ban_records
+            ban_records = [r for r in ban_records if not (r['clientId'] == target_id and r['room'] == room_id)]
+            logger.info(f'Admin unbanned {target_id} from {room_id}')
+            await broadcast_admin_state()
+
+        elif msg_type == 'admin-set-mod':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            if room_id in rooms:
+                rooms[room_id]['co_mods'].discard(target_id)
+                rooms[room_id]['moderator'] = target_id
+                for ws, info in clients.items():
+                    if info['id'] == target_id and info['room'] == room_id:
+                        await ws.send(json.dumps({'type': 'you-are-moderator'}))
+                        target_username = info['username']
+                        break
+                else:
+                    target_username = target_id
+                await broadcast_to_room(room_id, {
+                    'type': 'moderator-promoted',
+                    'moderatorId': target_id,
+                    'username': target_username,
+                    'coModIds': list(rooms[room_id]['co_mods'])
+                })
+                logger.info(f'Admin set {target_id} as mod in {room_id}')
+                await broadcast_admin_state()
+
+        elif msg_type == 'admin-remove-mod':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            if room_id in rooms:
+                if rooms[room_id]['moderator'] == target_id:
+                    rooms[room_id]['moderator'] = None
+                rooms[room_id]['co_mods'].discard(target_id)
+                for ws, info in clients.items():
+                    if info['id'] == target_id and info['room'] == room_id:
+                        await ws.send(json.dumps({'type': 'co-mod-removed-self'}))
+                        break
+                await broadcast_to_room(room_id, {
+                    'type': 'co-mod-removed',
+                    'coModId': target_id,
+                    'username': target_id
+                })
+                logger.info(f'Admin removed mod from {target_id} in {room_id}')
+                await broadcast_admin_state()
+
         else:
             logger.warning(f"Unknown message type: {msg_type}")
 
@@ -932,6 +1100,7 @@ async def handler(websocket: WebSocketServerProtocol):
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
+        admin_clients.discard(websocket)
         await unregister_client(websocket)
 
 
@@ -954,6 +1123,10 @@ async def main():
 
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
     logger.info("Features: Multi-participant, IRC bridge (on-demand), Password protection")
+    if not os.environ.get('ADMIN_SECRET'):
+        logger.warning(f"ADMIN_SECRET not set — generated: {ADMIN_SECRET}")
+    else:
+        logger.info("ADMIN_SECRET loaded from environment")
 
     async with websockets.serve(handler, host, port, ssl=ssl_context):
         await asyncio.Future()  # Run forever
