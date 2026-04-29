@@ -392,19 +392,28 @@ class ConferenceClient {
 
     playSoundTone(startFreq, endFreq, rampDuration) {
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const gain = ctx.createGain();
-            gain.connect(ctx.destination);
-            gain.gain.setValueAtTime(0.15, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-            const osc = ctx.createOscillator();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + rampDuration);
-            osc.connect(gain);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.4);
-            osc.onended = () => ctx.close();
+            // Prefer an already-running context (mic chain or shared) to avoid autoplay suspension
+            const ctx = (this.micAudioCtx && this.micAudioCtx.state === 'running')
+                ? this.micAudioCtx
+                : this.getSharedAudioContext();
+            const play = () => {
+                const gain = ctx.createGain();
+                gain.connect(ctx.destination);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+                const osc = ctx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + rampDuration);
+                osc.connect(gain);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.4);
+            };
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(play).catch(() => {});
+            } else {
+                play();
+            }
         } catch (e) { /* audio not available */ }
     }
 
