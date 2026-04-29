@@ -1097,6 +1097,8 @@ body::before {
     border: 1px solid var(--primary);
     color: var(--primary);
     padding: 8px 12px;
+    width: 200px;
+    min-width: 0;
     font-family: 'Courier New', monospace;
     font-size: 13px;
     cursor: pointer;
