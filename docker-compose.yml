@@ -21,6 +21,9 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "0.0.0.0:8765:8765"
       - "[::]:8765:8765"
