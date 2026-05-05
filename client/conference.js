@@ -3282,10 +3282,10 @@ class ConferenceClient {
 
             const video = document.createElement('video');
             video.src = url;
-            video.loop = true;
             video.muted = true; // Start muted to allow autoplay
             video.playsInline = true;
             video.crossOrigin = 'anonymous';
+            video.onended = () => this.stopVideoStream();
 
             container.appendChild(video);
             document.body.appendChild(container);
