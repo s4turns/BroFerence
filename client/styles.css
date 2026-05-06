@@ -1651,6 +1651,12 @@ body::before {
     color: #fff;
 }
 
+#lockRoomBtn.active {
+    background: var(--warning, #e6a817);
+    border-color: var(--warning, #e6a817);
+    color: #000;
+}
+
 .github-link {
     display: flex;
     align-items: center;

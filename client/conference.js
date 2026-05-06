@@ -12,6 +12,7 @@ class ConferenceClient {
         this.isOwner = false;
         this.moderatorId = null;
         this.coModIds = new Set();
+        this.roomLocked = false;
 
         // WebSocket reconnection
         this.wsReconnectAttempts = 0;
@@ -524,6 +525,7 @@ class ConferenceClient {
         document.getElementById('inviteLinkBtn').addEventListener('click', () => this.copyInviteLink());
         document.getElementById('defconBtn').addEventListener('click', () => this.toggleDefcon());
         document.getElementById('e2eeToggleBtn').addEventListener('click', () => this.toggleE2EE());
+        document.getElementById('lockRoomBtn').addEventListener('click', () => this.setRoomPassword());
         document.getElementById('optionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('closeOptionsBtn').addEventListener('click', () => this.toggleOptionsMenu());
         document.getElementById('optionsOverlay').addEventListener('click', () => this.toggleOptionsMenu());
@@ -861,6 +863,7 @@ class ConferenceClient {
                 this.moderatorUsername = this.isOwner
                     ? this.username
                     : (message.users.find(u => u.id === this.moderatorId)?.username || null);
+                this.roomLocked = message.hasPassword || false;
                 this.updateRoomInfo(message.users.length + 1);
 
                 // Show conference screen
@@ -869,6 +872,7 @@ class ConferenceClient {
 
                 // Show control buttons in header
                 document.getElementById('bottomControls').style.display = 'flex';
+                this.updateLockButton();
 
                 // Create peer connections for existing users.
                 // Skip peers that are already connected (e.g. after a WS reconnect —
@@ -1028,6 +1032,7 @@ class ConferenceClient {
                 this.moderatorUsername = this.username;
                 this.addChatMessage('System', 'You are now the room owner! Hover over users to see moderator controls.', true);
                 this.refreshModeratorControls();
+                this.updateLockButton();
                 this.updateE2EEUI();
                 if (this.e2eeEnabled) {
                     this.addChatMessage('System', 'Regenerating encryption keys after owner change...', true);
@@ -1070,6 +1075,16 @@ class ConferenceClient {
                 if (this.isOwner) this.refreshModeratorControls();
                 break;
             }
+
+            case 'room-lock-changed':
+                this.roomLocked = message.locked;
+                this.updateLockButton();
+                this.addChatMessage('System',
+                    message.locked
+                        ? `${message.changedBy} locked the room with a password`
+                        : `${message.changedBy} removed the room password`,
+                    true);
+                break;
 
             case 'public-key':
                 await this.receivePublicKey(message.senderId, message.data.publicKey);
@@ -2669,6 +2684,32 @@ class ConferenceClient {
                 audioControls.appendChild(banBtn);
             }
         });
+    }
+
+    updateLockButton() {
+        const btn = document.getElementById('lockRoomBtn');
+        if (!btn) return;
+        btn.style.display = this.isOwner ? '' : 'none';
+        if (this.roomLocked) {
+            btn.textContent = '🔒 Locked';
+            btn.classList.add('active');
+        } else {
+            btn.textContent = '🔓 Lock Room';
+            btn.classList.remove('active');
+        }
+    }
+
+    setRoomPassword() {
+        if (!this.isOwner) return;
+        let newPassword;
+        if (this.roomLocked) {
+            newPassword = prompt('Room is locked. Enter a new password to change it, or leave blank to unlock:');
+            if (newPassword === null) return; // cancelled
+        } else {
+            newPassword = prompt('Enter a password to lock this room (leave blank to cancel):');
+            if (!newPassword) return;
+        }
+        this.sendMessage({ type: 'set-room-password', password: newPassword || null });
     }
 
     kickUser(targetId) {

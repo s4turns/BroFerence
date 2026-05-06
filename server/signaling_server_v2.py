@@ -833,6 +833,32 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
 
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
 
+        elif msg_type == 'set-room-password':
+            # Owner locking/unlocking the room with a password
+            client_info = clients[websocket]
+            room = client_info['room']
+
+            if room and rooms[room]['moderator'] == client_info['id']:
+                new_password = data.get('password')  # None or empty string = unlock
+                if new_password:
+                    rooms[room]['password'] = hash_password(new_password)
+                    locked = True
+                else:
+                    rooms[room]['password'] = None
+                    locked = False
+
+                await broadcast_to_room(room, {
+                    'type': 'room-lock-changed',
+                    'locked': locked,
+                    'changedBy': client_info['username']
+                })
+                logger.info(f"Room {room} {'locked' if locked else 'unlocked'} by {client_info['username']}")
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only the room owner can lock or unlock the room'
+                }))
+
         elif msg_type == 'promote-moderator':
             # Owner transferring primary ownership to another user
             client_info = clients[websocket]
