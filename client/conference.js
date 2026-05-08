@@ -2016,9 +2016,7 @@ class ConferenceClient {
 
             // Set initial video state for local container
             const localContainer = document.getElementById('localContainer');
-            if (!this.videoEnabled) {
-                localContainer.classList.add('no-video');
-            }
+            localContainer.classList.toggle('no-video', !this.videoEnabled);
 
             // Click local tile to spotlight it
             localContainer.addEventListener('click', (e) => {
@@ -3098,10 +3096,8 @@ class ConferenceClient {
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
 
-            // Restore avatar if video is off
-            if (!this.videoEnabled) {
-                document.getElementById('localContainer').classList.add('no-video');
-            }
+            // Restore correct avatar state after screen share ends
+            document.getElementById('localContainer').classList.toggle('no-video', !this.videoEnabled);
 
             // Tell remote peers to restore correct avatar state
             this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
@@ -3602,26 +3598,21 @@ class ConferenceClient {
     }
 
     toggleVideo() {
+        this.videoEnabled = !this.videoEnabled;
+
         if (this.localStream) {
-            this.videoEnabled = !this.videoEnabled;
             this.localStream.getVideoTracks().forEach(track => {
                 track.enabled = this.videoEnabled;
             });
-
-            const btn = document.getElementById('toggleVideoBtn');
-            btn.classList.toggle('active', !this.videoEnabled);
-            btn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
-
-            // Show/hide avatar when video is toggled
-            const localContainer = document.getElementById('localContainer');
-            localContainer.classList.toggle('no-video', !this.videoEnabled);
-
-            // Notify other users of video state change
-            this.sendMessage({
-                type: 'video-state',
-                videoEnabled: this.videoEnabled
-            });
         }
+
+        const btn = document.getElementById('toggleVideoBtn');
+        btn.classList.toggle('active', !this.videoEnabled);
+        btn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
+
+        document.getElementById('localContainer').classList.toggle('no-video', !this.videoEnabled);
+
+        this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
     }
 
     toggleChat() {
