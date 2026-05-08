@@ -4,6 +4,7 @@ YouTube Video Proxy - Extracts and streams video using yt-dlp
 Runs alongside the signaling server on port 8766
 """
 
+import os
 import subprocess
 import logging
 import urllib.parse
@@ -11,6 +12,8 @@ import ipaddress
 import socket
 import aiohttp
 from aiohttp import web
+
+COOKIES_FILE = '/cookies/cookies.txt'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -94,10 +97,12 @@ async def get_video_url(request):
 
         logger.info(f"Extracting video URL for: {url}")
 
-        result = subprocess.run(
-            ['yt-dlp', '-f', 'best[height<=720]/best', '-g', '--no-warnings', '--no-playlist', url],
-            capture_output=True, text=True, timeout=30
-        )
+        cmd = ['yt-dlp', '-f', 'best[height<=720]/best', '-g', '--no-warnings', '--no-playlist']
+        if os.path.exists(COOKIES_FILE):
+            cmd += ['--cookies', COOKIES_FILE]
+        cmd.append(url)
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
         if result.returncode != 0:
             logger.error(f"yt-dlp error: {result.stderr}")

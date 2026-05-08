@@ -48,6 +48,8 @@ services:
     ports:
       - "0.0.0.0:8766:8766"
       - "[::]:8766:8766"
+    volumes:
+      - ./cookies:/cookies:ro
     dns:
       - 8.8.8.8
       - 1.1.1.1
