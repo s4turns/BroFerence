@@ -3170,41 +3170,36 @@ class ConferenceClient {
             console.log('No screen audio available to mix');
             return;
         }
+        if (!this.micAudioCtx || !this.micDestination) {
+            console.log('Mic audio chain not ready, skipping mix');
+            return;
+        }
 
         try {
-            // Mix mic + screen audio into a single track using Web Audio API
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Add screen audio into the existing micAudioCtx so both sources feed
+            // micDestination — the track peers already receive — avoiding cross-context
+            // audio piping which silences the mic in all browsers.
+            this.screenGainNode = this.micAudioCtx.createGain();
+            this.screenAudioSource = this.micAudioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+            this.screenAudioSource.connect(this.screenGainNode);
+            this.screenGainNode.connect(this.micDestination);
 
-            // Get current mic track from the audio chain output
-            const currentMicTrack = this.micDestination
-                ? this.micDestination.stream.getAudioTracks()[0]
-                : this.localStream.getAudioTracks()[0];
-
-            const micSource = audioCtx.createMediaStreamSource(new MediaStream([currentMicTrack]));
-            const screenSource = audioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
-            const dest = audioCtx.createMediaStreamDestination();
-
-            // Individual gain nodes for independent volume control
-            this.micGainNode = audioCtx.createGain();
-            this.screenGainNode = audioCtx.createGain();
-
-            micSource.connect(this.micGainNode);
-            this.micGainNode.connect(dest);
-            screenSource.connect(this.screenGainNode);
-            this.screenGainNode.connect(dest);
-
-            const mixedTrack = dest.stream.getAudioTracks()[0];
-
-            // Replace audio track with mixed track in all peers (no renegotiation needed)
-            this.peerConnections.forEach(peer => {
-                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                if (sender) {
-                    sender.replaceTrack(mixedTrack);
+            // Insert a gain node into the mic path for independent volume control.
+            // Disconnect micSource and rewire: micSource → micGainNode → [noiseNode →] micDestination
+            if (this.micSource) {
+                this.micSource.disconnect();
+                this.micGainNode = this.micAudioCtx.createGain();
+                if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
+                    this.micSource.connect(this.micGainNode);
+                    this.micGainNode.connect(this.noiseSuppressionNode);
+                    // noiseSuppressionNode → micDestination already wired
+                } else {
+                    this.micSource.connect(this.micGainNode);
+                    this.micGainNode.connect(this.micDestination);
                 }
-            });
+            }
 
-            this.screenAudioContext = audioCtx;
-            this.screenMixedTrack = mixedTrack;
+            // micDestination.stream is already the track in all peer senders — no replaceTrack needed.
 
             // Show audio mixer UI and wire sliders
             const mixer = document.getElementById('screenAudioMixer');
@@ -3219,7 +3214,7 @@ class ConferenceClient {
                 micVal.textContent = '100%';
                 screenVal.textContent = '100%';
                 micSlider.oninput = (e) => {
-                    this.micGainNode.gain.value = e.target.value / 100;
+                    if (this.micGainNode) this.micGainNode.gain.value = e.target.value / 100;
                     micVal.textContent = e.target.value + '%';
                 };
                 screenSlider.oninput = (e) => {
@@ -3235,25 +3230,27 @@ class ConferenceClient {
     }
 
     unmixScreenAudio() {
-        if (!this.screenAudioContext) return;
+        if (!this.screenAudioSource) return;
 
-        // Restore mic track (always micDestination when chain is set up, else raw)
-        const micTrack = this.micDestination
-            ? this.micDestination.stream.getAudioTracks()[0]
-            : this.localStream.getAudioTracks()[0];
-
-        this.peerConnections.forEach(peer => {
-            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
-            if (sender) {
-                sender.replaceTrack(micTrack);
-            }
-        });
-
-        this.screenAudioContext.close();
-        this.screenAudioContext = null;
-        this.screenMixedTrack = null;
-        this.micGainNode = null;
+        // Disconnect screen audio branch
+        this.screenAudioSource.disconnect();
+        this.screenAudioSource = null;
         this.screenGainNode = null;
+
+        // Remove mic gain node and restore direct mic chain
+        if (this.micSource && this.micGainNode) {
+            this.micSource.disconnect();
+            this.micGainNode.disconnect();
+            this.micGainNode = null;
+            if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
+                this.micSource.connect(this.noiseSuppressionNode);
+                // noiseSuppressionNode → micDestination already wired
+            } else {
+                this.micSource.connect(this.micDestination);
+            }
+        }
+
+        // micDestination.stream track is already in all peer senders — no replaceTrack needed.
 
         const mixer = document.getElementById('screenAudioMixer');
         if (mixer) mixer.classList.add('hidden');
