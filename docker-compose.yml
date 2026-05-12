@@ -40,27 +40,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # YouTube Proxy Server (yt-dlp)
-  youtube-proxy:
-    build:
-      context: ./server
-      dockerfile: Dockerfile.youtube
-    ports:
-      - "0.0.0.0:8766:8766"
-      - "[::]:8766:8766"
-    volumes:
-      - ./cookies:/cookies:ro
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # Web Client Server
+# Web Client Server
   web:
     build:
       context: .
