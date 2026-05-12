@@ -63,6 +63,7 @@ class ConferenceClient {
         this.gravatarHash = localStorage.getItem('broference-gravatar-hash') || null;
         this.peerGravatarHashes = new Map();
         this.peerVideoStates = new Map();
+        this.pendingImageData = null;
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
@@ -613,6 +614,21 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (e.key === 'Enter') this.sendChatMessage();
         });
 
+        // Image paste in chat
+        document.querySelector('.chat-input-container').addEventListener('paste', (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) this.handleImagePaste(file);
+                    break;
+                }
+            }
+        });
+        document.getElementById('chatImageCancelBtn').addEventListener('click', () => this.clearImagePreview());
+
         // Click channel name to focus input
         document.querySelector('.chat-header h3').addEventListener('click', () => this.chatInput.focus());
 
@@ -1119,7 +1135,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         });
                     }
                 } else {
-                    this.addChatMessage(message.username, message.message, false, isIRC, isOwn);
+                    this.addChatMessage(message.username, message.message, false, isIRC, isOwn, false, false, message.imageData || null);
                 }
                 break;
             }
@@ -3649,7 +3665,20 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
     async sendChatMessage() {
         const message = this.chatInput.value.trim();
-        if (!message) return;
+        if (!message && !this.pendingImageData) return;
+
+        if (this.pendingImageData) {
+            if (this.e2eeEnabled) {
+                this.addChatMessage('System', 'Images cannot be sent in E2EE mode.', true);
+                this.clearImagePreview();
+                return;
+            }
+            const imageData = this.pendingImageData;
+            this.clearImagePreview();
+            this.chatInput.value = '';
+            this.sendMessage({ type: 'chat-message', message: message || '[image]', imageData });
+            return;
+        }
 
         if (message.startsWith('/')) {
             this.handleChatCommand(message);
@@ -3733,7 +3762,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         return '';
     }
 
-    addChatMessage(username, text, isSystem = false, isIRC = false, isOwn = false, isEncrypted = false, isFailed = false) {
+    addChatMessage(username, text, isSystem = false, isIRC = false, isOwn = false, isEncrypted = false, isFailed = false, imageData = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'chat-message';
 
@@ -3750,9 +3779,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const textSpan = document.createElement('div');
         textSpan.className = 'text';
 
-        // Linkify the text if it's not a system message
+        // Linkify the text if it's not a system message; hide "[image]" sentinel
         if (!isSystem) {
-            textSpan.innerHTML = this.linkifyText(text);
+            const displayText = (imageData && text === '[image]') ? '' : text;
+            if (displayText) textSpan.innerHTML = this.linkifyText(displayText);
         } else {
             textSpan.textContent = text;
         }
@@ -3770,7 +3800,18 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
 
         messageDiv.appendChild(usernameSpan);
-        messageDiv.appendChild(textSpan);
+        if (textSpan.textContent || textSpan.innerHTML) messageDiv.appendChild(textSpan);
+
+        if (imageData) {
+            const imgEl = document.createElement('img');
+            imgEl.src = imageData;
+            imgEl.className = 'chat-img';
+            imgEl.alt = 'Image';
+            imgEl.title = 'Click to view full size';
+            imgEl.addEventListener('click', () => window.open(imageData, '_blank', 'noopener,noreferrer'));
+            messageDiv.appendChild(imgEl);
+        }
+
         messageDiv.appendChild(timestamp);
 
         this.chatMessages.appendChild(messageDiv);
@@ -3781,6 +3822,50 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.unreadMessageCount++;
             this.updateChatNotification();
         }
+    }
+
+    compressImage(file) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const maxDim = 1024;
+                let { width, height } = img;
+                if (width > maxDim || height > maxDim) {
+                    if (width >= height) {
+                        height = Math.round(height * maxDim / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round(width * maxDim / height);
+                        height = maxDim;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.75));
+            };
+            img.src = url;
+        });
+    }
+
+    async handleImagePaste(file) {
+        const dataURL = await this.compressImage(file);
+        this.pendingImageData = dataURL;
+        const preview = document.getElementById('chatImagePreview');
+        document.getElementById('chatImagePreviewImg').src = dataURL;
+        preview.classList.remove('hidden');
+        this.chatInput.placeholder = 'Add a caption... (optional)';
+        this.chatInput.focus();
+    }
+
+    clearImagePreview() {
+        this.pendingImageData = null;
+        document.getElementById('chatImagePreview').classList.add('hidden');
+        document.getElementById('chatImagePreviewImg').src = '';
+        this.chatInput.placeholder = 'Type a message...';
     }
 
     updateRoomInfo(participantCount) {
@@ -3964,6 +4049,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.clearedMessages = [];
         this.knownUsernames.clear();
         this.isIntentionalDisconnect = false;
+        this.clearImagePreview();
         this.wsReconnectAttempts = 0;
         this.wsReconnecting = false;
 

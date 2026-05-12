@@ -668,6 +668,9 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 # Pass through E2EE payload opaquely if present
                 if 'encrypted' in data:
                     broadcast_msg['encrypted'] = data['encrypted']
+                # Pass through image data opaquely if present
+                if 'imageData' in data:
+                    broadcast_msg['imageData'] = data['imageData']
                 await broadcast_to_room(room, broadcast_msg)
 
                 # Send to IRC if bridged
@@ -1166,7 +1169,7 @@ async def main():
     else:
         logger.info("ADMIN_SECRET loaded from environment")
 
-    async with websockets.serve(handler, host, port, ssl=ssl_context):
+    async with websockets.serve(handler, host, port, ssl=ssl_context, max_size=4*1024*1024):
         await asyncio.Future()  # Run forever
 
 

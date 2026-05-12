@@ -308,8 +308,14 @@
                 <div class="chat-messages" id="chatMessages"></div>
 
                 <div class="chat-input-container">
-                    <input type="text" id="chatInput" placeholder="Type a message..." />
-                    <button id="sendMessageBtn" class="btn btn-primary">Send</button>
+                    <div id="chatImagePreview" class="chat-image-preview hidden">
+                        <img id="chatImagePreviewImg" src="" alt="Preview">
+                        <button id="chatImageCancelBtn" class="chat-image-cancel" title="Remove image">✕</button>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Type a message..." />
+                        <button id="sendMessageBtn" class="btn btn-primary">Send</button>
+                    </div>
                 </div>
 
                 <div class="irc-status" id="ircStatus"></div>
