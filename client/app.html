@@ -177,13 +177,6 @@
                                 <span>Automatically reduces quality on slow connections to keep calls stable.</span>
                             </div>
                         </div>
-                        <div class="landing-feature">
-                            <span class="lf-icon">▶️</span>
-                            <div>
-                                <strong>Watch Together</strong>
-                                <span>Stream YouTube videos or direct media URLs to everyone in the room in sync.</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -300,34 +293,12 @@
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
                             <span class="icon">🖥️</span>
                         </button>
-                        <button id="watchTogetherBtn" class="control-btn" title="Watch Together (YouTube, etc)">
-                            <span class="icon">📺</span>
-                        </button>
-                        <button id="stopStreamBtn" class="control-btn hidden" title="Stop Streaming" style="background: var(--danger);">
-                            <span class="icon">⏹️</span>
-                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Stream Video Panel -->
-            <div id="watchTogetherPanel" class="watch-together-panel hidden">
-                <div class="watch-together-header">
-                    <h3>📺 Stream Video</h3>
-                    <button id="closeWatchBtn" class="btn-icon">✕</button>
-                </div>
-                <div class="watch-together-content">
-                    <p>Stream video in your video feed</p>
-                    <div class="watch-together-input">
-                        <input type="text" id="videoUrlInput" placeholder="YouTube or video URL..." />
-                        <button id="loadVideoBtn" class="btn btn-primary">Stream</button>
-                    </div>
-                    <button id="shareYouTubeWindowBtn" class="btn btn-yt-window">🎬 Share YouTube Window (with audio)</button>
-                    <span id="watchStatus"></span>
-                </div>
-            </div>
 
-            <!-- Chat Sidebar -->
+<!-- Chat Sidebar -->
             <div class="chat-sidebar hidden" id="chatSidebar">
                 <div class="chat-header">
                     <h3>💬 Chat <span id="e2eeStatusIndicator" class="e2ee-status-indicator hidden" title="End-to-end encrypted">🔒</span></h3>
