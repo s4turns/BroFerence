@@ -3808,7 +3808,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             imgEl.className = 'chat-img';
             imgEl.alt = 'Image';
             imgEl.title = 'Click to view full size';
-            imgEl.addEventListener('click', () => window.open(imageData, '_blank', 'noopener,noreferrer'));
+            imgEl.addEventListener('click', () => {
+                const [header, b64] = imageData.split(',');
+                const mime = (header.match(/:(.*?);/) || [])[1] || 'image/jpeg';
+                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+                window.open(url, '_blank', 'noopener,noreferrer');
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+            });
             messageDiv.appendChild(imgEl);
         }
 
