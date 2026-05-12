@@ -674,19 +674,6 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                 if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                     await irc_bridge.send_message(room, username, msg_content)
 
-        elif msg_type == 'watch-video':
-            # Share video URL with room - opens in everyone's browser
-            client_info = clients[websocket]
-            room = client_info['room']
-            username = client_info['username']
-
-            if room:
-                await broadcast_to_room(room, {
-                    'type': 'watch-video',
-                    'url': data.get('url'),
-                    'username': username
-                }, exclude=websocket)
-
         elif msg_type == 'video-state':
             # User toggled their video - broadcast to room
             client_info = clients[websocket]
@@ -793,6 +780,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         }))
                         await ws.close()
                         break
+                if len(ban_records) >= 1000:
+                    ban_records.pop(0)
                 ban_records.append({
                     'clientId': target_id,
                     'username': target_username,
@@ -1042,6 +1031,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             if room_id in rooms:
                 rooms[room_id]['banned'].add(target_id)
                 target_ip = next((info.get('ip', '') for ws, info in clients.items() if info['id'] == target_id), '')
+                if len(ban_records) >= 1000:
+                    ban_records.pop(0)
                 ban_records.append({
                     'clientId': target_id,
                     'username': target_username,
@@ -1171,7 +1162,7 @@ async def main():
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
     logger.info("Features: Multi-participant, IRC bridge (on-demand), Password protection")
     if not os.environ.get('ADMIN_SECRET'):
-        logger.warning(f"ADMIN_SECRET not set — generated: {ADMIN_SECRET}")
+        logger.warning("ADMIN_SECRET not set in environment — a random secret was generated for this session")
     else:
         logger.info("ADMIN_SECRET loaded from environment")
 

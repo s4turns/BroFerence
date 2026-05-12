@@ -95,9 +95,9 @@ class IRCBridge:
 
             # Respond to PING
             if message.startswith("PING"):
-                pong = message.replace("PING", "PONG")
+                token = message[5:] if len(message) > 5 else ''
                 logger.info(f"IRC >> PONG")
-                await self.send_raw(pong)
+                await self.send_raw(f"PONG :{token}")
 
             # Check for welcome message (001) or end of MOTD (376)
             if " 001 " in message:
@@ -118,6 +118,7 @@ class IRCBridge:
 
     async def join_channel(self, channel: str, room_id: str):
         """Join an IRC channel and map it to a WebRTC room."""
+        channel = channel.replace('\r', '').replace('\n', '')
         if not channel.startswith('#'):
             channel = f"#{channel}"
 
@@ -138,7 +139,9 @@ class IRCBridge:
         """Send message from WebRTC user to IRC channel."""
         if room_id in self.room_channels:
             channel = self.room_channels[room_id]
-            formatted = f"<{username}> {message}"
+            safe_username = username.replace('\r', '').replace('\n', '')
+            safe_message = message.replace('\r', '').replace('\n', '')
+            formatted = f"<{safe_username}> {safe_message}"
             await self.send_raw(f"PRIVMSG {channel} :{formatted}")
 
     def register_message_callback(self, room_id: str, callback: Callable):
@@ -160,8 +163,8 @@ class IRCBridge:
 
                 # Respond to PING
                 if message.startswith("PING"):
-                    pong = message.replace("PING", "PONG")
-                    await self.send_raw(pong)
+                    token = message[5:] if len(message) > 5 else ''
+                    await self.send_raw(f"PONG :{token}")
                     continue
 
                 # Parse PRIVMSG
