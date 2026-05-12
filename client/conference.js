@@ -3009,9 +3009,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (!this.isScreenSharing) {
             try {
                 // Request screen sharing with system audio
+                const screenQuality = this.getVideoConstraints();
                 this.screenStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
                         cursor: 'always',
+                        width: screenQuality.width,
+                        height: screenQuality.height,
                         frameRate: { ideal: 30, max: 60 }
                     },
                     audio: {
