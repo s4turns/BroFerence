@@ -62,6 +62,7 @@ class ConferenceClient {
         this.videoQuality = localStorage.getItem('broference-video-quality') || '720';
         this.gravatarHash = localStorage.getItem('broference-gravatar-hash') || null;
         this.peerGravatarHashes = new Map();
+        this.peerVideoStates = new Map();
 
         // Noise suppression state
         this.noiseSuppressionEnabled = false;
@@ -908,7 +909,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
                 // Send initial video, audio state, and gravatar to other users
                 setTimeout(() => {
-                    this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
+                    this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled || this.isScreenSharing });
                     this.sendMessage({ type: 'audio-state', audioEnabled: this.audioEnabled });
                     if (this.gravatarHash) {
                         this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
@@ -938,6 +939,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.peerPublicKeys.delete(message.clientId);
                 this.peerSharedKeys.delete(message.clientId);
                 this.peerGravatarHashes.delete(message.clientId);
+                this.peerVideoStates.delete(message.clientId);
                 this.updateRoomInfo(this.peerConnections.size + 1);
                 break;
 
@@ -1150,10 +1152,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 break;
 
             case 'video-state': {
-                // Update remote user's video container based on their video state
+                // Store state so it can be applied even if container doesn't exist yet
+                this.peerVideoStates.set(message.clientId, message.videoEnabled);
                 const remoteContainer = document.getElementById(`video-${message.clientId}`);
                 if (remoteContainer) {
-                    // Store signaled state so onmute won't override it during replaceTrack transitions
                     remoteContainer.dataset.signaledVideoEnabled = message.videoEnabled ? 'true' : 'false';
                     remoteContainer.classList.toggle('no-video', !message.videoEnabled);
                 }
@@ -2442,11 +2444,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
         container.appendChild(avatar);
 
+        // Apply any already-received video-state before checking the track
+        // (video-state can arrive before the container exists, so we cache it)
+        const signaledState = this.peerVideoStates.get(peerId);
+        if (signaledState !== undefined) {
+            container.dataset.signaledVideoEnabled = signaledState ? 'true' : 'false';
+            container.classList.toggle('no-video', !signaledState);
+        }
+
         // Monitor video track to show/hide avatar
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-            // Check initial state
-            if (!videoTrack.enabled || videoTrack.muted) {
+            // Check initial state only if no signaled state overrides it
+            if (signaledState === undefined && (!videoTrack.enabled || videoTrack.muted)) {
                 container.classList.add('no-video');
             }
 
@@ -2559,7 +2569,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         });
         this.sendMessage({
             type: 'video-state',
-            videoEnabled: this.videoEnabled
+            videoEnabled: this.videoEnabled || this.isScreenSharing
         });
 
         this.updateRoomInfo(this.peerConnections.size + 1);
