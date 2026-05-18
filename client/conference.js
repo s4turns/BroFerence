@@ -539,46 +539,38 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.toggleNoiseSuppression();
         });
 
-        // Hide noise suppression on mobile (causes issues)
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const noiseBtn = document.getElementById('noiseSuppressionBtn');
         const noiseGateSettings = document.getElementById('noiseGateSettings');
-        if (isMobile) {
-            noiseBtn.style.display = 'none';
-            noiseGateSettings.style.display = 'none';
-        } else {
-            noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
+        noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
 
-            // Mic device selector
-            const micSelect = document.getElementById('micDeviceSelect');
-            micSelect.addEventListener('change', (e) => {
-                if (e.target.value) this.switchMicrophone(e.target.value);
-            });
+        // Mic device selector
+        const micSelect = document.getElementById('micDeviceSelect');
+        micSelect.addEventListener('change', (e) => {
+            if (e.target.value) this.switchMicrophone(e.target.value);
+        });
 
-            // Noise gate threshold slider
-            const gateSlider = document.getElementById('gateThresholdSlider');
-            const gateValue = document.getElementById('gateThresholdValue');
-            const thresholdLine = document.getElementById('gateThresholdLine');
+        // Noise gate threshold slider
+        const gateSlider = document.getElementById('gateThresholdSlider');
+        const gateValue = document.getElementById('gateThresholdValue');
+        const thresholdLine = document.getElementById('gateThresholdLine');
 
-            // Initialize from saved setting
-            gateSlider.value = this.noiseGateThreshold;
-            gateValue.textContent = `${this.noiseGateThreshold}%`;
-            thresholdLine.style.left = `${this.noiseGateThreshold}%`;
+        // Initialize from saved setting
+        gateSlider.value = this.noiseGateThreshold;
+        gateValue.textContent = `${this.noiseGateThreshold}%`;
+        thresholdLine.style.left = `${this.noiseGateThreshold}%`;
 
-            gateSlider.addEventListener('input', (e) => {
-                const value = parseInt(e.target.value);
-                this.noiseGateThreshold = value;
-                gateValue.textContent = `${value}%`;
-                thresholdLine.style.left = `${value}%`;
-                this.saveNoiseGateSetting('threshold', value);
-                this.updateNoiseGateThreshold(value);
+        gateSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            this.noiseGateThreshold = value;
+            gateValue.textContent = `${value}%`;
+            thresholdLine.style.left = `${value}%`;
+            this.saveNoiseGateSetting('threshold', value);
+            this.updateNoiseGateThreshold(value);
 
-                // Reset warning state when user adjusts threshold
-                this.micConstantlyActiveCount = 0;
-                this.hideMicActiveWarning();
-            });
-
-        }
+            // Reset warning state when user adjusts threshold
+            this.micConstantlyActiveCount = 0;
+            this.hideMicActiveWarning();
+        });
 
         // Low bandwidth mode toggle (options menu)
         const lowBandwidthBtn = document.getElementById('lowBandwidthBtn');
