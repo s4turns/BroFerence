@@ -2041,11 +2041,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
-            // Auto-enable AI noise suppression on desktop
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            if (!isMobile) {
-                try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
-            }
+            // Auto-enable AI noise suppression on all devices
+            try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
 
             // Generate E2EE key pair before joining room
             await this.initE2EE();
