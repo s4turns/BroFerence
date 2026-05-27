@@ -60,7 +60,8 @@ echo "Updated client/conference.js"
 # Sync fail2ban config if fail2ban is installed
 if command -v fail2ban-client &>/dev/null; then
     echo "Syncing fail2ban config..."
-    cp fail2ban/jail.local /etc/fail2ban/jail.local
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    sed "s|__REPO_DIR__|$REPO_DIR|g" fail2ban/jail.local > /etc/fail2ban/jail.local
     cp fail2ban/filter.d/coturn-auth.conf /etc/fail2ban/filter.d/coturn-auth.conf
     cp fail2ban/filter.d/nginx-req-limit.conf /etc/fail2ban/filter.d/nginx-req-limit.conf
     systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban

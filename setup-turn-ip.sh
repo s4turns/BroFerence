@@ -18,7 +18,7 @@ else
     if [ -z "$PUBLIC_IP" ]; then
         echo "ERROR: Could not detect public IP"
         echo "Usage: $0 [hostname]"
-        echo "Example: $0 blcknd.net"
+        echo "Example: $0 yourdomain.com"
         exit 1
     fi
 
@@ -76,5 +76,6 @@ echo "3. Test TURN connectivity:"
 echo "   Visit: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/"
 echo "   Use: turn:$PUBLIC_IP:3479"
 echo "   Username: webrtc"
-echo "   Password: hLBTE9M6osBZuOWy7FQHTVIpZIvISo3"
+TURN_PASS=$(grep "^user=" config/turnserver.production.conf 2>/dev/null | cut -d: -f2 || echo "webrtc123")
+echo "   Password: ${TURN_PASS}"
 echo ""

@@ -1,34 +1,40 @@
+# fail2ban jail config for BroFerence
+# Do NOT edit /etc/fail2ban/jail.local directly — edit this file and re-run setup-fail2ban.sh.
+# The __REPO_DIR__ placeholder is substituted with the actual repo path at install time.
+
 [DEFAULT]
 bantime  = 1h
 findtime = 10m
 maxretry = 5
 banaction = iptables-multiport
+allowipv6 = auto
 
 # SSH brute force
 [sshd]
 enabled  = true
-port     = 22
+port     = ssh
 filter   = sshd
 logpath  = /var/log/auth.log
 maxretry = 5
 bantime  = 24h
 
 # Nginx - block aggressive scanners hitting repeated 4xx errors
+# Enabled after containers are redeployed with log volume mounts
 [nginx-botsearch]
 enabled  = true
 port     = http,https
 filter   = nginx-botsearch
-logpath  = /home/bro/BroFerence/logs/nginx/access.log
+logpath  = __REPO_DIR__/logs/nginx/access.log
 maxretry = 10
 findtime = 1m
 bantime  = 1h
 
-# Nginx - block HTTP flood (too many requests per minute)
+# Nginx - block HTTP flood / rate limit violations
 [nginx-req-limit]
 enabled  = true
 port     = http,https
 filter   = nginx-req-limit
-logpath  = /home/bro/BroFerence/logs/nginx/error.log
+logpath  = __REPO_DIR__/logs/nginx/error.log
 maxretry = 10
 findtime = 1m
 bantime  = 1h
@@ -39,7 +45,7 @@ enabled  = true
 port     = 3479
 protocol = tcp,udp
 filter   = coturn-auth
-logpath  = /home/bro/BroFerence/logs/coturn/turnserver.log
+logpath  = __REPO_DIR__/logs/coturn/turnserver.log
 maxretry = 10
 findtime = 1m
 bantime  = 1h
