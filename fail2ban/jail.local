@@ -1,0 +1,45 @@
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+banaction = iptables-multiport
+
+# SSH brute force
+[sshd]
+enabled  = true
+port     = 22
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 5
+bantime  = 24h
+
+# Nginx - block aggressive scanners hitting repeated 4xx errors
+[nginx-botsearch]
+enabled  = true
+port     = http,https
+filter   = nginx-botsearch
+logpath  = /home/bro/BroFerence/logs/nginx/access.log
+maxretry = 10
+findtime = 1m
+bantime  = 1h
+
+# Nginx - block HTTP flood (too many requests per minute)
+[nginx-req-limit]
+enabled  = true
+port     = http,https
+filter   = nginx-req-limit
+logpath  = /home/bro/BroFerence/logs/nginx/error.log
+maxretry = 10
+findtime = 1m
+bantime  = 1h
+
+# TURN - block repeated auth failures (unauthorized relay attempts)
+[coturn-auth]
+enabled  = true
+port     = 3479
+protocol = tcp,udp
+filter   = coturn-auth
+logpath  = /home/bro/BroFerence/logs/coturn/turnserver.log
+maxretry = 10
+findtime = 1m
+bantime  = 1h

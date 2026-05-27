@@ -57,6 +57,19 @@ echo "Updated config/turnserver.production.conf"
 sed -i "s/const PRIMARY_TURN_CREDENTIAL = '[^']*'/const PRIMARY_TURN_CREDENTIAL = '${TURN_PASSWORD}'/" client/conference.js
 echo "Updated client/conference.js"
 
+# Sync fail2ban config if fail2ban is installed
+if command -v fail2ban-client &>/dev/null; then
+    echo "Syncing fail2ban config..."
+    cp fail2ban/jail.local /etc/fail2ban/jail.local
+    cp fail2ban/filter.d/coturn-auth.conf /etc/fail2ban/filter.d/coturn-auth.conf
+    cp fail2ban/filter.d/nginx-req-limit.conf /etc/fail2ban/filter.d/nginx-req-limit.conf
+    systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban
+    echo "fail2ban config updated"
+fi
+
+# Ensure log dirs exist for fail2ban
+mkdir -p logs/nginx logs/coturn
+
 # Rebuild and restart Docker containers
 echo ""
 echo "[3/4] Rebuilding Docker containers with latest code..."

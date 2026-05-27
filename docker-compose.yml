@@ -8,6 +8,7 @@ services:
         source: ./config/turnserver.production.conf
         target: /etc/coturn/turnserver.conf
         read_only: true
+      - ./logs/coturn:/var/log/coturn
     command: -c /etc/coturn/turnserver.conf
     restart: unless-stopped
     logging:
@@ -52,6 +53,7 @@ services:
       - "[::]:443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./logs/nginx:/var/log/nginx
     restart: unless-stopped
     logging:
       driver: "json-file"
