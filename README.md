@@ -1,519 +1,464 @@
-# BroFerence - WebRTC Video Conferencing
+# BroFerence — WebRTC Video Conferencing
 
-LIVE DEMO: https://broference.cam/ https://blcknd.net/
+**Live demo:** https://broference.cam/
 
 <img width="1077" height="721" alt="image" src="https://github.com/user-attachments/assets/da9df2b7-5a0e-40eb-8f03-ed3132c300d0" />
 
 <img width="3380" height="1551" alt="image" src="https://github.com/user-attachments/assets/8719147f-69ba-4efa-b974-d35924090e3b" />
 
-A complete multi-participant WebRTC video conferencing application with Python signaling server, dual TURN servers, and IRC chat bridge.
+A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no third-party media servers — just a Python signaling server, dual TURN relay, and a browser client.
+
+---
 
 ## Features
 
-- **Multi-participant video conferencing** - Unlimited users per room
-- **Real-time text chat** - In-app messaging with IRC bridge support
-- **Password-protected rooms** - Secure your private meetings
-- **YouTube/Video streaming** - Share YouTube videos or direct video URLs with participants (Watch Together)
-- **AI Noise Suppression** - Adjustable noise gate with real-time mic level visualization (off by default, enable via options)
-- **Microphone Selector** - Switch input device live, including NVIDIA Broadcast / RTX Voice
-- **Low Bandwidth Mode** - Reduces video to 480p/15fps and caps bitrate for mobile or slow connections
-- **Video Quality Selector** - Choose 480p, 720p, or 1080p output from the Options menu (persisted across sessions)
-- **Moderator controls** - Room owner can kick, mute, rename, and promote/demote co-moderators
-- **Moderator succession** - Moderator role auto-transfers to the next user by join order when mod leaves
-- **Audio enhancements** - Echo cancellation, noise suppression, auto gain control
-- **Speaking indicator** - Glowing ring shows who's talking
-- **Connection quality indicator** - Signal bars showing RTT and packet loss
-- **Per-user volume controls** - Adjust volume for each participant individually
-- **Per-participant hide video** - Hide any remote stream with one click; disables track decoding to save CPU/GPU
-- **DEFCON button** - Toggle all video feeds off/on instantly (in Options menu)
-- **Screen share audio mixer** - Independent mic and desktop audio sliders when sharing with audio
-- **Hardware codec preference** - Prefers H.264 → VP9 → AV1 → VP8 for hardware-accelerated encoding/decoding
-- **Gravatar avatars** - Set your email in Options to show your Gravatar when camera is off; shared with all peers automatically
-- **Nickname persistence** - Your display name is saved and auto-filled on return visits
-- **Spotlight mode** - Click any video to fullscreen it
-- **Screen sharing** - Share your screen with audio support
-- **End-to-end encryption** - Optional AES-GCM-256 encryption for both audio and video (moderator-controlled)
-- **Theme selector** - Multiple color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate)
-- **Mobile optimized** - Tap-to-unmute for mobile browsers
-- **Dynamic configuration** - Auto-detects localhost vs production
-- **Retro terminal aesthetic** - Customizable color themes
-- **IRC bridge (on-demand)** - Connect conference rooms to IRC channels when needed
-- **Multi-domain SSL support** - Auto-discovers certificates from multiple locations
-- **Easy deployment** - Docker support with one-command setup
-- **Dual TURN relay** - Two independent coturn servers for asymmetric relay, covering same-NAT scenarios without third-party TURN
+- **Multi-participant video** — Unlimited users per room (mesh topology, best for ≤10)
+- **Real-time text chat** — In-app messaging with optional IRC bridge
+- **Password-protected rooms** — PBKDF2-HMAC-SHA256 hashed, per-room
+- **Watch Together** — Share YouTube videos or direct video URLs with all participants
+- **AI Noise Suppression** — Adjustable noise gate with real-time mic level visualization
+- **Microphone selector** — Switch input device live, including NVIDIA Broadcast / RTX Voice
+- **Low Bandwidth Mode** — Caps video to 480p/15fps and audio to 32kbps
+- **Video quality selector** — 480p, 720p, or 1080p; persists across sessions
+- **Moderator controls** — Kick, mute, rename, promote/demote co-moderators
+- **Moderator succession** — Auto-transfers to next user by join order on mod disconnect
+- **End-to-end encryption** — Optional AES-GCM-256 for audio and video (moderator-toggled)
+- **Speaking indicator** — Glowing ring pulses with voice activity
+- **Connection quality indicator** — Signal bars showing RTT and packet loss
+- **Per-user volume controls** — Independent volume per participant
+- **Per-participant hide video** — Disables inbound track decoding to save CPU/GPU
+- **DEFCON button** — Kill all video feeds instantly
+- **Screen share with audio mixer** — Independent mic and desktop audio sliders
+- **Hardware codec preference** — H.264 → VP9 → AV1 → VP8
+- **Gravatar avatars** — Set your email in Options; shared peer-to-peer automatically
+- **Nickname persistence** — Display name saved and auto-filled on return
+- **Spotlight mode** — Click any video to fullscreen it
+- **Theme selector** — Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate
+- **Mobile optimized** — Tap-to-unmute, auto noise suppression on mobile
+- **IRC bridge (on-demand)** — Bridge rooms to IRC channels when needed
+- **Multi-domain SSL** — Auto-discovers Let's Encrypt certs across domains
+- **Dual TURN relay** — Two independent coturn servers, asymmetric ICE paths, no third-party TURN needed
+- **Echo cancellation, noise suppression, auto gain control** — Built-in audio enhancements
+
+---
 
 ## Quick Start
 
-### Local Development (Easiest)
+### Local Development
 
 **Windows:**
-```bash
+```bat
 start-local-dev.bat
 ```
 
 **Linux/Mac:**
 ```bash
-chmod +x start-local-dev.sh
-./start-local-dev.sh
+chmod +x start-local-dev.sh && ./start-local-dev.sh
 ```
 
-This will:
-1. Install Python dependencies
-2. Start signaling server on `ws://localhost:8765`
-3. Start web client on `http://localhost:8080`
-4. Open your browser automatically
+Opens at **http://localhost:8080**
 
-Access at: **http://localhost:8080/app.html**
+---
 
-### Production Deployment (Docker)
+### Production Deployment
 
-**Prerequisites:**
-- Docker and Docker Compose
-- Domain name with SSL certificates
-- Server with public IP
+**Prerequisites:** Docker, Docker Compose, a domain with DNS pointed at your server, SSL certificates (Let's Encrypt recommended).
 
-**1. Clone and configure:**
+**1. Clone the repo**
 ```bash
 git clone https://github.com/s4turns/BroFerence.git
 cd BroFerence
 ```
 
-**2. Set up TURN server with your public IP:**
+**2. Get SSL certificates**
 ```bash
-chmod +x setup-turn-ip.sh
-./setup-turn-ip.sh
+apt install certbot
+certbot certonly --standalone -d yourdomain.com
 ```
 
-**3. Start services:**
+**3. Deploy**
 ```bash
-docker compose up -d
+bash update-vps.sh
 ```
 
-**4. Update deployment:**
+`update-vps.sh` handles everything in one shot:
+- Pulls latest code
+- Generates a new random TURN credential
+- Auto-detects your server's public IP
+- Updates TURN config and client JS
+- Rebuilds and restarts all Docker containers
+- Syncs fail2ban config if installed
+
+**4. (First time) Set up fail2ban**
 ```bash
-chmod +x update-vps.sh
-./update-vps.sh
+sudo bash setup-fail2ban.sh
 ```
 
-Access at: **https://your-domain.com/app.html**
+**5. Open firewall ports**
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 22 | TCP | SSH |
+| 443 | TCP | HTTPS |
+| 8080 | TCP | HTTP (redirects to HTTPS) |
+| 8765 | TCP | WebSocket signaling |
+| 3479 | TCP+UDP | TURN |
+| 49152–65535 | UDP | TURN relay |
+
+---
 
 ## Components
 
-1. **Signaling Server** (Python/WebSockets)
-   - Handles WebRTC signaling between peers
-   - Multi-room support with password protection
-   - IRC bridge integration
-   - Dynamic local/production configuration
+### Signaling Server (`server/`)
+Python + WebSockets. Handles room management, WebRTC offer/answer/ICE relay, password protection, IRC bridge, and SSL cert discovery.
 
-2. **TURN Servers** (Coturn × 2)
-   - Two independent relay servers for asymmetric ICE paths
-   - Handles same-NAT hairpin without third-party TURN
-   - Credentials auto-rotated on each deploy via `update-vps.sh`
+### TURN Servers (`config/`)
+Two independent Coturn instances for asymmetric relay — covers same-NAT hairpin without a third-party provider. Credentials auto-rotate on every deploy.
 
-3. **Web Client** (HTML/JavaScript/CSS)
-   - Browser-based video conferencing
-   - Matrix-style retro UI
-   - Real-time speaking indicators
-   - Built-in audio enhancements
+### Web Client (`client/`)
+Vanilla JS + WebRTC API. No frameworks. Mesh peer connections, dynamic video grid, audio worklet noise gate, E2E encryption worker.
+
+---
 
 ## Usage
 
 ### Joining a Room
 
-1. Visit the app in your browser
-2. Enter your name (auto-filled from your last visit)
-3. Enter a room name (creates if doesn't exist)
-4. Optional: Set a password for private rooms
-5. Optional: Bridge to an IRC channel
-6. Click "Continue" to configure audio/video, then "Join Room"
-7. Grant camera/microphone permissions
-
-### Controls
-
-- **Mute/Unmute** - Toggle your microphone
-- **Camera On/Off** - Toggle your video
-- **Share Screen** - Share your entire screen with optional audio
-- **Watch Together** - Stream YouTube videos or direct video URLs to all participants
-- **Stop Streaming** - Stop sharing video/screen and return to camera
-- **Chat** - Open/close text chat sidebar
-- **Options** ☰ - Access all settings (see below)
-- **Spotlight** - Click any participant's video to fullscreen it
-- **Volume Control** - Hover over any participant to adjust their volume
-- **Hide Video** (📹) - Click on any remote participant's controls to hide their video and stop decoding it; click again to restore
-
-### Options Menu
-
-The ☰ Options button opens a side panel with:
-
-- **Change Name** - Update your display name mid-call
-- **Gravatar Email** - Enter your email to show your Gravatar when camera is off
-- **AI Noise Suppression** - Toggle noise gate with adjustable threshold
-- **Low Bandwidth Mode** - Cap video/audio bitrates for slow connections
-- **Video Quality** - Select 480p, 720p, or 1080p camera output
-- **Theme** - Switch color theme
-- **Copy Invite Link** - Copy a direct link to this room
-- **DEFCON** - Toggle all video feeds off/on instantly
-- **Report a Bug** - Open GitHub issues
-- **Leave Room** - Exit the conference
+1. Open the app in your browser
+2. Enter your name (auto-filled from last visit)
+3. Enter a room name
+4. Optionally set a room password or IRC channel
+5. Click **Continue** → configure camera/mic → **Join Room**
 
 ### Invite Links
 
-Share a direct link to join a specific room:
 ```
-https://your-domain.com/app.html?room=MyRoom
+https://yourdomain.com/?room=RoomName
+https://yourdomain.com/?room=RoomName&name=YourName
 ```
 
-You can also include a suggested username:
-```
-https://your-domain.com/app.html?room=MyRoom&name=Guest
-```
+### Controls
+
+| Control | Action |
+|---------|--------|
+| 🎤 | Mute/unmute mic |
+| 📹 | Camera on/off |
+| 🖥️ | Share screen (with optional audio) |
+| ▶️ | Watch Together (YouTube or video URL) |
+| 💬 | Toggle chat sidebar |
+| ☰ | Options panel |
+| Click video | Spotlight/fullscreen that participant |
+| Hover video | Volume slider for that participant |
+
+### Options Panel
+
+- Change name mid-call
+- Gravatar email
+- AI Noise Suppression + threshold
+- Low Bandwidth Mode
+- Video quality (480p / 720p / 1080p)
+- Theme selector
+- Copy invite link
+- DEFCON (all video off/on)
+- E2E Encryption (moderator only)
+- Leave room
 
 ### Connection Quality
 
-Each participant's video shows a **signal bar indicator** (like cell phone reception) in the bottom-right corner:
-- **4 bars (green)** - Excellent connection (RTT < 100ms, loss < 1%)
-- **3 bars (green)** - Good connection
-- **2 bars (yellow)** - Fair connection
-- **1 bar (red)** - Poor connection
+Signal bars in the bottom-right of each video tile:
 
-Hover over the signal bars to see detailed stats (RTT in ms and packet loss %).
+| Bars | Colour | Meaning |
+|------|--------|---------|
+| 4 | Green | Excellent (RTT < 100ms, loss < 1%) |
+| 3 | Green | Good |
+| 2 | Yellow | Fair |
+| 1 | Red | Poor |
 
-### User Avatars
+Hover the bars for exact RTT and packet loss numbers.
 
-When a participant turns off their camera, their video shows a **circular avatar**. If they have set a Gravatar email in Options, their Gravatar image is shown; otherwise their first initial is displayed. Gravatar hashes are shared peer-to-peer so all participants see the correct avatar automatically.
-
-### Speaking Indicator
-
-When someone speaks, their video gets a **glowing cyan ring** that pulses with their voice. This works automatically using real-time audio level detection.
-
-### Audio Quality
-
-All audio streams have built-in enhancements:
-- **Echo Cancellation** - Removes feedback
-- **Noise Suppression** - Filters background noise
-- **Auto Gain Control** - Normalizes volume levels
+---
 
 ## Configuration
 
+### TURN Server
+
+TURN credentials are auto-rotated by `update-vps.sh` on every deploy. To manually set credentials, edit `config/turnserver.production.conf`:
+
+```conf
+user=webrtc:YOUR_STRONG_PASSWORD
+realm=yourdomain.com
+external-ip=YOUR_PUBLIC_IP
+```
+
+And update `PRIMARY_TURN_CREDENTIAL` in `client/conference.js` to match.
+
+### Second TURN Server
+
+A second independent Coturn instance at a separate IP improves relay coverage. Configure its IP in the `turn2Config` block in `client/conference.js`:
+
+```javascript
+const turn2Config = {
+    urls: ['turn:YOUR_SECOND_TURN_IP:3479', 'turn:YOUR_SECOND_TURN_IP:3479?transport=tcp'],
+    username: 'webrtc',
+    credential: 'YOUR_SECOND_CREDENTIAL'
+};
+```
+
 ### SSL Certificates
 
-The server automatically discovers SSL certificates from multiple locations (in priority order):
+The signaling server auto-discovers certs in priority order:
 
-1. **`./ssl/`** - Local certificates (for custom or development certs)
-2. **`/etc/letsencrypt/live/`** - Let's Encrypt certificates (scans all domains)
-3. **`/etc/ssl/`** - System certificates (fallback)
+1. `./ssl/` — local/custom certs
+2. `/etc/letsencrypt/live/` — Let's Encrypt (all domains scanned)
+3. `/etc/ssl/` — system fallback
 
-**Supported certificate filenames:**
-- Certificate: `fullchain.pem`, `cert.pem`, `certificate.pem`
-- Key: `privkey.pem`, `key.pem`, `private.pem`
+Supported filenames: `fullchain.pem` / `cert.pem` / `certificate.pem` and `privkey.pem` / `key.pem` / `private.pem`.
 
-**Wildcard certificates work perfectly!** The server will log all covered domains on startup.
+### IRC Bridge
 
-**Docker Setup:**
-```bash
-# Place your certificates in the ssl/ folder
-cp /path/to/your/fullchain.pem ssl/
-cp /path/to/your/privkey.pem ssl/
+On-demand only — no IRC connection is made unless a user specifies a channel on room creation. To configure the IRC server, edit `server/irc_bridge.py` (default: no server configured).
+
+---
+
+## Security
+
+### Layers
+
+| Layer | What it does |
+|-------|-------------|
+| Cloud firewall (Linode/etc.) | Drops traffic before it reaches the server |
+| iptables | Host-level INPUT DROP policy, rate-limited SSH, DOCKER-USER WebSocket flood limiting |
+| fail2ban | Bans IPs after repeated SSH / nginx / TURN auth failures |
+| PBKDF2 room passwords | 260k iterations, random salt — not reversible |
+| E2E encryption | Optional AES-GCM-256 for audio/video streams |
+| TURN credential rotation | New random 32-char credential on every deploy |
+
+### fail2ban Jails
+
+| Jail | Watches | Bans after |
+|------|---------|-----------|
+| `sshd` | `/var/log/auth.log` | 5 failures / 10 min → 24h ban |
+| `nginx-botsearch` | nginx access log | 10 hits / 1 min → 1h ban |
+| `nginx-req-limit` | nginx error log | 10 hits / 1 min → 1h ban |
+| `coturn-auth` | TURN log | 10 failures / 1 min → 1h ban |
+
+### iptables (INPUT chain)
+
+```
+loopback         → ACCEPT
+ESTABLISHED      → ACCEPT
+SSH :22          → ACCEPT (rate-limited: 4 new/min)
+HTTPS :443       → ACCEPT
+HTTP  :8080      → ACCEPT
+WS    :8765      → ACCEPT
+TURN  :3479 TCP  → ACCEPT
+TURN  :3479 UDP  → ACCEPT
+Relay :49152-65535 UDP → ACCEPT
+everything else  → DROP
 ```
 
-### TURN Server Credentials
+DOCKER-USER: rate-limits new WebSocket connections to 20/min per IP.
 
-TURN credentials are automatically rotated on every `update-vps.sh` deploy. The primary server credential is updated in both `config/turnserver.production.conf` and `client/conference.js` by the deploy script. The second TURN server uses a static credential configured directly on that host.
-
-**Manual credential update:**
-
-Edit `config/turnserver.conf`:
-```conf
-user=webrtc:YOUR_STRONG_PASSWORD_HERE
-```
-
-And update the `PRIMARY_TURN_CREDENTIAL` constant in `client/conference.js`.
-
-### Firewall Rules
-
-Open these ports on your server:
-```bash
-# WebSocket signaling
-sudo ufw allow 8765/tcp
-
-# TURN server
-sudo ufw allow 3479/tcp
-sudo ufw allow 3479/udp
-
-# Media relay ports
-sudo ufw allow 49152:65535/udp
-```
-
-### IRC Bridge (On-Demand)
-
-The IRC bridge **only connects when you specify an IRC channel** - no automatic connections at startup.
-
-To bridge a room to IRC:
-1. Edit `server/signaling_server_v2.py` to configure IRC server (lines 34-38)
-2. When creating a room, enter IRC channel (e.g., `#mychannel`)
-3. IRC bridge connects automatically when first channel is specified
-4. Messages sync bidirectionally between WebRTC and IRC
-
-**Server logs when IRC connects:**
-```
-IRC channel specified (#mychannel), initializing IRC bridge...
-✓ IRC bridge connected successfully
-```
+---
 
 ## Helper Scripts
 
-### `setup-turn-ip.sh`
-Auto-configures TURN server with your public IP address.
+| Script | Purpose |
+|--------|---------|
+| `update-vps.sh` | Full deploy: pull, rotate TURN creds, rebuild containers, sync fail2ban |
+| `setup-fail2ban.sh` | Install and configure fail2ban (run as root, first time only) |
+| `setup-turn-ip.sh` | Manually set TURN `external-ip` in config |
+| `test-turn-server.sh` | Diagnose TURN server connectivity |
+| `start-local-dev.sh` / `.bat` | Start local dev server |
 
-### `update-vps.sh`
-One-command update script:
-- Pulls latest code from GitHub
-- Generates new TURN password and updates both the TURN config and client JS
-- Auto-detects external IP and hostname
-- Rebuilds Docker containers with latest changes
-- Restarts all services
-- Shows service URLs with your actual hostname
+All scripts are generic — no hardcoded hostnames or paths. They auto-detect from their environment or accept overrides via environment variables:
 
-### `test-turn-server.sh`
-Diagnostic tool to test TURN server connectivity.
-
-### `debug-hostname.html`
-Debug tool to verify dynamic URL detection.
-
-## Troubleshooting
-
-### WebSocket won't connect
 ```bash
-# Check signaling server logs
-docker compose logs signaling
+# setup-fail2ban.sh
+REPO_DIR=/opt/BroFerence APP_USER=myuser sudo bash setup-fail2ban.sh
 
-# Verify server is running
-docker compose ps
+# setup-turn-ip.sh
+./setup-turn-ip.sh yourdomain.com
+
+# test-turn-server.sh
+HOSTNAME=yourdomain.com TURN_PORT=3479 bash test-turn-server.sh
 ```
 
-### Video/audio not working
-```bash
-# Check browser console (F12)
-# Verify camera/mic permissions granted
-# Test TURN server: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
-```
-
-### TURN relay shows 127.0.0.1
-```bash
-# Run TURN setup script
-./setup-turn-ip.sh
-
-# Verify external-ip is set
-grep "external-ip" config/turnserver.conf
-```
-
-### Browser cache issues
-```bash
-# Open incognito/private window
-Ctrl+Shift+N (or Cmd+Shift+N on Mac)
-
-# Or use DevTools disable cache
-F12 > Network tab > Check "Disable cache"
-```
-
-### Full rebuild needed
-```bash
-# Nuclear option - rebuilds everything
-docker compose down -v
-docker compose build --no-cache --pull
-docker compose up -d
-```
+---
 
 ## Project Structure
 
 ```
 BroFerence/
-├── client/                        # Web client files
-│   ├── app.html                   # Main conference UI
-│   ├── conference.js              # WebRTC logic
-│   ├── e2ee-worker.js             # End-to-end encryption worker
-│   ├── styles.css                 # Retro terminal styling
-│   └── debug.html                 # Debug tools
-├── server/                        # Python backend
-│   ├── signaling_server_v2.py     # Production server (WSS + IRC)
-│   ├── signaling_server_local.py  # Local dev server (WS)
-│   └── irc_bridge.py              # IRC integration
-├── config/                        # Configuration
-│   └── turnserver.conf            # TURN server config
-├── ssl/                           # SSL certificates
-│   ├── fullchain.pem
-│   └── privkey.pem
-├── docker compose.yml             # Docker orchestration
-├── start-local-dev.bat/.sh        # Local dev startup
-├── setup-turn-ip.sh               # TURN auto-config
-└── update-vps.sh                  # VPS update script
+├── client/
+│   ├── app.html               # Main conference UI
+│   ├── conference.js          # WebRTC logic, ICE, media, UI
+│   ├── e2ee-worker.js         # AES-GCM-256 E2E encryption worker
+│   ├── noise-processor.js     # Audio worklet noise gate
+│   ├── styles.css             # Retro terminal themes
+│   └── admin.html             # Admin panel
+├── server/
+│   ├── signaling_server_v2.py # Production WSS server
+│   ├── signaling_server_local.py # Local WS server (no SSL)
+│   └── irc_bridge.py          # IRC bridge integration
+├── config/
+│   ├── turnserver.production.conf  # Production TURN config (auto-updated by deploy)
+│   └── turnserver.conf             # Dev/local TURN config
+├── fail2ban/
+│   ├── jail.local             # fail2ban jail definitions
+│   └── filter.d/
+│       ├── coturn-auth.conf   # TURN auth failure filter
+│       └── nginx-req-limit.conf # Nginx rate limit filter
+├── ssl/                       # SSL certificates (gitignored)
+├── logs/                      # Container log mounts for fail2ban (gitignored)
+├── docker-compose.yml
+├── Dockerfile.web
+├── update-vps.sh              # Deploy script
+├── setup-fail2ban.sh          # fail2ban setup (run as root)
+├── setup-turn-ip.sh           # TURN IP config helper
+└── test-turn-server.sh        # TURN diagnostic
 ```
 
-## Security Notes
+---
 
-**Default configuration is for LOCAL TESTING ONLY**
+## Troubleshooting
 
-For production:
-1. Change TURN credentials (rotated automatically by `update-vps.sh`)
-2. Use HTTPS/WSS (not HTTP/WS)
-3. Set up proper firewall rules
-4. Configure `external-ip` in TURN server
-5. Implement user authentication
-6. Use secure room passwords
-7. Keep dependencies updated
-
-## UI Customization
-
-### Speaking Threshold
-
-Adjust sensitivity in `conference.js`:
-```javascript
-const SPEAKING_THRESHOLD = 20;  // 10=sensitive, 40=loud only
+**WebSocket won't connect**
+```bash
+docker compose logs signaling
+docker compose ps
 ```
 
-### Color Scheme
+**Video slow to connect or not connecting**
+- Run `./test-turn-server.sh` to verify TURN is reachable
+- Check `external-ip` in TURN config matches your server's actual public IP
+- Verify relay ports 49152–65535 UDP are open in your firewall
 
-Edit CSS variables in `styles.css`:
-```css
-:root {
-    --primary: #00ff41;      /* Matrix green */
-    --secondary: #00ffff;    /* Cyan */
-    --danger: #ff0040;       /* Red */
-}
+**TURN relay shows wrong IP**
+```bash
+# update-vps.sh auto-fixes this on deploy, or manually:
+./setup-turn-ip.sh yourdomain.com
+grep external-ip config/turnserver.production.conf
 ```
 
-## Production Deployment Checklist
+**fail2ban not starting**
+```bash
+# Ensure log dirs exist (setup-fail2ban.sh creates them, or manually):
+sudo mkdir -p /path/to/BroFerence/logs/nginx /path/to/BroFerence/logs/coturn
+sudo systemctl restart fail2ban
+sudo fail2ban-client status
+```
 
-- [ ] Clone repository on VPS
-- [ ] Install Docker and Docker Compose
-- [ ] Set up SSL certificates (Let's Encrypt)
-- [ ] Run `./setup-turn-ip.sh`
-- [ ] Configure firewall rules
-- [ ] Update `docker compose.yml` with your domain
-- [ ] Start services: `docker compose up -d`
-- [ ] Test TURN server connectivity
-- [ ] Test from multiple networks
+**Browser cache issues**
+```
+Ctrl+Shift+N  # Incognito/private window
+F12 → Network → Disable cache
+```
+
+**Full container rebuild**
+```bash
+docker compose down -v
+docker compose build --no-cache --pull
+docker compose up -d
+```
+
+---
+
+## Browser Compatibility
+
+| Browser | Support |
+|---------|---------|
+| Chrome / Edge 90+ | ✅ |
+| Firefox 88+ | ✅ |
+| Safari 14.1+ | ✅ |
+| Opera 76+ | ✅ |
+| Internet Explorer | ❌ |
+
+Requires: WebRTC, WebSocket, `getUserMedia`, `getDisplayMedia`, AudioWorklet.
+
+---
 
 ## Development
 
-### Code Quality
-
-All Python code is linted with **flake8** and follows PEP 8 style guidelines.
-
-**Run linting locally:**
 ```bash
-cd server
-pip install flake8
+# Python linting
+cd server && pip install flake8
 flake8 *.py --max-line-length=120
+
+# JS linting
+cd client && npx eslint *.js
 ```
 
-**JavaScript linting:**
-```bash
-cd client
-npm install --save-dev eslint
-npx eslint *.js
-```
+**Dependencies (Python):**
+- `websockets>=12.0`
+- `cryptography>=41.0.0`
 
-### Dependencies
-
-**Python (server/):**
-- `websockets>=12.0` - WebSocket server
-- `cryptography>=41.0.0` - SSL certificate parsing
-
-**Install:**
 ```bash
 pip install -r server/requirements.txt
 ```
 
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run linting checks
-5. Test thoroughly
-6. Submit a pull request
-
-## License
-
-MIT License - feel free to use for personal or commercial projects!
-
-## Acknowledgments
-
-- Built with [WebRTC](https://webrtc.org/)
-- [Coturn](https://github.com/coturn/coturn) TURN server
-- Matrix terminal aesthetic inspiration
-- IRC bridge for retro chat integration
+---
 
 ## Recent Updates
 
+### v1.8 (2026-05)
+- **New domain** — Migrated to broference.cam
+- **TURN external-ip fix** — Fixed relay address mismatch on new server (root cause of slow video)
+- **TURN realm** — Updated to broference.cam across all configs
+- **fail2ban** — SSH, nginx, and TURN jails with log volume mounts from containers
+- **iptables** — INPUT DROP policy, rate-limited SSH, DOCKER-USER WebSocket flood protection
+- **Generic scripts** — All setup scripts now auto-detect hostname/paths, no hardcoded values
+
 ### v1.7 (2026-04-26)
-- **Gravatar support** — Enter your email in the Options menu to display your Gravatar when your camera is off. Hashed client-side with MD5 and broadcast to all peers so everyone sees each other's avatar without sharing the raw email
-- **Nickname persistence** — Display name is saved to localStorage on join and name changes, auto-filled on return visits
-- **Video quality selector** — Choose 480p, 720p, or 1080p camera output from the Options menu; persists across sessions, applies constraints live without rejoining
-- **Options menu consolidation** — Invite, DEFCON, and Bug Report moved into the Options side panel to reduce toolbar clutter
-- **Room name in browser tab** — Tab title now shows the active room name (e.g. `monkeybread - BroFerence`) instead of the generic app title
-- **Uniform options menu item height** — All settings rows are a consistent 44px regardless of whether they contain a button, toggle, or select element
-- **Screen share avatar fix** — Remote peers with their camera off no longer show their initials avatar overlaid on their screen share content; the avatar is now correctly hidden when screen sharing starts and restored when it stops
-- **Dual coturn relay** — Removed Metered.ca TURN dependency; two independent coturn servers now handle relay using asymmetric ICE paths to avoid same-server hairpin without requiring a third-party provider
+- **Gravatar support** — Hashed client-side, broadcast peer-to-peer
+- **Nickname persistence** — Saved to localStorage, auto-filled on return
+- **Video quality selector** — 480p / 720p / 1080p, persists across sessions
+- **Options menu consolidation** — Invite, DEFCON, bug report moved into options panel
+- **Room name in tab title**
+- **Dual coturn relay** — Replaced Metered.ca dependency with second self-hosted coturn
 
 ### v1.6 (2026-04-01)
-- **Per-participant hide video** — 📹 button on each remote stream hides the video and disables the inbound track so the browser skips decoding entirely, reducing CPU/GPU load
-- **DEFCON button** — Toggle in the toolbar kills all video feeds at once; useful when bandwidth drops or you need to go audio-only fast
-- **Screen share audio mixer** — When screen sharing with system audio, a mixer strip appears on your local tile with independent 🎤 mic and 🖥️ desktop audio sliders (0–100%)
-- **Hardware codec preference** — Reorders transceivers to prefer H.264 → VP9 → AV1 → VP8, enabling hardware-accelerated encode/decode where supported
-- **Corporate (Teams) theme** — Flat dark design with Segoe UI, purple accent. Available in the theme selector
-- **AI Noise Suppression off by default** — No longer auto-enabled on join; enable manually via the options menu
-- **TURN external-ip auto-detection** — `update-vps.sh` now sets `external-ip` in coturn config using `curl -4 ifconfig.me`
-- **PBKDF2 password hashing** — Room passwords now use PBKDF2-HMAC-SHA256 with a random 16-byte salt (260k iterations)
-- **XSS / security hardening** — All user-controlled strings sanitized before DOM insertion; URL validation added; stack traces no longer leak in HTTP error responses
-- **Stats monitoring interval leak fix** — `startStatsMonitoring` clears any existing interval before starting a new one
+- **Per-participant hide video** — Disables inbound track decoding to save CPU/GPU
+- **DEFCON button** — Kill all video feeds at once
+- **Screen share audio mixer** — Independent mic/desktop audio sliders
+- **Hardware codec preference** — H.264 → VP9 → AV1 → VP8
+- **Corporate theme**
+- **AI Noise Suppression off by default**
+- **PBKDF2 password hashing** — PBKDF2-HMAC-SHA256, 260k iterations
+- **XSS hardening** — All user strings sanitized before DOM insertion
 
 ### v1.5 (2026-03-25)
-- **Low Bandwidth Mode** — Caps video to 480p/15fps, video bitrate to 200kbps, audio to 32kbps. Toggleable from prejoin screen and Options menu
-- **Moderator succession** — Mod role auto-transfers to the next user in join order when mod leaves
-- **iOS/Safari connectivity fix** — Detects zero relay candidates at ICE gathering and falls back to direct P2P
-- **WebSocket reconnect no longer drops healthy peers** — Preserves peers already in `connected` state on rejoin
-- **Prejoin defaults** — Microphone on, camera off by default
-- **Prejoin ON/OFF labels** — Mic, camera, and low bandwidth buttons show clear ON/OFF status
+- **Low Bandwidth Mode** — 480p/15fps, capped bitrates
+- **Moderator succession** — Auto-transfers on mod disconnect
+- **iOS/Safari fix** — Zero relay candidate fallback to P2P
+- **WebSocket reconnect** — Preserves already-connected peers
 
 ### v1.4 (2026-03-25)
-- **ICE restart on disconnect** — `connectionState: disconnected` triggers ICE restart after 6 seconds, fixing silent dead connections on Firefox/Safari/mobile
-- **WebSocket auto-reconnect** — Reconnects with exponential backoff (2s → 30s cap) on signaling server drops
-- **Username preserved across reconnects** — Display names no longer reset on reconnect
-- **Cache-busting** — `update-vps.sh` stamps asset URLs with the current git commit hash on each deploy
+- **ICE restart on disconnect** — Triggers after 6s, fixes silent dead connections
+- **WebSocket auto-reconnect** — Exponential backoff (2s → 30s)
+- **Cache-busting** — Git commit hash stamped on asset URLs
 
 ### v1.3 (2026-02-18)
-- **Microphone Device Selector** — Switch input device live (supports NVIDIA Broadcast, RTX Voice, Krisp, etc.)
-- **Version display** — App version shown in status bar footer
+- **Microphone device selector** — Switch live, supports NVIDIA Broadcast / RTX Voice
 - Fixed scratchy audio from `Math.exp` in audio worklet hot path
-- Fixed outgoing audio distortion during click suppression
-- Fixed mobile users hearing glitchy audio
-
-### v1.2.1 (2026-02-05)
-- **Firefox Compatibility** — Fixed remote video autoplay issues
-- **IRC Bridge Reconnection** — Auto-reconnect when connection drops
-- **IRC Bridge DNS Fix** — Added DNS servers to Docker container
-- **Video Autoplay Fix** — Remote videos start muted with unmute overlay for browser compatibility
+- Fixed outgoing audio distortion and mobile glitchy audio
 
 ### v1.2 (2026-02)
-- **YouTube/Video Streaming** — Share YouTube videos with participants via built-in proxy
-- **AI Noise Suppression** — Adjustable noise gate (1–80%) with real-time mic level visualization
-- **Per-user Volume Controls** — Adjust volume for each remote participant
-- **Theme Selector** — 5 color themes (Matrix, Cyberpunk, Ocean, Sunset, Amber)
-- **Screen Share with Audio** — Share system audio along with screen
+- **Watch Together** — YouTube and direct video URL streaming
+- **AI Noise Suppression** — Adjustable noise gate with mic level viz
+- **Per-user volume controls**
+- **Theme selector** — 5 themes
+- **Screen share with audio**
+- **E2E encryption** — AES-GCM-256 (moderator-controlled)
 
 ### v1.1 (2026-02)
 - Multi-domain SSL certificate auto-discovery
-- On-demand IRC bridge (only connects when needed)
+- On-demand IRC bridge
 - Dynamic hostname detection in update script
 
 ### v1.0 (2026-01)
-- Initial release — multi-participant video conferencing, TURN server, IRC bridge, Matrix UI
+- Initial release — multi-participant video, TURN server, IRC bridge, Matrix UI
 
 ---
 
-**Powered by BLCKND** | [GitHub](https://github.com/s4turns/BroFerence)
-
-For issues or questions: https://github.com/s4turns/BroFerence/issues
+[GitHub](https://github.com/s4turns/BroFerence) · [Issues](https://github.com/s4turns/BroFerence/issues)
