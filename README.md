@@ -15,7 +15,6 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Multi-participant video** — Unlimited users per room (mesh topology, best for ≤10)
 - **Real-time text chat** — In-app messaging with optional IRC bridge
 - **Password-protected rooms** — PBKDF2-HMAC-SHA256 hashed, per-room
-- **Watch Together** — Share YouTube videos or direct video URLs with all participants
 - **AI Noise Suppression** — Adjustable noise gate with real-time mic level visualization
 - **Microphone selector** — Switch input device live, including NVIDIA Broadcast / RTX Voice
 - **Low Bandwidth Mode** — Caps video to 480p/15fps and audio to 32kbps
@@ -144,7 +143,6 @@ https://yourdomain.com/?room=RoomName&name=YourName
 | 🎤 | Mute/unmute mic |
 | 📹 | Camera on/off |
 | 🖥️ | Share screen (with optional audio) |
-| ▶️ | Watch Together (YouTube or video URL) |
 | 💬 | Toggle chat sidebar |
 | ☰ | Options panel |
 | Click video | Spotlight/fullscreen that participant |
@@ -444,7 +442,6 @@ pip install -r server/requirements.txt
 - Fixed outgoing audio distortion and mobile glitchy audio
 
 ### v1.2 (2026-02)
-- **Watch Together** — YouTube and direct video URL streaming
 - **AI Noise Suppression** — Adjustable noise gate with mic level viz
 - **Per-user volume controls**
 - **Theme selector** — 5 themes
