@@ -401,7 +401,6 @@ pip install -r server/requirements.txt
 
 ### v1.8 (2026-05)
 - **New domain** — Migrated to broference.cam
-- **TURN external-ip fix** — Fixed relay address mismatch on new server (root cause of slow video)
 - **TURN realm** — Updated to broference.cam across all configs
 - **fail2ban** — SSH, nginx, and TURN jails with log volume mounts from containers
 - **iptables** — INPUT DROP policy, rate-limited SSH, DOCKER-USER WebSocket flood protection
