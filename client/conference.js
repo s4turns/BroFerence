@@ -1233,6 +1233,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             '480':  { width: { ideal: 854,  max: 854  }, height: { ideal: 480,  max: 480  }, frameRate: { ideal: 24, max: 30 } },
             '720':  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720,  max: 720  }, frameRate: { ideal: 24, max: 30 } },
             '1080': { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 24, max: 30 } },
+            '2160': { width: { ideal: 3840, max: 3840 }, height: { ideal: 2160, max: 2160 }, frameRate: { ideal: 24, max: 30 } },
         };
         return qualityMap[this.videoQuality] || qualityMap['720'];
     }
