@@ -439,7 +439,7 @@ class ConferenceClient {
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
         // PRIMARY_TURN_CREDENTIAL rotated by update-vps.sh on each deploy
-        const PRIMARY_TURN_CREDENTIAL = 'M6vxdxo7HkzpvTxVWX0auQe8vkVFUPi';
+        const PRIMARY_TURN_CREDENTIAL = 'TURN_CREDENTIAL_REDACTED';
         const localTurnConfig = {
             urls: [
                 `turn:${turnServer}:3479`,
