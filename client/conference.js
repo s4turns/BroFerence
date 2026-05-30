@@ -3052,9 +3052,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         frameRate: { ideal: 30, max: 60 }
                     },
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        sampleRate: 44100
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 2,
+                        sampleRate: 48000
                     }
                 });
 
@@ -3071,8 +3073,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this._nsWasEnabledBeforeScreenShare = this.noiseSuppressionEnabled;
                 if (this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
 
-                // If screen audio is available, mix it with mic and replace audio track
-                this.mixScreenAudio(this.screenStream);
+                // Mix mic + stereo screen audio and push to peers
+                this.startStereoScreenAudioMix(this.screenStream);
 
                 // Update local video to show screen
                 this.localVideo.srcObject = this.screenStream;
@@ -3112,8 +3114,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             });
 
-            // Restore original mic audio (unmix screen audio)
-            this.unmixScreenAudio();
+            // Tear down stereo screen audio mix, restore mic track in senders
+            this.stopStereoScreenAudioMix();
 
             // Restore noise suppression if it was on before screen share
             if (this._nsWasEnabledBeforeScreenShare) await this.toggleNoiseSuppression();
@@ -3133,44 +3135,41 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
-    mixScreenAudio(screenStream) {
+    startStereoScreenAudioMix(screenStream) {
         const screenAudioTracks = screenStream.getAudioTracks();
         if (screenAudioTracks.length === 0) {
-            console.log('No screen audio available to mix');
-            return;
-        }
-        if (!this.micAudioCtx || !this.micDestination) {
-            console.log('Mic audio chain not ready, skipping mix');
+            console.log('No screen audio available');
             return;
         }
 
         try {
-            // Add screen audio into the existing micAudioCtx so both sources feed
-            // micDestination — the track peers already receive — avoiding cross-context
-            // audio piping which silences the mic in all browsers.
-            this.screenGainNode = this.micAudioCtx.createGain();
-            this.screenAudioSource = this.micAudioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
-            this.screenAudioSource.connect(this.screenGainNode);
-            this.screenGainNode.connect(this.micDestination);
+            this.stereoMixCtx = new AudioContext({ sampleRate: 48000 });
+            const destination = this.stereoMixCtx.createMediaStreamDestination();
+            destination.channelCount = 2;
 
-            // Insert a gain node into the mic path for independent volume control.
-            // Disconnect micSource and rewire: micSource → micGainNode → [noiseNode →] micDestination
-            if (this.micSource) {
-                this.micSource.disconnect();
-                this.micGainNode = this.micAudioCtx.createGain();
-                if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
-                    this.micSource.connect(this.micGainNode);
-                    this.micGainNode.connect(this.noiseSuppressionNode);
-                    // noiseSuppressionNode → micDestination already wired
-                } else {
-                    this.micSource.connect(this.micGainNode);
-                    this.micGainNode.connect(this.micDestination);
-                }
+            // Screen audio (stereo)
+            this.stereoScreenGain = this.stereoMixCtx.createGain();
+            const screenSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+            screenSource.connect(this.stereoScreenGain);
+            this.stereoScreenGain.connect(destination);
+
+            // Mic audio (raw mono track — browser auto-upmixes to both channels)
+            const micTrack = this.localStream?.getAudioTracks()[0];
+            if (micTrack) {
+                this.stereoMicGain = this.stereoMixCtx.createGain();
+                const micSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([micTrack]));
+                micSource.connect(this.stereoMicGain);
+                this.stereoMicGain.connect(destination);
             }
 
-            // micDestination.stream is already the track in all peer senders — no replaceTrack needed.
+            // Push stereo track to all peer senders
+            this.stereoMixTrack = destination.stream.getAudioTracks()[0];
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
+                if (sender) sender.replaceTrack(this.stereoMixTrack);
+            });
 
-            // Show audio mixer UI and wire sliders
+            // Wire mixer UI
             const mixer = document.getElementById('screenAudioMixer');
             if (mixer) {
                 mixer.classList.remove('hidden');
@@ -3183,43 +3182,38 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 micVal.textContent = '100%';
                 screenVal.textContent = '100%';
                 micSlider.oninput = (e) => {
-                    if (this.micGainNode) this.micGainNode.gain.value = e.target.value / 100;
+                    if (this.stereoMicGain) this.stereoMicGain.gain.value = e.target.value / 100;
                     micVal.textContent = e.target.value + '%';
                 };
                 screenSlider.oninput = (e) => {
-                    this.screenGainNode.gain.value = e.target.value / 100;
+                    if (this.stereoScreenGain) this.stereoScreenGain.gain.value = e.target.value / 100;
                     screenVal.textContent = e.target.value + '%';
                 };
             }
 
-            console.log('Screen audio mixed with mic audio');
+            console.log('Stereo screen audio mix started');
         } catch (error) {
-            console.error('Error mixing screen audio:', error);
+            console.error('Error starting stereo screen audio mix:', error);
         }
     }
 
-    unmixScreenAudio() {
-        if (!this.screenAudioSource) return;
+    stopStereoScreenAudioMix() {
+        if (!this.stereoMixCtx) return;
 
-        // Disconnect screen audio branch
-        this.screenAudioSource.disconnect();
-        this.screenAudioSource = null;
-        this.screenGainNode = null;
-
-        // Remove mic gain node and restore direct mic chain
-        if (this.micSource && this.micGainNode) {
-            this.micSource.disconnect();
-            this.micGainNode.disconnect();
-            this.micGainNode = null;
-            if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
-                this.micSource.connect(this.noiseSuppressionNode);
-                // noiseSuppressionNode → micDestination already wired
-            } else {
-                this.micSource.connect(this.micDestination);
-            }
+        // Restore mic track in all peer senders
+        const micTrack = this.micDestination?.stream.getAudioTracks()[0];
+        if (micTrack) {
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
+                if (sender) sender.replaceTrack(micTrack);
+            });
         }
 
-        // micDestination.stream track is already in all peer senders — no replaceTrack needed.
+        this.stereoMixCtx.close();
+        this.stereoMixCtx = null;
+        this.stereoMixTrack = null;
+        this.stereoScreenGain = null;
+        this.stereoMicGain = null;
 
         const mixer = document.getElementById('screenAudioMixer');
         if (mixer) mixer.classList.add('hidden');
