@@ -1233,7 +1233,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             '480':  { width: { ideal: 854,  max: 854  }, height: { ideal: 480,  max: 480  }, frameRate: { ideal: 24, max: 30 } },
             '720':  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720,  max: 720  }, frameRate: { ideal: 24, max: 30 } },
             '1080': { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 24, max: 30 } },
-            '2160': { width: { min: 3840, ideal: 3840 }, height: { min: 2160, ideal: 2160 }, frameRate: { max: 30 } },
+            '2160': { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30, max: 30 } },
         };
         return qualityMap[this.videoQuality] || qualityMap['720'];
     }
@@ -1891,20 +1891,37 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
     }
 
-    setVideoQuality(quality) {
+    async setVideoQuality(quality) {
         this.videoQuality = quality;
         localStorage.setItem('broference-video-quality', quality);
 
         const stream = this.localStream || this.prejoinStream;
-        if (stream) {
-            const videoTrack = stream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.applyConstraints(this.getVideoConstraints()).catch(err => {
-                    console.warn('Could not apply video quality constraints:', err);
-                });
+        if (!stream) return;
+
+        const oldTrack = stream.getVideoTracks()[0];
+        const deviceId = oldTrack?.getSettings().deviceId;
+        const constraints = { ...this.getVideoConstraints() };
+        if (deviceId) constraints.deviceId = { ideal: deviceId };
+
+        try {
+            const newStream = await navigator.mediaDevices.getUserMedia({ video: constraints });
+            const newTrack = newStream.getVideoTracks()[0];
+
+            if (oldTrack) {
+                oldTrack.stop();
+                stream.removeTrack(oldTrack);
             }
+            stream.addTrack(newTrack);
+
+            if (this.localVideo) this.localVideo.srcObject = stream;
+
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) sender.replaceTrack(newTrack);
+            });
+        } catch (err) {
+            console.warn('Could not switch video quality:', err);
         }
-        console.log('Video quality set to:', quality + 'p');
     }
 
 
