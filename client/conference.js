@@ -449,13 +449,15 @@ class ConferenceClient {
             credential: PRIMARY_TURN_CREDENTIAL
         };
 
+        // SECONDARY_TURN_CREDENTIAL rotated by update-vps.sh from .env (TURN2_PASSWORD) on each deploy
+        const SECONDARY_TURN_CREDENTIAL = 'TURN2_CREDENTIAL_REDACTED';
         const turn2Config = {
             urls: [
                 'turn:174.138.183.167:3479',
                 'turn:174.138.183.167:3479?transport=tcp'
             ],
             username: 'webrtc',
-            credential: '98iKctn6qPZBuUYwFt2uRMUZNu8ziJib'
+            credential: SECONDARY_TURN_CREDENTIAL
         };
 
         // Relay-only via both coturn servers. Asymmetric paths (server1↔server2)
@@ -3144,6 +3146,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         try {
             this.stereoMixCtx = new AudioContext({ sampleRate: 48000 });
+            // Resume in case the context starts suspended (autoplay policy) — otherwise the mix is silent
+            if (this.stereoMixCtx.state === 'suspended') this.stereoMixCtx.resume().catch(() => {});
             const destination = this.stereoMixCtx.createMediaStreamDestination();
             destination.channelCount = 2;
 
