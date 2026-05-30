@@ -70,7 +70,8 @@
         const hostname = window.location.hostname;
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
         const wsProtocol = isLocalhost ? 'ws' : 'wss';
-        const wsUrl = `${wsProtocol}://${hostname}:8765`;
+        const wsPort = window.location.port === '8443' ? '8766' : '8765';
+        const wsUrl = `${wsProtocol}://${hostname}:${wsPort}`;
 
         async function testMedia() {
             const status = document.getElementById('mediaStatus');

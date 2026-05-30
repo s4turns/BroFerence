@@ -757,7 +757,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Use ws:// for localhost, wss:// for production
             const protocol = isLocalhost ? 'ws' : 'wss';
-            const wsUrl = `${protocol}://${hostname}:8765`;
+            const wsPort = window.location.port === '8443' ? '8766' : '8765';
+            const wsUrl = `${protocol}://${hostname}:${wsPort}`;
 
             console.log(`Connecting to signaling server: ${wsUrl}`);
             this.ws = new WebSocket(wsUrl);

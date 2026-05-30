@@ -1,0 +1,40 @@
+services:
+  signaling:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "0.0.0.0:8766:8765"
+      - "[::]:8766:8765"
+    volumes:
+      - ./ssl:/app/ssl:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "0.0.0.0:8443:443"
+      - "[::]:8443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./logs/nginx:/var/log/nginx
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
