@@ -1169,7 +1169,11 @@ async def main():
     else:
         logger.info("ADMIN_SECRET loaded from environment")
 
-    async with websockets.serve(handler, host, port, ssl=ssl_context, max_size=4*1024*1024):
+    # ping_interval/ping_timeout raised from the 20s default: clients in large mesh
+    # calls can momentarily peg their CPU (per-peer encode/decode) and miss a keepalive
+    # pong, which would otherwise drop them with a 1011 timeout and force a refresh.
+    async with websockets.serve(handler, host, port, ssl=ssl_context, max_size=4*1024*1024,
+                                ping_interval=20, ping_timeout=60):
         await asyncio.Future()  # Run forever
 
 
