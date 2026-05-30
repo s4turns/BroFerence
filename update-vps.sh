@@ -94,6 +94,23 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Propagate the rotated primary TURN credential to the dev environment (which
+# shares this coturn) and redeploy it in lockstep, so dev never drifts out of
+# sync. Skipped cleanly if the dev repo/.env isn't present or isn't writable.
+DEV_DIR="${BROFERENCE_DEV_DIR:-/home/interdome/BroFerence-dev}"
+if [ -f "$DEV_DIR/.env" ] && [ -w "$DEV_DIR/.env" ]; then
+    echo ""
+    echo "Syncing dev environment (${DEV_DIR})..."
+    if grep -q '^PRIMARY_PASSWORD=' "$DEV_DIR/.env"; then
+        sed -i "s/^PRIMARY_PASSWORD=.*/PRIMARY_PASSWORD=${TURN_PASSWORD}/" "$DEV_DIR/.env"
+    else
+        echo "PRIMARY_PASSWORD=${TURN_PASSWORD}" >> "$DEV_DIR/.env"
+    fi
+    if [ -f "$DEV_DIR/update-dev.sh" ]; then
+        ( cd "$DEV_DIR" && bash update-dev.sh ) || echo "WARNING: dev redeploy failed (prod is unaffected)"
+    fi
+fi
+
 # Show container status
 echo ""
 echo "[4/4] Checking container status..."

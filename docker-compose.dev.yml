@@ -1,5 +1,6 @@
 services:
   signaling:
+    container_name: broference-dev-signaling
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -23,6 +24,7 @@ services:
         max-file: "3"
 
   web:
+    container_name: broference-dev-web
     build:
       context: .
       dockerfile: Dockerfile.web
