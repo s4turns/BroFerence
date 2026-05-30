@@ -1235,7 +1235,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             '480':  { width: { ideal: 854,  max: 854  }, height: { ideal: 480,  max: 480  }, frameRate: { ideal: 24, max: 30 } },
             '720':  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720,  max: 720  }, frameRate: { ideal: 24, max: 30 } },
             '1080': { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 24, max: 30 } },
-            '2160': { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30, max: 30 } },
         };
         return qualityMap[this.videoQuality] || qualityMap['720'];
     }
@@ -1963,7 +1962,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     }
 
     applyBandwidthToSenders() {
-        const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
+        const videoBitrate = this.lowBandwidthMode ? 200000 : 1500000; // 200kbps low-band, else 1.5Mbps cap (mesh CPU/bandwidth guard)
         const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 256000; // 64kbps mobile/low-band, 256kbps desktop
 
         this.peerConnections.forEach((peer) => {
@@ -2141,11 +2140,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             }
 
-            // Cap video bitrate in low bandwidth mode
-            if (track.kind === 'video' && this.lowBandwidthMode && sender.getParameters) {
+            // Cap video bitrate (mesh CPU/bandwidth guard): 200kbps low-band, 1.5Mbps otherwise
+            if (track.kind === 'video' && sender.getParameters) {
                 const parameters = sender.getParameters();
                 if (parameters.encodings && parameters.encodings.length > 0) {
-                    parameters.encodings[0].maxBitrate = 200000; // 200kbps video cap
+                    parameters.encodings[0].maxBitrate = this.lowBandwidthMode ? 200000 : 1500000;
                     sender.setParameters(parameters).catch(err => {
                         console.warn('Could not set video encoding parameters:', err);
                     });
