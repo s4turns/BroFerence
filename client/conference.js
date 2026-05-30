@@ -1962,7 +1962,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
     applyBandwidthToSenders() {
         const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
-        const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000; // 64kbps mobile/low-band, 128kbps desktop
+        const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 256000; // 64kbps mobile/low-band, 256kbps desktop
 
         this.peerConnections.forEach((peer) => {
             peer.connection.getSenders().forEach(sender => {
@@ -2131,7 +2131,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         parameters.encodings[0].dtx = 'enabled';
                     }
 
-                    parameters.encodings[0].maxBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000;
+                    parameters.encodings[0].maxBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 256000;
 
                     sender.setParameters(parameters).catch(err => {
                         console.warn('Could not set audio encoding parameters:', err);
