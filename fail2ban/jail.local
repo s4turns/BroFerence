@@ -9,9 +9,11 @@ maxretry = 5
 banaction = iptables-multiport
 allowipv6 = auto
 
-# SSH brute force
+# SSH brute force — disabled: port 22 is restricted to whitelisted source IPs at the
+# Linode cloud firewall, so untrusted hosts can't reach sshd. Jail would only risk
+# locking out our own allowed IPs. Re-enable if SSH is ever exposed to 0.0.0.0/0.
 [sshd]
-enabled  = true
+enabled  = false
 port     = ssh
 filter   = sshd
 logpath  = /var/log/auth.log

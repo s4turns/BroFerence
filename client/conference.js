@@ -439,7 +439,7 @@ class ConferenceClient {
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
         // PRIMARY_TURN_CREDENTIAL rotated by update-vps.sh on each deploy
-        const PRIMARY_TURN_CREDENTIAL = 'M6vxdxo7HkzpvTxVWX0auQe8vkVFUPi';
+        const PRIMARY_TURN_CREDENTIAL = 'TURN_CREDENTIAL_REDACTED';
         const localTurnConfig = {
             urls: [
                 `turn:${turnServer}:3479`,
@@ -449,13 +449,15 @@ class ConferenceClient {
             credential: PRIMARY_TURN_CREDENTIAL
         };
 
+        // SECONDARY_TURN_CREDENTIAL rotated by update-vps.sh from .env (TURN2_PASSWORD) on each deploy
+        const SECONDARY_TURN_CREDENTIAL = 'TURN2_CREDENTIAL_REDACTED';
         const turn2Config = {
             urls: [
                 'turn:174.138.183.167:3479',
                 'turn:174.138.183.167:3479?transport=tcp'
             ],
             username: 'webrtc',
-            credential: '98iKctn6qPZBuUYwFt2uRMUZNu8ziJib'
+            credential: SECONDARY_TURN_CREDENTIAL
         };
 
         // Relay-only via both coturn servers. Asymmetric paths (server1↔server2)
@@ -757,7 +759,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Use ws:// for localhost, wss:// for production
             const protocol = isLocalhost ? 'ws' : 'wss';
-            const wsUrl = `${protocol}://${hostname}:8765`;
+            const wsPort = window.location.port === '8443' ? '8766' : '8765';
+            const wsUrl = `${protocol}://${hostname}:${wsPort}`;
 
             console.log(`Connecting to signaling server: ${wsUrl}`);
             this.ws = new WebSocket(wsUrl);
@@ -1232,6 +1235,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             '480':  { width: { ideal: 854,  max: 854  }, height: { ideal: 480,  max: 480  }, frameRate: { ideal: 24, max: 30 } },
             '720':  { width: { ideal: 1280, max: 1280 }, height: { ideal: 720,  max: 720  }, frameRate: { ideal: 24, max: 30 } },
             '1080': { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 24, max: 30 } },
+            '2160': { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30, max: 30 } },
         };
         return qualityMap[this.videoQuality] || qualityMap['720'];
     }
@@ -1889,20 +1893,37 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
     }
 
-    setVideoQuality(quality) {
+    async setVideoQuality(quality) {
         this.videoQuality = quality;
         localStorage.setItem('broference-video-quality', quality);
 
         const stream = this.localStream || this.prejoinStream;
-        if (stream) {
-            const videoTrack = stream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.applyConstraints(this.getVideoConstraints()).catch(err => {
-                    console.warn('Could not apply video quality constraints:', err);
-                });
+        if (!stream) return;
+
+        const oldTrack = stream.getVideoTracks()[0];
+        const deviceId = oldTrack?.getSettings().deviceId;
+        const constraints = { ...this.getVideoConstraints() };
+        if (deviceId) constraints.deviceId = { ideal: deviceId };
+
+        try {
+            const newStream = await navigator.mediaDevices.getUserMedia({ video: constraints });
+            const newTrack = newStream.getVideoTracks()[0];
+
+            if (oldTrack) {
+                oldTrack.stop();
+                stream.removeTrack(oldTrack);
             }
+            stream.addTrack(newTrack);
+
+            if (this.localVideo) this.localVideo.srcObject = stream;
+
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) sender.replaceTrack(newTrack);
+            });
+        } catch (err) {
+            console.warn('Could not switch video quality:', err);
         }
-        console.log('Video quality set to:', quality + 'p');
     }
 
 
@@ -1943,7 +1964,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
     applyBandwidthToSenders() {
         const videoBitrate = this.lowBandwidthMode ? 200000 : undefined; // 200kbps or uncapped
-        const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000; // 64kbps mobile/low-band, 128kbps desktop
+        const audioBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 256000; // 64kbps mobile/low-band, 256kbps desktop
 
         this.peerConnections.forEach((peer) => {
             peer.connection.getSenders().forEach(sender => {
@@ -2112,7 +2133,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         parameters.encodings[0].dtx = 'enabled';
                     }
 
-                    parameters.encodings[0].maxBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 128000;
+                    parameters.encodings[0].maxBitrate = (this.lowBandwidthMode || this.isMobileDevice()) ? 64000 : 256000;
 
                     sender.setParameters(parameters).catch(err => {
                         console.warn('Could not set audio encoding parameters:', err);
@@ -3033,9 +3054,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         frameRate: { ideal: 30, max: 60 }
                     },
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        sampleRate: 44100
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 2,
+                        sampleRate: 48000
                     }
                 });
 
@@ -3048,8 +3071,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     }
                 });
 
-                // If screen audio is available, mix it with mic and replace audio track
-                this.mixScreenAudio(this.screenStream);
+                // Auto-disable noise suppression during screen share (preserves audio fidelity)
+                this._nsWasEnabledBeforeScreenShare = this.noiseSuppressionEnabled;
+                if (this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
+
+                // Mix mic + stereo screen audio and push to peers
+                this.startStereoScreenAudioMix(this.screenStream);
 
                 // Update local video to show screen
                 this.localVideo.srcObject = this.screenStream;
@@ -3089,8 +3116,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             });
 
-            // Restore original mic audio (unmix screen audio)
-            this.unmixScreenAudio();
+            // Tear down stereo screen audio mix, restore mic track in senders
+            this.stopStereoScreenAudioMix();
+
+            // Restore noise suppression if it was on before screen share
+            if (this._nsWasEnabledBeforeScreenShare) await this.toggleNoiseSuppression();
+            this._nsWasEnabledBeforeScreenShare = false;
 
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
@@ -3106,44 +3137,43 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
-    mixScreenAudio(screenStream) {
+    startStereoScreenAudioMix(screenStream) {
         const screenAudioTracks = screenStream.getAudioTracks();
         if (screenAudioTracks.length === 0) {
-            console.log('No screen audio available to mix');
-            return;
-        }
-        if (!this.micAudioCtx || !this.micDestination) {
-            console.log('Mic audio chain not ready, skipping mix');
+            console.log('No screen audio available');
             return;
         }
 
         try {
-            // Add screen audio into the existing micAudioCtx so both sources feed
-            // micDestination — the track peers already receive — avoiding cross-context
-            // audio piping which silences the mic in all browsers.
-            this.screenGainNode = this.micAudioCtx.createGain();
-            this.screenAudioSource = this.micAudioCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
-            this.screenAudioSource.connect(this.screenGainNode);
-            this.screenGainNode.connect(this.micDestination);
+            this.stereoMixCtx = new AudioContext({ sampleRate: 48000 });
+            // Resume in case the context starts suspended (autoplay policy) — otherwise the mix is silent
+            if (this.stereoMixCtx.state === 'suspended') this.stereoMixCtx.resume().catch(() => {});
+            const destination = this.stereoMixCtx.createMediaStreamDestination();
+            destination.channelCount = 2;
 
-            // Insert a gain node into the mic path for independent volume control.
-            // Disconnect micSource and rewire: micSource → micGainNode → [noiseNode →] micDestination
-            if (this.micSource) {
-                this.micSource.disconnect();
-                this.micGainNode = this.micAudioCtx.createGain();
-                if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
-                    this.micSource.connect(this.micGainNode);
-                    this.micGainNode.connect(this.noiseSuppressionNode);
-                    // noiseSuppressionNode → micDestination already wired
-                } else {
-                    this.micSource.connect(this.micGainNode);
-                    this.micGainNode.connect(this.micDestination);
-                }
+            // Screen audio (stereo)
+            this.stereoScreenGain = this.stereoMixCtx.createGain();
+            const screenSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+            screenSource.connect(this.stereoScreenGain);
+            this.stereoScreenGain.connect(destination);
+
+            // Mic audio (raw mono track — browser auto-upmixes to both channels)
+            const micTrack = this.localStream?.getAudioTracks()[0];
+            if (micTrack) {
+                this.stereoMicGain = this.stereoMixCtx.createGain();
+                const micSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([micTrack]));
+                micSource.connect(this.stereoMicGain);
+                this.stereoMicGain.connect(destination);
             }
 
-            // micDestination.stream is already the track in all peer senders — no replaceTrack needed.
+            // Push stereo track to all peer senders
+            this.stereoMixTrack = destination.stream.getAudioTracks()[0];
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
+                if (sender) sender.replaceTrack(this.stereoMixTrack);
+            });
 
-            // Show audio mixer UI and wire sliders
+            // Wire mixer UI
             const mixer = document.getElementById('screenAudioMixer');
             if (mixer) {
                 mixer.classList.remove('hidden');
@@ -3156,43 +3186,38 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 micVal.textContent = '100%';
                 screenVal.textContent = '100%';
                 micSlider.oninput = (e) => {
-                    if (this.micGainNode) this.micGainNode.gain.value = e.target.value / 100;
+                    if (this.stereoMicGain) this.stereoMicGain.gain.value = e.target.value / 100;
                     micVal.textContent = e.target.value + '%';
                 };
                 screenSlider.oninput = (e) => {
-                    this.screenGainNode.gain.value = e.target.value / 100;
+                    if (this.stereoScreenGain) this.stereoScreenGain.gain.value = e.target.value / 100;
                     screenVal.textContent = e.target.value + '%';
                 };
             }
 
-            console.log('Screen audio mixed with mic audio');
+            console.log('Stereo screen audio mix started');
         } catch (error) {
-            console.error('Error mixing screen audio:', error);
+            console.error('Error starting stereo screen audio mix:', error);
         }
     }
 
-    unmixScreenAudio() {
-        if (!this.screenAudioSource) return;
+    stopStereoScreenAudioMix() {
+        if (!this.stereoMixCtx) return;
 
-        // Disconnect screen audio branch
-        this.screenAudioSource.disconnect();
-        this.screenAudioSource = null;
-        this.screenGainNode = null;
-
-        // Remove mic gain node and restore direct mic chain
-        if (this.micSource && this.micGainNode) {
-            this.micSource.disconnect();
-            this.micGainNode.disconnect();
-            this.micGainNode = null;
-            if (this.noiseSuppressionEnabled && this.noiseSuppressionNode) {
-                this.micSource.connect(this.noiseSuppressionNode);
-                // noiseSuppressionNode → micDestination already wired
-            } else {
-                this.micSource.connect(this.micDestination);
-            }
+        // Restore mic track in all peer senders
+        const micTrack = this.micDestination?.stream.getAudioTracks()[0];
+        if (micTrack) {
+            this.peerConnections.forEach(peer => {
+                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
+                if (sender) sender.replaceTrack(micTrack);
+            });
         }
 
-        // micDestination.stream track is already in all peer senders — no replaceTrack needed.
+        this.stereoMixCtx.close();
+        this.stereoMixCtx = null;
+        this.stereoMixTrack = null;
+        this.stereoScreenGain = null;
+        this.stereoMicGain = null;
 
         const mixer = document.getElementById('screenAudioMixer');
         if (mixer) mixer.classList.add('hidden');

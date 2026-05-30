@@ -53,9 +53,19 @@ else
 fi
 echo "Updated config/turnserver.production.conf"
 
-# Update primary TURN credential in conference.js (leave turn2Config untouched)
+# Update primary TURN credential in conference.js
 sed -i "s/const PRIMARY_TURN_CREDENTIAL = '[^']*'/const PRIMARY_TURN_CREDENTIAL = '${TURN_PASSWORD}'/" client/conference.js
-echo "Updated client/conference.js"
+echo "Updated client/conference.js (primary TURN credential)"
+
+# Update secondary TURN credential (second VPS) from .env — not rotated here since
+# that coturn lives on another host. Keeps the secret out of git.
+[ -f .env ] && set -a && . ./.env && set +a
+if [ -n "${TURN2_PASSWORD}" ]; then
+    sed -i "s/const SECONDARY_TURN_CREDENTIAL = '[^']*'/const SECONDARY_TURN_CREDENTIAL = '${TURN2_PASSWORD}'/" client/conference.js
+    echo "Updated client/conference.js (secondary TURN credential)"
+else
+    echo "WARNING: TURN2_PASSWORD not set in .env — secondary TURN credential left as placeholder (turn2 relay will fail)"
+fi
 
 # Sync fail2ban config if fail2ban is installed
 if command -v fail2ban-client &>/dev/null; then
