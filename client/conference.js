@@ -3067,6 +3067,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     }
                 });
 
+                // Auto-disable noise suppression during screen share (preserves audio fidelity)
+                this._nsWasEnabledBeforeScreenShare = this.noiseSuppressionEnabled;
+                if (this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
+
                 // If screen audio is available, mix it with mic and replace audio track
                 this.mixScreenAudio(this.screenStream);
 
@@ -3110,6 +3114,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Restore original mic audio (unmix screen audio)
             this.unmixScreenAudio();
+
+            // Restore noise suppression if it was on before screen share
+            if (this._nsWasEnabledBeforeScreenShare) await this.toggleNoiseSuppression();
+            this._nsWasEnabledBeforeScreenShare = false;
 
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
