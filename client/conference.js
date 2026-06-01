@@ -3053,10 +3053,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         frameRate: { ideal: 30, max: 60 }
                     },
                     audio: {
-                        echoCancellation: false,
+                        // EC must stay ON: without it, system/entire-screen audio capture
+                        // re-captures the conference audio playing on the sharer's machine
+                        // and loops it back, so remote users hear themselves.
+                        echoCancellation: true,
                         noiseSuppression: false,
                         autoGainControl: false,
-                        channelCount: 2,
                         sampleRate: 48000
                     }
                 });
