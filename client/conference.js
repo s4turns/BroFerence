@@ -3040,6 +3040,42 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         await this.createPeerConnection(peerId, username, true, this.iceServersFallback);
     }
 
+    // Screen share needs far more bitrate than a webcam and must not drop frame
+    // rate to hold resolution. Lift the per-sender cap to ~4 Mbps (0.8 Mbps in
+    // low-bandwidth mode) and pin degradationPreference so text/UI stays smooth.
+    applyScreenShareEncoding(sender) {
+        if (!sender || !sender.getParameters) return;
+        try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+            params.degradationPreference = 'maintain-resolution';
+            params.encodings[0].maxBitrate = this.lowBandwidthMode ? 800000 : 4000000;
+            delete params.encodings[0].scaleResolutionDownBy;
+            sender.setParameters(params).catch(err => {
+                console.warn('Could not apply screen-share encoding:', err);
+            });
+        } catch (err) {
+            console.warn('Error applying screen-share encoding:', err);
+        }
+    }
+
+    // Put the camera sender back under the normal mesh bitrate guard once the
+    // screen share stops, so a webcam can't hog the 4 Mbps screen budget.
+    restoreCameraEncoding(sender) {
+        if (!sender || !sender.getParameters) return;
+        try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) return;
+            params.degradationPreference = 'balanced';
+            params.encodings[0].maxBitrate = this.lowBandwidthMode ? 200000 : 1500000;
+            sender.setParameters(params).catch(err => {
+                console.warn('Could not restore camera encoding:', err);
+            });
+        } catch (err) {
+            console.warn('Error restoring camera encoding:', err);
+        }
+    }
+
     async toggleScreenShare() {
         if (!this.isScreenSharing) {
             try {
@@ -3065,10 +3101,16 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
                 // Replace video track in all peer connections
                 const screenVideoTrack = this.screenStream.getVideoTracks()[0];
+                // Screen content is high-detail / low-motion: hint the encoder so it
+                // keeps resolution sharp instead of collapsing frame rate, then give it
+                // real bitrate headroom (the camera path is capped at 1.5 Mbps, which
+                // starves screen content and is the main cause of choppy/low-FPS shares).
+                screenVideoTrack.contentHint = 'detail';
                 this.peerConnections.forEach(peer => {
                     const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
                     if (sender) {
                         sender.replaceTrack(screenVideoTrack);
+                        this.applyScreenShareEncoding(sender);
                     }
                 });
 
@@ -3110,10 +3152,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Restore camera video track
             const cameraVideoTrack = this.localStream.getVideoTracks()[0];
+            if (cameraVideoTrack) cameraVideoTrack.contentHint = 'motion';
             this.peerConnections.forEach(peer => {
                 const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
                 if (sender) {
                     sender.replaceTrack(cameraVideoTrack);
+                    this.restoreCameraEncoding(sender);
                 }
             });
 
