@@ -1545,6 +1545,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 const audioKbps = deltaSec > 0 ? Math.round((deltaBytes * 8) / deltaSec / 1000) : 0;
                 prevAudioBytes = audioBytesReceived;
                 prevAudioTime = now;
+
+                // Watchdog: detect a stalled remote audio flow and self-heal (re-play, then
+                // ICE restart) so users don't have to refresh to hear each other again.
+                this.checkRemoteAudioHealth(peerId, pc, deltaBytes);
+
                 audioSpan.textContent = audioKbps > 0 ? `${audioKbps} kbps` : '--';
                 audioSpan.className = 'stat-value audio-value';
                 if (audioKbps >= 128) audioSpan.classList.add('stat-good');
@@ -2192,6 +2197,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     console.log('Adding', event.track.kind, 'track directly to existing stream for', peerId);
                     videoEl.srcObject.addTrack(event.track);
                 }
+
+                // Wire health handlers on an audio track that arrived after the video track.
+                if (event.track.kind === 'audio' && videoEl) {
+                    this.attachRemoteAudioHandlers(peerId, event.track, videoEl);
+                }
             }
 
             // Attach decrypt transform if E2EE is active
@@ -2520,6 +2530,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             container.classList.add('no-video');
         }
 
+        // Monitor remote AUDIO track health (re-kick playback on transient stalls).
+        // The deeper no-recovery case is handled by the stats-loop watchdog below.
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) this.attachRemoteAudioHandlers(peerId, audioTrack, video);
+
         // Add audio controls for remote users
         const audioControls = this.createAudioControls(peerId);
         container.appendChild(audioControls);
@@ -2542,7 +2557,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // Store video element reference for volume control
         this.remoteAudioControls.set(peerId, {
             videoElement: video,
-            isMuted: false
+            isMuted: false,
+            hasReceivedAudio: false,
+            audioStallCount: 0,
+            audioRecoveryAttempted: false
         });
 
         // FIREFOX FIX: Wait for loadedmetadata before playing
@@ -2856,6 +2874,63 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // Only set volume if not muted
         if (!controls.isMuted) {
             controls.videoElement.volume = volume;
+        }
+    }
+
+    // Wire health handlers on a remote AUDIO track — the parallel of the video-track
+    // handlers in addRemoteVideo. A transient RTP stall (NAT rebind, congestion) fires
+    // `mute`; when it clears we re-kick the media element in case its playback wedged
+    // while silent. Deeper stalls that never fire `unmute` are caught by the stats-loop
+    // watchdog (checkRemoteAudioHealth).
+    attachRemoteAudioHandlers(peerId, audioTrack, video) {
+        if (!audioTrack || audioTrack._healthWired) return;
+        audioTrack._healthWired = true;
+        audioTrack.onmute = () => {
+            console.warn(`Remote audio track muted for peer ${peerId}`);
+        };
+        audioTrack.onunmute = () => {
+            console.log(`Remote audio unmuted for peer ${peerId}, re-kicking playback`);
+            if (video) video.play().catch(() => {});
+        };
+    }
+
+    // Watchdog driven by the per-peer stats loop (runs every 5s while connected).
+    // "Can't hear after a while, refresh fixes it" is a remote-audio RTP stall while the
+    // PeerConnection stays `connected` — it slips past the ICE-restart-on-disconnect path.
+    // We detect a flatline in audio bytes-received and self-heal: first re-play the element,
+    // then (once per episode) renegotiate via ICE restart.
+    checkRemoteAudioHealth(peerId, pc, audioDeltaBytes) {
+        const controls = this.remoteAudioControls.get(peerId);
+        if (!controls || !controls.videoElement) return;
+
+        // Only meaningful on a live transport, and skip peers we've locally muted.
+        if (pc.connectionState !== 'connected' || controls.isMuted) {
+            controls.audioStallCount = 0;
+            return;
+        }
+
+        if (audioDeltaBytes > 0) {
+            controls.hasReceivedAudio = true;
+            controls.audioStallCount = 0;
+            controls.audioRecoveryAttempted = false;
+            return;
+        }
+
+        // Flatlined. Only act once audio was actually flowing, so a peer who simply never
+        // sent audio (or just joined) doesn't trip the watchdog.
+        if (!controls.hasReceivedAudio) return;
+
+        controls.audioStallCount = (controls.audioStallCount || 0) + 1;
+
+        if (controls.audioStallCount === 2) {
+            // ~10s silent — re-kick the media element in case playback stalled.
+            console.warn(`Remote audio stalled for peer ${peerId} (~10s), re-playing element`);
+            controls.videoElement.play().catch(() => {});
+        } else if (controls.audioStallCount >= 3 && !controls.audioRecoveryAttempted) {
+            // ~15s silent and re-play didn't help — renegotiate the media flow. Once per episode.
+            controls.audioRecoveryAttempted = true;
+            console.warn(`Remote audio still stalled for peer ${peerId} (~15s), attempting ICE restart`);
+            this.attemptIceRestart(peerId).catch(() => {});
         }
     }
 
