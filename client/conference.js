@@ -2109,19 +2109,39 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.knownUsernames.set(peerId, peerUsername);
         }
 
-        // Add local stream tracks with optimized RTP parameters
-        // Use screenStream tracks if currently streaming video
+        // Add local stream tracks with optimized RTP parameters.
+        // Pick the tracks deliberately rather than iterating a single stream:
+        // during a screen share the video is the screen track and the audio is
+        // the mic+screen stereo mix (or the mic alone if the share has no system
+        // audio). screenStream itself contains no mic track, so a peer joining
+        // mid-share must be wired from these sources explicitly — otherwise the
+        // late joiner gets screenStream's (often absent) audio and can't hear
+        // the streamer at all.
         const activeStream = this.isScreenSharing && this.screenStream ? this.screenStream : this.localStream;
-        activeStream.getTracks().forEach(track => {
-            // Use processed audio track if noise suppression is enabled (only for mic audio)
-            let trackToAdd = track;
-            if (track.kind === 'audio' && !this.isScreenSharing && this.micDestination) {
-                const processedAudioTrack = this.micDestination.stream.getAudioTracks()[0];
-                if (processedAudioTrack) {
-                    trackToAdd = processedAudioTrack;
-                }
-            }
-            const sender = pc.addTrack(trackToAdd, activeStream);
+
+        const videoTrack = activeStream.getVideoTracks()[0];
+
+        let audioTrack;
+        if (this.isScreenSharing) {
+            // Mirror exactly what existing peers receive (see startStereoScreenAudioMix):
+            // the stereo mix when the share has system audio, otherwise the
+            // processed/raw mic track so the streamer's voice still gets through.
+            audioTrack = this.stereoMixTrack
+                || this.micDestination?.stream.getAudioTracks()[0]
+                || this.localStream.getAudioTracks()[0];
+        } else if (this.micDestination) {
+            // Use processed audio track if noise suppression is enabled
+            audioTrack = this.micDestination.stream.getAudioTracks()[0] || this.localStream.getAudioTracks()[0];
+        } else {
+            audioTrack = this.localStream.getAudioTracks()[0];
+        }
+
+        const tracksToAdd = [];
+        if (audioTrack) tracksToAdd.push(audioTrack);
+        if (videoTrack) tracksToAdd.push(videoTrack);
+
+        tracksToAdd.forEach(track => {
+            const sender = pc.addTrack(track, activeStream);
 
             // Optimize audio encoding parameters for voice
             if (track.kind === 'audio' && sender.getParameters) {
@@ -2145,14 +2165,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             }
 
-            // Cap video bitrate (mesh CPU/bandwidth guard): 200kbps low-band, 1.5Mbps otherwise
+            // Video bitrate: give a mid-share late joiner the same screen-share
+            // encoding existing peers got; otherwise the normal mesh cap.
             if (track.kind === 'video' && sender.getParameters) {
-                const parameters = sender.getParameters();
-                if (parameters.encodings && parameters.encodings.length > 0) {
-                    parameters.encodings[0].maxBitrate = this.lowBandwidthMode ? 200000 : 1500000;
-                    sender.setParameters(parameters).catch(err => {
-                        console.warn('Could not set video encoding parameters:', err);
-                    });
+                if (this.isScreenSharing) {
+                    this.applyScreenShareEncoding(sender);
+                } else {
+                    const parameters = sender.getParameters();
+                    if (parameters.encodings && parameters.encodings.length > 0) {
+                        parameters.encodings[0].maxBitrate = this.lowBandwidthMode ? 200000 : 1500000;
+                        sender.setParameters(parameters).catch(err => {
+                            console.warn('Could not set video encoding parameters:', err);
+                        });
+                    }
                 }
             }
         });
