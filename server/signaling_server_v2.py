@@ -12,6 +12,7 @@ import ssl
 import os
 import hmac
 import secrets
+import ipaddress
 from typing import Dict, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -40,6 +41,13 @@ admin_clients: set = set()
 
 # Ban records for admin panel display: list of dicts with metadata
 ban_records: list = []
+
+# Global IP bans (admin-only). banned_ips is the enforcement set (fast lookup at
+# connection time); ip_ban_records carries display metadata for the admin panel.
+# Unlike the per-room client_id bans above, these survive page refreshes because
+# they key on the source IP, which the signaling socket sees directly.
+banned_ips: set = set()
+ip_ban_records: list = []
 
 # Admin secret — read from env or auto-generate
 ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
@@ -110,6 +118,7 @@ def get_admin_state() -> dict:
         'type': 'admin-state',
         'rooms': rooms_out,
         'bans': ban_records,
+        'ipBans': ip_ban_records,
         'totalClients': len(clients),
     }
 
@@ -1124,6 +1133,124 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     logger.info(f'Admin set noise gate for {target_id}: enabled={enabled}, threshold={threshold}')
                     break
 
+        elif msg_type == 'admin-ban-ip':
+            if websocket not in admin_clients:
+                return
+            raw_ip = (data.get('ip') or '').strip()
+            reason = (data.get('reason') or '').strip()
+            # Validate + canonicalize so '1.2.3.004' / casing variants can't slip past.
+            try:
+                ip = str(ipaddress.ip_address(raw_ip))
+            except ValueError:
+                await websocket.send(json.dumps({
+                    'type': 'admin-error',
+                    'message': f'Invalid IP address: {raw_ip}'
+                }))
+                return
+            if ip not in banned_ips:
+                banned_ips.add(ip)
+                if len(ip_ban_records) >= 1000:
+                    ip_ban_records.pop(0)
+                ip_ban_records.append({
+                    'ip': ip,
+                    'reason': reason,
+                    'bannedAt': datetime.now(timezone.utc).isoformat(),
+                    'bannedBy': 'admin',
+                })
+            # Kick any currently-connected clients from this IP.
+            kicked = 0
+            for ws, info in list(clients.items()):
+                if info.get('ip') == ip:
+                    try:
+                        await ws.send(json.dumps({'type': 'banned', 'message': 'Your IP address has been banned'}))
+                        await ws.close()
+                        kicked += 1
+                    except Exception:
+                        pass
+            logger.info(f'Admin IP-banned {ip} (reason: {reason or "n/a"}), kicked {kicked} active client(s)')
+            await broadcast_admin_state()
+
+        elif msg_type == 'admin-unban-ip':
+            if websocket not in admin_clients:
+                return
+            raw_ip = (data.get('ip') or '').strip()
+            try:
+                ip = str(ipaddress.ip_address(raw_ip))
+            except ValueError:
+                ip = raw_ip  # fall through to a no-op discard on a malformed value
+            banned_ips.discard(ip)
+            ip_ban_records[:] = [r for r in ip_ban_records if r['ip'] != ip]
+            logger.info(f'Admin lifted IP ban on {ip}')
+            await broadcast_admin_state()
+
+        elif msg_type == 'admin-rename':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            new_username = (data.get('newUsername') or '').strip()
+            if not new_username:
+                return
+            for ws, info in clients.items():
+                if info['id'] == target_id and info['room'] == room_id:
+                    old_username = info['username']
+                    info['username'] = new_username
+                    await ws.send(json.dumps({
+                        'type': 'name-changed-by-moderator',
+                        'newUsername': new_username
+                    }))
+                    await broadcast_to_room(room_id, {
+                        'type': 'name-changed',
+                        'clientId': target_id,
+                        'oldUsername': old_username,
+                        'newUsername': new_username
+                    })
+                    if irc_bridge and irc_bridge.connected and rooms.get(room_id, {}).get('irc_channel'):
+                        await irc_bridge.send_message(room_id, "System", f"Admin changed {old_username}'s name to {new_username}")
+                    logger.info(f'Admin renamed {target_id} to {new_username} in {room_id}')
+                    break
+            await broadcast_admin_state()
+
+        elif msg_type == 'admin-set-room-password':
+            if websocket not in admin_clients:
+                return
+            room_id = data.get('roomId')
+            new_password = data.get('password')  # None / empty = unlock
+            if room_id in rooms:
+                if new_password:
+                    rooms[room_id]['password'] = hash_password(new_password)
+                    locked = True
+                else:
+                    rooms[room_id]['password'] = None
+                    locked = False
+                await broadcast_to_room(room_id, {
+                    'type': 'room-lock-changed',
+                    'locked': locked,
+                    'changedBy': 'admin'
+                })
+                logger.info(f"Admin {'locked' if locked else 'unlocked'} room {room_id}")
+                await broadcast_admin_state()
+
+        elif msg_type == 'admin-broadcast':
+            if websocket not in admin_clients:
+                return
+            room_id = data.get('roomId')
+            text = (data.get('message') or '').strip()
+            if not text:
+                return
+            targets = [room_id] if room_id else list(rooms.keys())
+            for rid in targets:
+                if rid in rooms:
+                    await broadcast_to_room(rid, {
+                        'type': 'chat-message',
+                        'username': 'System',
+                        'message': text,
+                        'timestamp': asyncio.get_event_loop().time()
+                    })
+                    if irc_bridge and irc_bridge.connected and rooms[rid].get('irc_channel'):
+                        await irc_bridge.send_message(rid, "System", text)
+            logger.info(f"Admin broadcast to {'room ' + room_id if room_id else 'all rooms'}: {text}")
+
         else:
             logger.warning(f"Unknown message type: {msg_type}")
 
@@ -1135,6 +1262,16 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
 
 async def handler(websocket: WebSocketServerProtocol):
     """Main WebSocket connection handler."""
+    # Reject connections from globally IP-banned sources before any signaling.
+    peer_ip = websocket.remote_address[0] if websocket.remote_address else None
+    if peer_ip and peer_ip in banned_ips:
+        logger.info(f"Rejected connection from IP-banned source {peer_ip}")
+        try:
+            await websocket.send(json.dumps({'type': 'banned', 'message': 'Your IP address has been banned'}))
+        except Exception:
+            pass
+        await websocket.close()
+        return
     try:
         async for message in websocket:
             await handle_message(websocket, message)

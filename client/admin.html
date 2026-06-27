@@ -86,6 +86,15 @@
 
   .room-body { display: none; border-top: 1px solid var(--border); }
   .room-body.open { display: block; }
+  .room-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+
+  /* ── IP ban form ── */
+  .ipban-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .ipban-form .field { margin-bottom: 0; }
+  .ipban-form .field label { display: block; color: var(--muted); font-size: 0.7rem; margin-bottom: 4px; }
+  .ipban-form input { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 8px 10px; font-family: inherit; font-size: 13px; }
+  .ipban-form input:focus { outline: none; border-color: var(--primary); }
+  .section-title { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin: 4px 0 10px; }
 
   /* ── User table ── */
   .user-table { width: 100%; border-collapse: collapse; }
@@ -170,7 +179,7 @@
 
 <script>
 let ws = null;
-let state = { rooms: {}, bans: [], totalClients: 0 };
+let state = { rooms: {}, bans: [], ipBans: [], totalClients: 0 };
 let openRooms = new Set();
 let ngValues = {};         // persists noise-gate threshold inputs across re-renders
 let activeSecret = '';
@@ -206,6 +215,8 @@ function openSocket(url, secret) {
     } else if (msg.type === 'admin-state') {
       state = msg;
       render();
+    } else if (msg.type === 'admin-error') {
+      alert(msg.message || 'Admin action failed.');
     }
   };
 
@@ -303,6 +314,61 @@ function removeMod(roomId, userId) {
   send({ type: 'admin-remove-mod', roomId, targetId: userId });
 }
 
+function renameUser(roomId, userId, currentName) {
+  const newName = prompt('New username:', currentName);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  send({ type: 'admin-rename', roomId, targetId: userId, newUsername: trimmed });
+}
+
+// Ban a specific connected user's current IP (from their row).
+function banUserIp(ip, username) {
+  if (!ip || ip === '—') { alert('No IP known for this user.'); return; }
+  if (!confirm(`Globally ban IP ${ip}${username ? ' (' + username + ')' : ''}? This kicks them now and blocks reconnects.`)) return;
+  const reason = prompt('Reason (optional):', username ? `user ${username}` : '') || '';
+  send({ type: 'admin-ban-ip', ip, reason: reason.trim() });
+}
+
+// Ban an IP typed into the manual field on the Bans tab.
+function banIpManual() {
+  const input = document.getElementById('ipBanInput');
+  const reasonInput = document.getElementById('ipBanReason');
+  const ip = (input.value || '').trim();
+  if (!ip) return;
+  if (!confirm(`Globally ban IP ${ip}?`)) return;
+  send({ type: 'admin-ban-ip', ip, reason: (reasonInput.value || '').trim() });
+  input.value = '';
+  reasonInput.value = '';
+}
+
+function unbanIp(ip) {
+  if (!confirm(`Lift IP ban on ${ip}?`)) return;
+  send({ type: 'admin-unban-ip', ip });
+  // Optimistic update
+  state.ipBans = (state.ipBans || []).filter(b => b.ip !== ip);
+  renderBans();
+}
+
+function setRoomPassword(roomId) {
+  const pw = prompt(`Set a password for room "${roomId}" (leave empty to unlock):`, '');
+  if (pw === null) return;
+  send({ type: 'admin-set-room-password', roomId, password: pw.trim() });
+}
+
+function clearRoomPassword(roomId) {
+  if (!confirm(`Remove the password / unlock room "${roomId}"?`)) return;
+  send({ type: 'admin-set-room-password', roomId, password: '' });
+}
+
+function broadcastToRoom(roomId) {
+  const text = prompt(`Broadcast a system message to room "${roomId}":`, '');
+  if (text === null) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  send({ type: 'admin-broadcast', roomId, message: trimmed });
+}
+
 // ── Render ─────────────────────────────────────────────────────────────────
 function render() {
   document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -317,7 +383,7 @@ function renderStats() {
   for (const r of Object.values(state.rooms)) userCount += r.users.length;
   document.getElementById('statRooms').textContent = roomCount;
   document.getElementById('statUsers').textContent = userCount;
-  document.getElementById('statBans').textContent = state.bans.length;
+  document.getElementById('statBans').textContent = state.bans.length + (state.ipBans ? state.ipBans.length : 0);
 }
 
 function renderRooms() {
@@ -353,6 +419,8 @@ function renderRooms() {
           <div class="action-btns">
             <button class="btn btn-danger btn-sm" onclick="kick('${esc(roomId)}','${uid}')">Kick</button>
             <button class="btn btn-danger btn-sm" onclick="ban('${esc(roomId)}','${uid}','${esc(u.username)}')">Ban</button>
+            <button class="btn btn-danger btn-sm" onclick="banUserIp('${esc(u.ip || '')}','${esc(u.username)}')">Ban IP</button>
+            <button class="btn btn-ghost btn-sm" onclick="renameUser('${esc(roomId)}','${uid}','${esc(u.username)}')">Rename</button>
             ${modBtn}
           </div>
           <div class="ng-row">
@@ -375,6 +443,11 @@ function renderRooms() {
         <span class="chevron${isOpen ? ' open' : ''}">▼</span>
       </div>
       <div class="room-body${isOpen ? ' open' : ''}">
+        <div class="room-actions">
+          <button class="btn btn-warn btn-sm" onclick="setRoomPassword('${esc(roomId)}')">🔒 Set Password</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearRoomPassword('${esc(roomId)}')">🔓 Clear Password</button>
+          <button class="btn btn-info btn-sm" onclick="broadcastToRoom('${esc(roomId)}')">📢 Broadcast</button>
+        </div>
         ${room.users.length === 0
           ? '<div class="empty-msg" style="padding:16px">No users</div>'
           : `<table class="user-table">
@@ -388,25 +461,75 @@ function renderRooms() {
 
 function renderBans() {
   const container = document.getElementById('banList');
-  if (state.bans.length === 0) {
-    container.innerHTML = '<div class="empty-msg">No bans.</div>';
-    return;
+  const ipBans = state.ipBans || [];
+
+  // Preserve any in-progress form input across the 10s auto-refresh re-render.
+  const pendingIp = (document.getElementById('ipBanInput') || {}).value || '';
+  const pendingReason = (document.getElementById('ipBanReason') || {}).value || '';
+
+  // ── Manual IP ban form ──
+  const form = `
+    <div class="ipban-form">
+      <div class="field">
+        <label>IP Address</label>
+        <input id="ipBanInput" type="text" placeholder="e.g. 203.0.113.7" value="${esc(pendingIp)}" onkeydown="if(event.key==='Enter')banIpManual()">
+      </div>
+      <div class="field">
+        <label>Reason (optional)</label>
+        <input id="ipBanReason" type="text" placeholder="reason" value="${esc(pendingReason)}">
+      </div>
+      <button class="btn btn-danger" onclick="banIpManual()">Ban IP</button>
+    </div>`;
+
+  // ── IP bans table ──
+  let ipTable;
+  if (ipBans.length === 0) {
+    ipTable = '<div class="empty-msg">No IP bans.</div>';
+  } else {
+    const ipRows = ipBans.map(b => {
+      const date = b.bannedAt ? new Date(b.bannedAt).toLocaleString() : '—';
+      return `<tr>
+        <td class="user-ip">${esc(b.ip)}</td>
+        <td>${esc(b.reason || '—')}</td>
+        <td>${esc(b.bannedBy || '—')}</td>
+        <td>${date}</td>
+        <td><button class="btn btn-warn btn-sm" onclick="unbanIp('${esc(b.ip)}')">Unban</button></td>
+      </tr>`;
+    }).join('');
+    ipTable = `<table class="ban-table">
+      <thead><tr><th>IP</th><th>Reason</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
+      <tbody>${ipRows}</tbody>
+    </table>`;
   }
-  const rows = state.bans.map(b => {
-    const date = b.bannedAt ? new Date(b.bannedAt).toLocaleString() : '—';
-    return `<tr>
-      <td>${esc(b.username)}</td>
-      <td class="user-ip">${esc(b.ip || '—')}</td>
-      <td>${esc(b.room)}</td>
-      <td>${esc(b.bannedBy || '—')}</td>
-      <td>${date}</td>
-      <td><button class="btn btn-warn btn-sm" onclick="unban('${esc(b.room)}','${esc(b.clientId)}')">Unban</button></td>
-    </tr>`;
-  }).join('');
-  container.innerHTML = `<table class="ban-table">
-    <thead><tr><th>Username</th><th>IP</th><th>Room</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+
+  // ── Room (session) bans table ──
+  let roomTable;
+  if (state.bans.length === 0) {
+    roomTable = '<div class="empty-msg">No room bans.</div>';
+  } else {
+    const rows = state.bans.map(b => {
+      const date = b.bannedAt ? new Date(b.bannedAt).toLocaleString() : '—';
+      return `<tr>
+        <td>${esc(b.username)}</td>
+        <td class="user-ip">${esc(b.ip || '—')}</td>
+        <td>${esc(b.room)}</td>
+        <td>${esc(b.bannedBy || '—')}</td>
+        <td>${date}</td>
+        <td><button class="btn btn-warn btn-sm" onclick="unban('${esc(b.room)}','${esc(b.clientId)}')">Unban</button></td>
+      </tr>`;
+    }).join('');
+    roomTable = `<table class="ban-table">
+      <thead><tr><th>Username</th><th>IP</th><th>Room</th><th>Banned By</th><th>Date</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  container.innerHTML = `
+    <div class="section-title">Global IP Bans</div>
+    ${form}
+    ${ipTable}
+    <div class="section-title" style="margin-top:28px">Room Bans (per session)</div>
+    ${roomTable}`;
 }
 
 function toggleRoom(roomId) {
