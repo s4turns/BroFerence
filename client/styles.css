@@ -2869,4 +2869,595 @@ body::before {
     padding-left: 6px;
 }
 
+/* ============================================================
+   Theme: Tron (The Grid)
+   Blue-black void, lightcycle cyan, white-hot cores.
+   Orange is reserved for danger/derezzed states.
+   ============================================================ */
+[data-theme="tron"] {
+    --primary: #00e5ff;
+    --primary-dark: #00a8bd;
+    --primary-glow: #00e5ff;
+    --secondary: #d8f7ff;
+    --danger: #ff6a00;
+    --warning: #ffb300;
+    --dark: #030910;
+    --darker: #050e18;
+    --light: #08131f;
+    --gray: #9fdcea;
+    --gray-light: #0e2a3c;
+    --border: #14455c;
+    --shadow: rgba(0, 229, 255, 0.25);
+    --shadow-lg: rgba(0, 229, 255, 0.45);
+    --glow: 0 0 6px rgba(0, 229, 255, 0.55), 0 0 14px rgba(0, 229, 255, 0.25);
+    --glow-strong: 0 0 8px rgba(0, 229, 255, 0.8), 0 0 20px rgba(0, 229, 255, 0.45), 0 0 34px rgba(0, 229, 255, 0.2);
+    --chat-font-size: 13px;
+    --own-bg: #06202c;
+    --own-highlighted-bg: #0a2f3f;
+}
+
+[data-theme="tron"] body {
+    font-family: 'Bahnschrift', 'Segoe UI', 'Helvetica Neue', sans-serif;
+    background: radial-gradient(ellipse 120% 60% at 50% 100%, #071a2b 0%, #040d17 45%, #030910 100%) fixed;
+    color: var(--gray);
+}
+
+[data-theme="tron"] * {
+    text-shadow: none !important;
+}
+
+/* Grid floor instead of CRT scanlines */
+[data-theme="tron"] body::before {
+    background:
+        repeating-linear-gradient(90deg, rgba(0, 229, 255, 0.07) 0 1px, transparent 1px 48px),
+        repeating-linear-gradient(0deg, rgba(0, 229, 255, 0.05) 0 1px, transparent 1px 48px);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.25) 45%, transparent 80%);
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.25) 45%, transparent 80%);
+    opacity: 1;
+}
+
+/* Header: glass slab with a lightcycle ribbon running its base edge */
+[data-theme="tron"] .header {
+    background: rgba(5, 14, 24, 0.85);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 32px -12px rgba(0, 229, 255, 0.25);
+    backdrop-filter: blur(10px);
+}
+
+[data-theme="tron"] .header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(0, 229, 255, 0.9) 42%,
+        #eafcff 50%,
+        rgba(0, 229, 255, 0.9) 58%,
+        transparent 100%);
+    background-size: 220% 100%;
+    animation: tron-ribbon 7s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes tron-ribbon {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -100% 0; }
+}
+
+[data-theme="tron"] .header h1 {
+    color: var(--secondary);
+    font-weight: 300;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.75));
+}
+
+/* Buttons: hard geometry, hairline circuits, base edge lights on hover */
+[data-theme="tron"] .btn {
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    font-weight: 400;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: rgba(8, 19, 31, 0.85);
+    border: 1px solid var(--border);
+    color: #bfeefb;
+    box-shadow: none;
+    transition: all 0.2s ease;
+}
+
+[data-theme="tron"] .btn:hover {
+    border-color: var(--primary);
+    color: var(--secondary);
+    box-shadow: inset 0 -2px 0 var(--primary), 0 8px 22px -10px rgba(0, 229, 255, 0.7);
+}
+
+[data-theme="tron"] .btn-primary {
+    background: linear-gradient(180deg, #0a2436 0%, #06141f 100%);
+    border-color: #1d90ad;
+    color: var(--secondary);
+    box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+[data-theme="tron"] .btn-primary:hover {
+    background: linear-gradient(180deg, #0d3348 0%, #081b29 100%);
+    border-color: var(--primary);
+    box-shadow: inset 0 -2px 0 var(--primary), 0 10px 28px -10px rgba(0, 229, 255, 0.8);
+}
+
+[data-theme="tron"] .btn-secondary {
+    background: rgba(8, 19, 31, 0.85);
+    border-color: var(--border);
+    color: #bfeefb;
+    box-shadow: none;
+}
+
+[data-theme="tron"] .btn-secondary:hover {
+    background: rgba(13, 33, 49, 0.9);
+    border-color: var(--primary);
+    box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+[data-theme="tron"] .btn-danger,
+[data-theme="tron"] .prejoin-controls .btn-secondary.active {
+    background: rgba(31, 13, 3, 0.85);
+    border-color: var(--danger);
+    color: #ffb380;
+    box-shadow: none;
+}
+
+[data-theme="tron"] .btn-danger:hover {
+    background: rgba(51, 21, 4, 0.9);
+    box-shadow: inset 0 -2px 0 var(--danger), 0 8px 22px -10px rgba(255, 106, 0, 0.7);
+}
+
+/* Video tiles: black glass, lit hairline, identity-disc speaking ring */
+[data-theme="tron"] .video-container {
+    background: #02070c;
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.9);
+}
+
+[data-theme="tron"] .video-container:hover {
+    border-color: rgba(0, 229, 255, 0.6);
+    box-shadow: 0 0 18px -4px rgba(0, 229, 255, 0.4);
+}
+
+[data-theme="tron"] .video-container.speaking {
+    border-color: var(--secondary);
+    box-shadow:
+        0 0 0 1px rgba(216, 247, 255, 0.9),
+        0 0 22px rgba(0, 229, 255, 0.75),
+        inset 0 0 18px rgba(0, 229, 255, 0.18);
+}
+
+[data-theme="tron"] .video-container video {
+    filter: none;
+    background: #02070c;
+}
+
+[data-theme="tron"] .video-avatar {
+    background: radial-gradient(circle, #0a2436 0%, #05101a 70%);
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.5), inset 0 0 12px rgba(0, 229, 255, 0.2);
+}
+
+/* Name plate: glass chip with a light rail */
+[data-theme="tron"] .video-label {
+    background: rgba(3, 14, 22, 0.72);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-left: 3px solid var(--primary);
+    color: var(--secondary);
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    font-weight: 400;
+    letter-spacing: 2px;
+    box-shadow: none;
+}
+
+[data-theme="tron"] .muted-indicator {
+    background: rgba(22, 9, 2, 0.85);
+    border-color: var(--danger);
+    color: #ffb380;
+}
+
+/* Signal meter: light columns with white-hot tips */
+[data-theme="tron"] .signal-bars {
+    background: rgba(3, 14, 22, 0.72);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    box-shadow: none;
+}
+
+[data-theme="tron"] .signal-bars .bar {
+    background: #12374a;
+    border-radius: 2px;
+}
+
+[data-theme="tron"] .signal-bars.signal-excellent .bar,
+[data-theme="tron"] .signal-bars.signal-good .bar:nth-child(-n+3) {
+    background: linear-gradient(180deg, #d8f7ff 0%, var(--primary) 45%);
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.8);
+}
+
+[data-theme="tron"] .signal-bars.signal-fair .bar:nth-child(-n+2) {
+    background: linear-gradient(180deg, #ffe3b0 0%, var(--warning) 45%);
+    box-shadow: 0 0 6px rgba(255, 179, 0, 0.8);
+}
+
+[data-theme="tron"] .signal-bars.signal-poor .bar:nth-child(1) {
+    background: linear-gradient(180deg, #ffc09b 0%, var(--danger) 45%);
+    box-shadow: 0 0 6px rgba(255, 106, 0, 0.8);
+}
+
+[data-theme="tron"] .signal-tooltip {
+    background: rgba(4, 13, 23, 0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--gray);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.8);
+}
+
+/* Chat: glass panel, messages ride a light rail */
+[data-theme="tron"] .chat-sidebar {
+    background: rgba(4, 12, 20, 0.92);
+    backdrop-filter: blur(12px);
+    border-left: 1px solid var(--border);
+    box-shadow: none;
+}
+
+[data-theme="tron"] .chat-header {
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+}
+
+[data-theme="tron"] .chat-header h3 {
+    color: var(--secondary);
+    font-weight: 400;
+    letter-spacing: 3px;
+}
+
+[data-theme="tron"] .chat-messages {
+    background: transparent;
+}
+
+[data-theme="tron"] .chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+[data-theme="tron"] .chat-messages::-webkit-scrollbar-thumb {
+    background: #14455c;
+    border: none;
+    border-radius: 4px;
+}
+
+[data-theme="tron"] .chat-message {
+    background: rgba(8, 24, 36, 0.55);
+    border: 1px solid rgba(14, 42, 60, 0.9);
+    border-left: 2px solid rgba(0, 229, 255, 0.45);
+    border-radius: 0 4px 4px 0;
+    color: #cfeef8;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+[data-theme="tron"] .chat-message .username {
+    color: var(--primary);
+    letter-spacing: 1px;
+}
+
+[data-theme="tron"] .chat-message.own {
+    background: var(--own-bg);
+    border-left-color: var(--secondary);
+    box-shadow: none;
+}
+
+[data-theme="tron"] .chat-message.irc {
+    background: rgba(31, 17, 3, 0.5);
+    border-color: rgba(80, 42, 10, 0.9);
+    border-left-color: var(--danger);
+    color: #ffd9b8;
+    box-shadow: none;
+}
+
+[data-theme="tron"] .load-more-btn {
+    background: rgba(8, 19, 31, 0.85);
+    border-color: var(--border);
+    color: #bfeefb;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    letter-spacing: 1px;
+}
+
+[data-theme="tron"] .load-more-btn:hover {
+    border-color: var(--primary);
+}
+
+[data-theme="tron"] .chat-input-container {
+    background: transparent;
+    border-top: 1px solid var(--border);
+}
+
+[data-theme="tron"] .chat-input-container input {
+    background: rgba(3, 10, 17, 0.8);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--secondary);
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+[data-theme="tron"] .chat-input-container input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary), 0 0 14px rgba(0, 229, 255, 0.35);
+}
+
+[data-theme="tron"] .chat-input-container input::placeholder {
+    color: #3d7488;
+}
+
+/* Control bar: identity discs */
+[data-theme="tron"] .control-btn {
+    background: rgba(5, 14, 24, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    box-shadow: none;
+    transition: all 0.2s ease;
+}
+
+[data-theme="tron"] .control-btn:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.4), 0 0 16px rgba(0, 229, 255, 0.35);
+}
+
+[data-theme="tron"] .control-btn.active {
+    background: rgba(31, 13, 3, 0.85);
+    border-color: var(--danger);
+    box-shadow: 0 0 0 1px rgba(255, 106, 0, 0.4), 0 0 14px rgba(255, 106, 0, 0.35);
+}
+
+/* Status bar */
+[data-theme="tron"] .status-bar {
+    background: rgba(5, 14, 24, 0.85);
+    border-top: 1px solid var(--border);
+    color: #6fb9cc;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    font-weight: 400;
+    letter-spacing: 2px;
+}
+
+[data-theme="tron"] .status-bar.connected {
+    color: var(--primary);
+    border-top-color: var(--border);
+}
+
+[data-theme="tron"] .status-bar.error {
+    background: rgba(22, 9, 2, 0.9);
+    color: var(--danger);
+    border-top-color: var(--danger);
+}
+
+/* Options menu: floating glass console */
+[data-theme="tron"] .options-menu {
+    background: rgba(4, 12, 20, 0.94);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.12), 0 24px 64px -16px rgba(0, 0, 0, 0.9), 0 0 48px -12px rgba(0, 229, 255, 0.3);
+}
+
+[data-theme="tron"] .options-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+[data-theme="tron"] .options-header h3 {
+    color: var(--secondary);
+    font-weight: 400;
+    letter-spacing: 3px;
+}
+
+[data-theme="tron"] .options-item {
+    border: 1px solid var(--gray-light);
+    border-radius: 4px;
+    color: #bfeefb;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    letter-spacing: 1px;
+    transition: all 0.15s ease;
+}
+
+[data-theme="tron"] .options-item:hover {
+    background: rgba(0, 229, 255, 0.1);
+    border-color: var(--primary);
+    color: var(--secondary);
+    box-shadow: inset 2px 0 0 var(--primary);
+}
+
+[data-theme="tron"] .options-item-danger {
+    border-color: rgba(255, 106, 0, 0.4);
+    color: #ffb380;
+}
+
+[data-theme="tron"] .options-item-danger:hover {
+    background: rgba(255, 106, 0, 0.12);
+    border-color: var(--danger);
+    color: #ffd9b8;
+    box-shadow: inset 2px 0 0 var(--danger);
+}
+
+/* Meters and sliders: light beams and disc thumbs */
+[data-theme="tron"] .noise-gate-settings {
+    background: rgba(3, 10, 17, 0.7);
+    border: 1px solid var(--gray-light);
+    border-radius: 4px;
+}
+
+[data-theme="tron"] .noise-gate-header {
+    border-bottom: 1px solid var(--gray-light);
+    color: #6fb9cc;
+    letter-spacing: 2px;
+}
+
+[data-theme="tron"] .mic-device-container {
+    background: rgba(3, 10, 17, 0.7);
+    border: 1px solid var(--gray-light);
+    border-radius: 4px;
+}
+
+[data-theme="tron"] .mic-level-bar {
+    background: #04101a;
+    border: 1px solid var(--gray-light);
+    border-radius: 999px;
+}
+
+[data-theme="tron"] .mic-level-indicator {
+    background: linear-gradient(90deg, #007e94 0%, var(--primary) 65%, #d8f7ff 100%);
+    border-radius: 999px;
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+}
+
+[data-theme="tron"] .gate-threshold-line {
+    background: var(--danger);
+    box-shadow: 0 0 8px rgba(255, 106, 0, 0.7);
+}
+
+[data-theme="tron"] input[type="range"] {
+    background: #0c2837;
+    border: none;
+    border-radius: 999px;
+    accent-color: var(--primary);
+}
+
+[data-theme="tron"] input[type="range"]::-webkit-slider-thumb {
+    background: #06181f;
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+}
+
+[data-theme="tron"] input[type="range"]::-moz-range-track {
+    background: #0c2837;
+    border: none;
+    border-radius: 999px;
+}
+
+[data-theme="tron"] input[type="range"]::-moz-range-thumb {
+    background: #06181f;
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+}
+
+/* Forms and selects */
+[data-theme="tron"] .form-group input,
+[data-theme="tron"] .form-group select,
+[data-theme="tron"] input[type="text"],
+[data-theme="tron"] input[type="password"],
+[data-theme="tron"] input[type="search"],
+[data-theme="tron"] select {
+    background: rgba(3, 10, 17, 0.8);
+    color: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    letter-spacing: 1px;
+}
+
+[data-theme="tron"] .form-group input:focus,
+[data-theme="tron"] input[type="text"]:focus,
+[data-theme="tron"] input[type="password"]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary), 0 0 14px rgba(0, 229, 255, 0.35);
+}
+
+[data-theme="tron"] .form-group input::placeholder {
+    color: #3d7488;
+}
+
+[data-theme="tron"] select option,
+[data-theme="tron"] .theme-selector select option,
+[data-theme="tron"] .mic-device-container select option {
+    background: #071420;
+    color: var(--secondary);
+}
+
+/* Join / prejoin / landing: let the grid floor show through */
+[data-theme="tron"] .join-screen,
+[data-theme="tron"] .prejoin-screen,
+[data-theme="tron"] .video-grid {
+    background: transparent;
+}
+
+[data-theme="tron"] .landing-form {
+    background: rgba(4, 12, 20, 0.88);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--primary);
+    border-radius: 6px;
+    box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.9), 0 0 48px -12px rgba(0, 229, 255, 0.25);
+}
+
+[data-theme="tron"] .landing-feature {
+    background: rgba(8, 19, 31, 0.6);
+    border-color: var(--gray-light);
+    border-radius: 4px;
+}
+
+[data-theme="tron"] .landing-feature:hover {
+    border-color: var(--primary);
+    background: rgba(0, 229, 255, 0.08);
+}
+
+[data-theme="tron"] .prejoin-preview {
+    background: #02070c;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 0 24px -8px rgba(0, 229, 255, 0.3);
+}
+
+/* Room info pills */
+[data-theme="tron"] .room-info .btn {
+    background: rgba(8, 19, 31, 0.85);
+    border: 1px solid var(--border);
+    color: #bfeefb;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+    letter-spacing: 1px;
+    box-shadow: none;
+}
+
+/* Theme select */
+[data-theme="tron"] .theme-selector select {
+    background: rgba(3, 10, 17, 0.8);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--secondary);
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+[data-theme="tron"] .mic-device-container select {
+    background: rgba(3, 10, 17, 0.8);
+    color: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+/* E2EE banner */
+[data-theme="tron"] .e2ee-banner {
+    background: rgba(4, 12, 20, 0.8);
+    backdrop-filter: blur(8px);
+    border-color: var(--border);
+    color: var(--primary);
+}
+
+/* Respect reduced-motion: park the ribbon */
+@media (prefers-reduced-motion: reduce) {
+    [data-theme="tron"] .header::after {
+        animation: none;
+        background-position: 50% 0;
+    }
+}
+
 
