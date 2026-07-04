@@ -63,19 +63,34 @@ Opens at **http://localhost:8080**
 
 **Prerequisites:** Docker, Docker Compose, a domain with DNS pointed at your server, SSL certificates (Let's Encrypt recommended).
 
-**1. Clone the repo**
+**1. Install Docker**
+
+Docker Engine ships with the Compose plugin — one install covers both:
+
+```bash
+# Debian / Ubuntu (and most other distros)
+curl -fsSL https://get.docker.com | sh
+
+# Verify
+docker --version
+docker compose version
+```
+
+For other platforms or a manual package install, see the [official Docker install docs](https://docs.docker.com/engine/install/). To run Docker without `sudo`, add your user to the docker group: `sudo usermod -aG docker $USER` (log out and back in to take effect).
+
+**2. Clone the repo**
 ```bash
 git clone https://github.com/s4turns/BroFerence.git
 cd BroFerence
 ```
 
-**2. Get SSL certificates**
+**3. Get SSL certificates**
 ```bash
 apt install certbot
 certbot certonly --standalone -d yourdomain.com
 ```
 
-**3. Deploy**
+**4. Deploy**
 ```bash
 bash update-vps.sh
 ```
@@ -88,12 +103,12 @@ bash update-vps.sh
 - Rebuilds and restarts all Docker containers
 - Syncs fail2ban config if installed
 
-**4. (First time) Set up fail2ban**
+**5. (First time) Set up fail2ban**
 ```bash
 sudo bash setup-fail2ban.sh
 ```
 
-**5. Open firewall ports**
+**6. Open firewall ports**
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
