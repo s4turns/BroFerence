@@ -3215,11 +3215,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     }
                 });
 
-                // Auto-disable noise suppression during screen share (preserves audio fidelity)
-                this._nsWasEnabledBeforeScreenShare = this.noiseSuppressionEnabled;
-                if (this.noiseSuppressionEnabled) await this.toggleNoiseSuppression();
-
-                // Mix mic + stereo screen audio and push to peers
+                // Mix mic + stereo screen audio and push to peers.
+                // AI noise suppression stays active: the mix taps the processed
+                // mic chain output, so the gate keeps working on the mic while
+                // screen audio passes through untouched.
                 this.startStereoScreenAudioMix(this.screenStream);
 
                 // Update local video to show screen
@@ -3265,10 +3264,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Tear down stereo screen audio mix, restore mic track in senders
             this.stopStereoScreenAudioMix();
 
-            // Restore noise suppression if it was on before screen share
-            if (this._nsWasEnabledBeforeScreenShare) await this.toggleNoiseSuppression();
-            this._nsWasEnabledBeforeScreenShare = false;
-
             this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
@@ -3303,8 +3298,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             screenSource.connect(this.stereoScreenGain);
             this.stereoScreenGain.connect(destination);
 
-            // Mic audio (raw mono track — browser auto-upmixes to both channels)
-            const micTrack = this.localStream?.getAudioTracks()[0];
+            // Mic audio from the persistent mic chain, so AI noise suppression
+            // (when enabled) keeps processing the mic during screen share.
+            // Falls back to the raw track if the chain isn't up.
+            // Mono — browser auto-upmixes to both channels.
+            const micTrack = this.micDestination?.stream.getAudioTracks()[0]
+                || this.localStream?.getAudioTracks()[0];
             if (micTrack) {
                 this.stereoMicGain = this.stereoMixCtx.createGain();
                 const micSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([micTrack]));
