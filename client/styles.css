@@ -2923,11 +2923,11 @@ body::before {
     animation: tron-grid-flow 3.2s linear infinite;
 }
 
-/* Horizontal gridlines flow downward — flying over the Grid.
+/* Gridlines flow diagonally — flying across the Grid.
    Mask stays put, so the bright floor/sky zones don't drift. */
 @keyframes tron-grid-flow {
     0%   { background-position: 0 0, 0 0; }
-    100% { background-position: 0 0, 0 48px; }
+    100% { background-position: 48px 48px, 48px 48px; }
 }
 
 /* Header: glass slab with a lightcycle ribbon running its base edge */
