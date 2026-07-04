@@ -24,7 +24,7 @@ class ConferenceClient {
         this.peerConnections = new Map(); // Map<clientId, RTCPeerConnection>
         this.pendingUsernames = new Map(); // Map<clientId, username> for users who haven't established peer connection yet
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
-        this.turnFailedPeers = new Set(); // Peers whose TURN relay has failed; use P2P fallback on next connect
+        this.turnFailedPeers = new Set(); // Peers whose TURN relay has failed; retry with fresh relay-only config on next connect
         this.knownUsernames = new Map(); // Persists across peer connection teardowns for reconnection display
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
@@ -467,13 +467,14 @@ class ConferenceClient {
             iceTransportPolicy: 'relay'
         };
 
-        // P2P fallback used only after relay exhaustion (ICE restart cycle)
+        // Fallback after relay exhaustion: fresh relay-only config.
+        // Never P2P — direct ICE candidates expose participants' real IPs.
         this.iceServersFallback = {
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
                 localTurnConfig,
                 turn2Config
-            ]
+            ],
+            iceTransportPolicy: 'relay'
         };
     }
 
@@ -3090,10 +3091,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         if (peer.iceRestartCount >= MAX_RESTARTS) {
             if (!peer.usingFallback) {
-                console.warn('TURN relay failed for peer', peerId, '- falling back to P2P');
+                console.warn('TURN relay failed for peer', peerId, '- reconnecting with fresh relay-only config');
                 this.reconnectWithFallback(peerId);
             } else {
-                console.warn('ICE restart limit reached for peer', peerId, '(already on P2P fallback) - giving up');
+                console.warn('ICE restart limit reached for peer', peerId, '(already on relay-only fallback) - giving up');
             }
             return;
         }
@@ -3134,7 +3135,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (!peer || !peer.isInitiator) return;
 
         const username = peer.username;
-        console.log('Reconnecting to', peerId, 'with P2P fallback ICE config');
+        console.log('Reconnecting to', peerId, 'with fresh relay-only ICE config');
 
         this.removePeerConnection(peerId);
         await this.createPeerConnection(peerId, username, true, this.iceServersFallback);
