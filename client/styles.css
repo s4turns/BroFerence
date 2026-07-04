@@ -2911,8 +2911,8 @@ body::before {
 /* Grid floor and sky instead of CRT scanlines: bright at both edges, faded mid-screen */
 [data-theme="tron"] body::before {
     background:
-        repeating-linear-gradient(90deg, rgba(0, 229, 255, 0.12) 0 1px, transparent 1px 48px),
-        repeating-linear-gradient(0deg, rgba(0, 229, 255, 0.09) 0 1px, transparent 1px 48px);
+        repeating-linear-gradient(90deg, rgba(0, 229, 255, 0.22) 0 1px, transparent 1px 48px),
+        repeating-linear-gradient(0deg, rgba(0, 229, 255, 0.18) 0 1px, transparent 1px 48px);
     -webkit-mask-image: linear-gradient(to top,
         rgba(0,0,0,1) 0%, rgba(0,0,0,0.35) 25%, rgba(0,0,0,0.08) 45%,
         rgba(0,0,0,0.08) 60%, rgba(0,0,0,0.3) 80%, rgba(0,0,0,0.9) 100%);
@@ -2920,6 +2920,14 @@ body::before {
         rgba(0,0,0,1) 0%, rgba(0,0,0,0.35) 25%, rgba(0,0,0,0.08) 45%,
         rgba(0,0,0,0.08) 60%, rgba(0,0,0,0.3) 80%, rgba(0,0,0,0.9) 100%);
     opacity: 1;
+    animation: tron-grid-flow 3.2s linear infinite;
+}
+
+/* Horizontal gridlines flow downward — flying over the Grid.
+   Mask stays put, so the bright floor/sky zones don't drift. */
+@keyframes tron-grid-flow {
+    0%   { background-position: 0 0, 0 0; }
+    100% { background-position: 0 0, 0 48px; }
 }
 
 /* Header: glass slab with a lightcycle ribbon running its base edge */
@@ -3459,11 +3467,15 @@ body::before {
     color: var(--primary);
 }
 
-/* Respect reduced-motion: park the ribbon */
+/* Respect reduced-motion: park the ribbon and the grid */
 @media (prefers-reduced-motion: reduce) {
     [data-theme="tron"] .header::after {
         animation: none;
         background-position: 50% 0;
+    }
+
+    [data-theme="tron"] body::before {
+        animation: none;
     }
 }
 

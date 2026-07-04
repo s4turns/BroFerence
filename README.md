@@ -32,7 +32,7 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Gravatar avatars** — Set your email in Options; shared peer-to-peer automatically
 - **Nickname persistence** — Display name saved and auto-filled on return
 - **Spotlight mode** — Click any video to fullscreen it
-- **Theme selector** — Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate
+- **Theme selector** — Tron (default), Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate
 - **Mobile optimized** — Tap-to-unmute, auto noise suppression on mobile
 - **IRC bridge (on-demand)** — Bridge rooms to IRC channels when needed
 - **Multi-domain SSL** — Auto-discovers Let's Encrypt certs across domains
