@@ -2917,11 +2917,12 @@ body::before {
 }
 
 /* Header: glass slab with a lightcycle ribbon running its base edge */
+/* No backdrop-filter here: #optionsMenu is a fixed-position child of .header,
+   and backdrop-filter would make .header its containing block (menu mis-centers) */
 [data-theme="tron"] .header {
-    background: rgba(5, 14, 24, 0.85);
+    background: rgba(5, 14, 24, 0.92);
     border-bottom: 1px solid var(--border);
     box-shadow: 0 8px 32px -12px rgba(0, 229, 255, 0.25);
-    backdrop-filter: blur(10px);
 }
 
 [data-theme="tron"] .header::after {
