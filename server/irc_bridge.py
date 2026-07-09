@@ -93,10 +93,11 @@ class IRCBridge:
             message_count += 1
             logger.info(f"IRC << [{message_count}] {message}")
 
-            # Respond to PING
+            # Respond to PING — the cookie must be echoed back exactly
+            # (anti-spoof check on some servers), without the leading ':'
             if message.startswith("PING"):
-                token = message[5:] if len(message) > 5 else ''
-                logger.info(f"IRC >> PONG")
+                token = message[5:].lstrip(':') if len(message) > 5 else ''
+                logger.info(f"IRC >> PONG :{token}")
                 await self.send_raw(f"PONG :{token}")
 
             # Check for welcome message (001) or end of MOTD (376)
@@ -161,9 +162,9 @@ class IRCBridge:
                 message = line.decode('utf-8', errors='ignore').strip()
                 logger.debug(f"IRC: {message}")
 
-                # Respond to PING
+                # Respond to PING (echo cookie without the leading ':')
                 if message.startswith("PING"):
-                    token = message[5:] if len(message) > 5 else ''
+                    token = message[5:].lstrip(':') if len(message) > 5 else ''
                     await self.send_raw(f"PONG :{token}")
                     continue
 
