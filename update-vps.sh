@@ -45,12 +45,13 @@ else
     sed -i "/^listening-ip=/a external-ip=${EXTERNAL_IP}" config/turnserver.production.conf
 fi
 
-# Update allowed-peer-ip to match external-ip (enables hairpin relay)
-if grep -q "^allowed-peer-ip=" config/turnserver.production.conf; then
-    sed -i "s/^allowed-peer-ip=.*/allowed-peer-ip=${EXTERNAL_IP}/" config/turnserver.production.conf
-else
-    sed -i "/^external-ip=/a allowed-peer-ip=${EXTERNAL_IP}" config/turnserver.production.conf
-fi
+# Allowed relay peers: own IP (hairpin relay) AND the secondary TURN server,
+# so relay paths that cross between the two TURN servers aren't 403'd.
+# Client is relay-only with no P2P fallback — blocking cross-TURN pairs
+# breaks media whenever two users land on different TURN servers.
+TURN2_IP=174.138.183.167
+sed -i "/^allowed-peer-ip=/d" config/turnserver.production.conf
+sed -i "/^external-ip=/a allowed-peer-ip=${EXTERNAL_IP}\nallowed-peer-ip=${TURN2_IP}" config/turnserver.production.conf
 echo "Updated config/turnserver.production.conf"
 
 # Update primary TURN credential in conference.js
