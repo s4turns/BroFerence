@@ -809,6 +809,25 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'message': 'Only moderators can ban users'
                 }))
 
+        elif msg_type == 'mute-user':
+            client_info = clients[websocket]
+            room = client_info['room']
+            target_id = data.get('targetId')
+
+            if room and can_act_on(rooms[room], client_info['id'], target_id):
+                for ws, info in list(clients.items()):
+                    if info['id'] == target_id and info['room'] == room:
+                        await ws.send(json.dumps({
+                            'type': 'force-mute',
+                            'by': client_info['username']
+                        }))
+                        break
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderators can mute users'
+                }))
+
         elif msg_type == 'change-name':
             # User changing their name
             client_info = clients[websocket]
@@ -1131,6 +1150,20 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         'threshold': threshold,
                     }))
                     logger.info(f'Admin set noise gate for {target_id}: enabled={enabled}, threshold={threshold}')
+                    break
+
+        elif msg_type == 'admin-mute':
+            if websocket not in admin_clients:
+                return
+            target_id = data.get('targetId')
+            room_id = data.get('roomId')
+            for ws, info in list(clients.items()):
+                if info['id'] == target_id and info['room'] == room_id:
+                    await ws.send(json.dumps({
+                        'type': 'force-mute',
+                        'by': 'Admin'
+                    }))
+                    logger.info(f'Admin muted {target_id} in {room_id}')
                     break
 
         elif msg_type == 'admin-ban-ip':

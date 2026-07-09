@@ -1216,6 +1216,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
                 break;
             }
+
+            case 'force-mute':
+                if (this.audioEnabled) {
+                    this.toggleAudio();
+                }
+                this.addChatMessage('System', `You were muted by ${message.by}. You can unmute yourself with the mic button.`, true);
+                break;
         }
     }
 
@@ -2740,6 +2747,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             kickBtn.dataset.modControl = 'kick';
             kickBtn.onclick = () => this.kickUser(peerId);
 
+            const muteBtn = document.createElement('button');
+            muteBtn.textContent = '🔇';
+            muteBtn.title = 'Mute user';
+            muteBtn.dataset.modControl = 'mute';
+            muteBtn.onclick = () => this.muteUser(peerId);
+
+            audioControls.appendChild(muteBtn);
             audioControls.appendChild(renameBtn);
             audioControls.appendChild(kickBtn);
 
@@ -2793,6 +2807,18 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 targetId: targetId
             });
         }
+    }
+
+    muteUser(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can mute users');
+            return;
+        }
+
+        this.sendMessage({
+            type: 'mute-user',
+            targetId: targetId
+        });
     }
 
     banUser(targetId) {

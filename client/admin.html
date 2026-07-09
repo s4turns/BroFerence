@@ -291,6 +291,10 @@ function kick(roomId, userId) {
   send({ type: 'admin-kick', roomId, targetId: userId });
 }
 
+function muteUser(roomId, userId) {
+  send({ type: 'admin-mute', roomId, targetId: userId });
+}
+
 function ban(roomId, userId, username) {
   if (!confirm(`Ban ${username} from ${roomId}?`)) return;
   send({ type: 'admin-ban', roomId, targetId: userId, username });
@@ -417,6 +421,7 @@ function renderRooms() {
         <td>${roleLabel}</td>
         <td>
           <div class="action-btns">
+            <button class="btn btn-warn btn-sm" onclick="muteUser('${esc(roomId)}','${uid}')">Mute</button>
             <button class="btn btn-danger btn-sm" onclick="kick('${esc(roomId)}','${uid}')">Kick</button>
             <button class="btn btn-danger btn-sm" onclick="ban('${esc(roomId)}','${uid}','${esc(u.username)}')">Ban</button>
             <button class="btn btn-danger btn-sm" onclick="banUserIp('${esc(u.ip || '')}','${esc(u.username)}')">Ban IP</button>
