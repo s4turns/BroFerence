@@ -38,12 +38,12 @@ echo "Detected external IP: ${EXTERNAL_IP}"
 # Update turnserver.production.conf - password
 sed -i "s/^user=webrtc:.*/user=webrtc:${TURN_PASSWORD}/" config/turnserver.production.conf
 
-# Update turnserver.production.conf - external IP (add or update)
-if grep -q "^external-ip=" config/turnserver.production.conf; then
-    sed -i "s/^external-ip=.*/external-ip=${EXTERNAL_IP}/" config/turnserver.production.conf
-else
-    sed -i "/^listening-ip=/a external-ip=${EXTERNAL_IP}" config/turnserver.production.conf
-fi
+# No external-ip: the VPS owns its public IP directly on the NIC (no NAT).
+# Setting external-ip anyway makes coturn remap peer addresses matching the
+# public IP before the allowed-peer-ip check, 403'ing same-server relay
+# paths (outage 2026-07-17 when turn2 went down and primary<->primary was
+# the only path left). Strip any leftover line from older deploys.
+sed -i "/^external-ip=/d" config/turnserver.production.conf
 
 # Allowed relay peers: own IP (hairpin relay) AND the secondary TURN server,
 # so relay paths that cross between the two TURN servers aren't 403'd.
@@ -51,7 +51,7 @@ fi
 # breaks media whenever two users land on different TURN servers.
 TURN2_IP=174.138.183.167
 sed -i "/^allowed-peer-ip=/d" config/turnserver.production.conf
-sed -i "/^external-ip=/a allowed-peer-ip=${EXTERNAL_IP}\nallowed-peer-ip=${TURN2_IP}" config/turnserver.production.conf
+sed -i "/^listening-ip=/a allowed-peer-ip=${EXTERNAL_IP}\nallowed-peer-ip=${TURN2_IP}" config/turnserver.production.conf
 echo "Updated config/turnserver.production.conf"
 
 # Update primary TURN credential in conference.js
