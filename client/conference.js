@@ -735,7 +735,6 @@ class ConferenceClient {
         // Input elements
         this.usernameInput = document.getElementById('usernameInput');
         this.roomInput = document.getElementById('roomInput');
-        this.ircChannelInput = document.getElementById('ircChannelInput');
         this.passwordInput = document.getElementById('passwordInput');
         this.chatInput = document.getElementById('chatInput');
 
@@ -1134,10 +1133,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     await this.createPeerConnection(user.id, user.username, true);
                 }
 
-                // Show IRC status if bridged
+                // Every room is an IRC channel; show which one.
                 if (message.ircChannel) {
                     document.getElementById('ircStatus').textContent =
-                        `💬 Bridged to IRC: ${message.ircChannel}`;
+                        `💬 ${message.ircChannel}`;
                 }
 
                 // Show moderator status
@@ -1369,9 +1368,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 break;
 
             case 'chat-message': {
-                const isIRC = message.username.includes('(IRC)');
-                const isOwn = message.username === this.username;
+                // Structural, not a substring of the display name — otherwise
+                // renaming yourself to "bob (IRC)" impersonates an IRC user.
+                const isIRC = message.origin === 'irc';
+                const isOwn = !isIRC && message.username === this.username;
                 if (!isOwn) this.playChatSound();
+                if (message.private) {
+                    this.addChatMessage(
+                        message.username,
+                        `(private) ${message.message}`,
+                        false, true, false
+                    );
+                    break;
+                }
                 if (message.encrypted) {
                     if (!this.e2eeRoomKey) {
                         this.addChatMessage(message.username, '[encrypted message]', false, isIRC, isOwn, false, true);
@@ -2259,7 +2268,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const roomId = this.roomInput.value.trim();
         const password = this.passwordInput.value.trim() || null;
         this.roomPassword = password; // Store for WebSocket reconnection
-        const ircChannel = this.ircChannelInput.value.trim() || null;
 
         try {
             // Hide prejoin screen
@@ -2344,11 +2352,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             await this.initE2EE();
 
             // Create or join room
+            // The IRC channel is derived server-side from the room name; the
+            // client neither chooses it nor can opt out.
             this.sendMessage({
                 type: 'create-room',
                 roomId: roomId,
-                password: password,
-                ircChannel: ircChannel
+                password: password
             });
 
         } catch (error) {

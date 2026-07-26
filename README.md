@@ -13,7 +13,7 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 ## Features
 
 - **Multi-participant video** — Unlimited users per room (mesh topology, best for ≤10)
-- **Real-time text chat** — In-app messaging with optional IRC bridge
+- **Real-time text chat** — In-app messaging, bridged to IRC automatically
 - **Password-protected rooms** — PBKDF2-HMAC-SHA256 hashed, per-room
 - **AI Noise Suppression** — Adjustable noise gate with real-time mic level visualization
 - **Microphone selector** — Switch input device live, including NVIDIA Broadcast / RTX Voice
@@ -34,7 +34,7 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Spotlight mode** — Click any video to fullscreen it
 - **Theme selector** — Tron (default), Matrix, Cyberpunk, Ocean, Sunset, Amber, Corporate
 - **Mobile optimized** — Tap-to-unmute, auto noise suppression on mobile
-- **IRC bridge (on-demand)** — Bridge rooms to IRC channels when needed
+- **IRC bridge (always on)** — Every room is a real IRC channel; participants appear as real IRC users
 - **Multi-domain SSL** — Auto-discovers Let's Encrypt certs across domains
 - **Dual TURN relay** — Two independent coturn servers, asymmetric ICE paths, no third-party TURN needed
 - **Echo cancellation, noise suppression, auto gain control** — Built-in audio enhancements
@@ -141,7 +141,7 @@ Vanilla JS + WebRTC API. No frameworks. Mesh peer connections, dynamic video gri
 1. Open the app in your browser
 2. Enter your name (auto-filled from last visit)
 3. Enter a room name
-4. Optionally set a room password or IRC channel
+4. Optionally set a room password
 5. Click **Continue** → configure camera/mic → **Join Room**
 
 ### Invite Links
@@ -229,7 +229,21 @@ Supported filenames: `fullchain.pem` / `cert.pem` / `certificate.pem` and `privk
 
 ### IRC Bridge
 
-On-demand only — no IRC connection is made unless a user specifies a channel on room creation. To configure the IRC server, edit `server/irc_bridge.py` (default: no server configured).
+Always on. Every room is a real IRC channel (`#bro-<roomname>`) and every participant gets their own IRC connection and nick, so they appear on the network as real users who can be highlighted and `/msg`'d. There is no per-room setting and no opt-out; rooms with E2EE enabled are simply not bridged while encryption is on.
+
+Configured entirely by environment variable (see `docker-compose.yml`'s optional `.env`):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `IRC_SERVER` | `irc.blcknd.network` | IRC server hostname |
+| `IRC_PORT` | `6697` | Port |
+| `IRC_SSL` | `true` | TLS on/off |
+| `IRC_CHANNEL_PREFIX` | `bro-` | Channel namespace |
+| `IRC_BOT_NICK` | `webrtc` | Bot that reads channel traffic |
+| `IRC_MAX_USER_CONNECTIONS` | `64` | Cap on per-user connections; users beyond it are bot-relayed |
+| `IRC_SEND_RATE` | `0.6` | Seconds between lines, per connection |
+
+**Server-side prerequisite:** the ircd needs a raised per-IP client limit for the BroFerence host — a 16-person room opens 17 connections from one IP, and typical defaults are 3-8.
 
 ---
 
