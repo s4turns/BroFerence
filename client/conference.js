@@ -98,8 +98,10 @@ class ConferenceClient {
     // Your own tile gets the same crown/shield everyone else sees on you.
     // Without this the owner is the only person in the room with no badge.
     refreshOwnLabelBadge() {
+        const name = this.localLabelName || this.username;
+        if (!name) return;
         const role = this.isOwner ? 'owner' : (this.isModerator ? 'co-mod' : 'user');
-        this.applyLabelBadge('local', this.localLabelName || 'You (Local)', role);
+        this.applyLabelBadge('local', name, role);
     }
 
     // Rename your own tile without dropping the role badge, and keep the
@@ -504,15 +506,23 @@ class ConferenceClient {
 
     /**
      * Time how long a TURN server takes to hand back a relay candidate.
-     * That round trip covers DNS + the UDP allocation handshake, so it is a
-     * decent proxy for "how far is this relay from the user".
+     *
+     * This is NOT a ping. TURN allocation with long-term credentials is two
+     * round trips (Allocate -> 401 with realm/nonce -> Allocate with creds),
+     * so expect roughly 2x the true RTT plus server processing. It is used
+     * only to rank servers against each other, never as a latency readout.
+     *
+     * To keep the comparison fair the timer starts after setLocalDescription
+     * (when gathering actually begins, excluding SDP overhead) and the probe
+     * forces UDP so a TCP handshake can't skew one server's number.
+     *
      * Resolves to Infinity if the server never produces a relay candidate.
      */
     probeTurnServer(turnConfig, timeoutMs = 2500) {
         return new Promise((resolve) => {
             let pc = null;
             let timer = null;
-            const start = performance.now();
+            let start = null;
 
             const finish = (rtt) => {
                 if (!pc) return;
@@ -522,9 +532,13 @@ class ConferenceClient {
                 resolve(rtt);
             };
 
+            // Compare like for like: UDP only, dropping any ?transport=tcp URL.
+            const udpUrls = (Array.isArray(turnConfig.urls) ? turnConfig.urls : [turnConfig.urls])
+                .filter(u => !/transport=tcp/i.test(u));
+
             try {
                 pc = new RTCPeerConnection({
-                    iceServers: [turnConfig],
+                    iceServers: [{ ...turnConfig, urls: udpUrls.length ? udpUrls : turnConfig.urls }],
                     iceTransportPolicy: 'relay'
                 });
             } catch (error) {
@@ -537,7 +551,7 @@ class ConferenceClient {
 
             pc.onicecandidate = (event) => {
                 if (event.candidate && event.candidate.candidate.includes('typ relay')) {
-                    finish(performance.now() - start);
+                    finish(performance.now() - (start ?? performance.now()));
                 } else if (!event.candidate) {
                     // Gathering finished without a relay candidate: server unusable.
                     finish(Infinity);
@@ -548,6 +562,7 @@ class ConferenceClient {
             pc.createDataChannel('turn-probe');
             pc.createOffer()
                 .then((offer) => pc && pc.setLocalDescription(offer))
+                .then(() => { start = performance.now(); })
                 .catch((error) => {
                     console.warn('TURN probe offer failed:', error);
                     finish(Infinity);
