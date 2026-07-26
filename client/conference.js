@@ -2315,9 +2315,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     localAvatar.textContent = this.username.charAt(0).toUpperCase();
                 }
             }
-            const localLabel = document.querySelector('#localContainer .video-label');
-            if (localLabel && this.username) {
-                localLabel.textContent = this.username;
+            // Route through setLocalLabelName so the owner/co-mod badge survives.
+            if (this.username) {
+                this.setLocalLabelName(this.username);
             }
 
             // Set initial video state for local container
@@ -4416,11 +4416,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.username = newName.trim();
             localStorage.setItem('broference-username', this.username);
 
-            // Update local video label
-            const localLabel = document.querySelector('#localContainer .video-label');
-            if (localLabel) {
-                localLabel.textContent = this.username;
-            }
+            // Update local video label, keeping the owner/co-mod badge.
+            this.setLocalLabelName(this.username);
 
             // Update local avatar
             const localAvatar = document.getElementById('localAvatar');
