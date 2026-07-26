@@ -45,6 +45,8 @@ class ConferenceClient {
 
         // ICE servers - will be set dynamically in initICEServers()
         this.iceServers = null;
+        this.turnSelectionPromise = null; // in-flight/completed TURN latency probe
+        this.bestTurnUrl = null;          // closest relay for this client
         this.initICEServers();
 
         // UI state
@@ -462,6 +464,11 @@ class ConferenceClient {
 
         // Relay-only via both coturn servers. Asymmetric paths (server1↔server2)
         // handle same-NAT hairpin without needing a third-party TURN provider.
+        // Both are always offered for redundancy; selectBestTurnServer() reorders
+        // them so the one with the lowest allocation RTT for this client is first,
+        // which is what the ICE agent prioritises.
+        this.turnConfigs = [localTurnConfig, turn2Config];
+
         this.iceServers = {
             iceServers: [localTurnConfig, turn2Config],
             iceTransportPolicy: 'relay'
@@ -476,6 +483,129 @@ class ConferenceClient {
             ],
             iceTransportPolicy: 'relay'
         };
+    }
+
+    /**
+     * Time how long a TURN server takes to hand back a relay candidate.
+     * That round trip covers DNS + the UDP allocation handshake, so it is a
+     * decent proxy for "how far is this relay from the user".
+     * Resolves to Infinity if the server never produces a relay candidate.
+     */
+    probeTurnServer(turnConfig, timeoutMs = 2500) {
+        return new Promise((resolve) => {
+            let pc = null;
+            let timer = null;
+            const start = performance.now();
+
+            const finish = (rtt) => {
+                if (!pc) return;
+                clearTimeout(timer);
+                try { pc.close(); } catch (e) { /* already closed */ }
+                pc = null;
+                resolve(rtt);
+            };
+
+            try {
+                pc = new RTCPeerConnection({
+                    iceServers: [turnConfig],
+                    iceTransportPolicy: 'relay'
+                });
+            } catch (error) {
+                console.warn('TURN probe could not create peer connection:', error);
+                resolve(Infinity);
+                return;
+            }
+
+            timer = setTimeout(() => finish(Infinity), timeoutMs);
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && event.candidate.candidate.includes('typ relay')) {
+                    finish(performance.now() - start);
+                } else if (!event.candidate) {
+                    // Gathering finished without a relay candidate: server unusable.
+                    finish(Infinity);
+                }
+            };
+
+            // A data channel is enough to trigger ICE gathering without media.
+            pc.createDataChannel('turn-probe');
+            pc.createOffer()
+                .then((offer) => pc && pc.setLocalDescription(offer))
+                .catch((error) => {
+                    console.warn('TURN probe offer failed:', error);
+                    finish(Infinity);
+                });
+        });
+    }
+
+    /**
+     * Probe every configured TURN server and put the closest one first, so the
+     * ICE agent prefers the relay with the best path for this user's location.
+     * Result is cached for the tab session; failures leave the default order.
+     */
+    async selectBestTurnServer() {
+        if (this.turnSelectionPromise) return this.turnSelectionPromise;
+
+        this.turnSelectionPromise = (async () => {
+            const cacheKey = 'broference-turn-order';
+            const fingerprint = this.turnConfigs.map(c => c.urls[0]).join('|');
+
+            try {
+                const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null');
+                if (cached && cached.fingerprint === fingerprint) {
+                    this.applyTurnOrder(cached.order);
+                    console.log('Using cached TURN order:', cached.order);
+                    return;
+                }
+            } catch (e) { /* ignore malformed cache */ }
+
+            const timings = await Promise.all(
+                this.turnConfigs.map(async (config) => ({
+                    config,
+                    url: config.urls[0],
+                    rtt: await this.probeTurnServer(config)
+                }))
+            );
+
+            const reachable = timings.filter(t => Number.isFinite(t.rtt));
+            console.log('TURN probe results:', timings.map(t => `${t.url} = ${Math.round(t.rtt)}ms`).join(', '));
+
+            if (reachable.length === 0) {
+                console.warn('No TURN server answered the probe; keeping default order');
+                return;
+            }
+
+            // Unreachable servers stay in the list (they may recover) but go last.
+            timings.sort((a, b) => a.rtt - b.rtt);
+            const order = timings.map(t => t.url);
+            this.applyTurnOrder(order);
+
+            try {
+                sessionStorage.setItem(cacheKey, JSON.stringify({ fingerprint, order }));
+            } catch (e) { /* storage unavailable */ }
+
+            this.bestTurnUrl = timings[0].url;
+            console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].rtt)}ms)`);
+        })();
+
+        return this.turnSelectionPromise;
+    }
+
+    /** Reorder the live ICE configs to match an ordered list of TURN urls. */
+    applyTurnOrder(order) {
+        const ordered = order
+            .map(url => this.turnConfigs.find(c => c.urls[0] === url))
+            .filter(Boolean);
+
+        // Anything not named in the order (e.g. a server added since the cache
+        // was written) is appended so it is never silently dropped.
+        for (const config of this.turnConfigs) {
+            if (!ordered.includes(config)) ordered.push(config);
+        }
+
+        this.iceServers.iceServers = ordered;
+        this.iceServersFallback.iceServers = ordered;
+        this.bestTurnUrl = ordered[0].urls[0];
     }
 
     initUI() {
@@ -1789,6 +1919,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         document.getElementById('joinScreen').style.display = 'none';
         document.getElementById('prejoinScreen').style.display = 'flex';
 
+        // Rank the TURN servers while the user is setting up their devices, so
+        // the closest relay is already picked by the time they hit Join.
+        this.selectBestTurnServer();
+
         // Get media for preview
         try {
             this.prejoinStream = await navigator.mediaDevices.getUserMedia({
@@ -2008,6 +2142,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         try {
             // Hide prejoin screen
             document.getElementById('prejoinScreen').style.display = 'none';
+
+            // Normally already resolved from the prejoin screen; cap the wait so
+            // a hung probe can never hold up joining.
+            await Promise.race([
+                this.selectBestTurnServer(),
+                new Promise(resolve => setTimeout(resolve, 1500))
+            ]);
 
             // Connect to signaling server
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
