@@ -16,7 +16,7 @@ import ipaddress
 from typing import Dict, Optional, Tuple
 import websockets
 from websockets.server import WebSocketServerProtocol
-from irc_bridge import IRCBridge
+from irc_bridge import IRCBridge, IRC_SERVER, IRC_PORT, IRC_SSL
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
@@ -53,42 +53,62 @@ ip_ban_records: list = []
 ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
 
 
-async def init_irc_bridge():
-    """Initialize IRC bridge connection on-demand."""
+def init_irc_bridge():
+    """Start the always-on IRC bridge.
+
+    Every room is bridged unconditionally, so the bridge is no longer created
+    on-demand. IRCConnection owns its own reconnect loop, so this only needs
+    to be called once at startup.
+    """
     global irc_bridge
 
-    # Only initialize if not already connected
-    # Check both existence AND connection status
-    if irc_bridge is not None and irc_bridge.connected:
-        return True
+    if irc_bridge is not None:
+        return irc_bridge
 
-    try:
-        logger.info("Initializing IRC bridge (on-demand)...")
-        logger.info("IRC server: irc.blcknd.network:6697 (SSL)")
-        irc_bridge = IRCBridge(
-            server="irc.blcknd.network",
-            port=6697,
-            nickname="webrtc",
-            use_ssl=True
-        )
-        logger.info("Attempting to connect to IRC server...")
-        await irc_bridge.connect()
-        logger.info("✓ IRC bridge connected successfully")
-        return True
-    except ConnectionError as e:
-        logger.error(f"✗ IRC connection error: {e}")
-        irc_bridge = None
-        return False
-    except TimeoutError as e:
-        logger.error(f"✗ IRC connection timeout: {e}")
-        irc_bridge = None
-        return False
-    except Exception as e:
-        logger.error(f"✗ Failed to initialize IRC bridge: {type(e).__name__}: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        irc_bridge = None
-        return False
+    logger.info(f"Starting IRC bridge -> {IRC_SERVER}:{IRC_PORT} (SSL: {IRC_SSL})")
+    irc_bridge = IRCBridge()
+    irc_bridge.start()
+    return irc_bridge
+
+
+async def irc_inbound(room_id: str, nick: str, message: str, target_client_id=None):
+    """Deliver an IRC message into the conference chat.
+
+    `target_client_id` is set for a private message, which goes to that one
+    participant; channel messages go to the whole room.
+    """
+    payload = {
+        'type': 'chat-message',
+        'username': nick,
+        'message': message,
+        'origin': 'irc',
+        'ircNick': nick,
+        'timestamp': asyncio.get_event_loop().time()
+    }
+
+    if target_client_id:
+        payload['private'] = True
+        await relay_to_peer(target_client_id, payload)
+    else:
+        await broadcast_to_room(room_id, payload)
+
+
+def make_irc_callback(room_id: str):
+    """Build the inbound handler the bridge calls for this room."""
+    async def callback(nick: str, message: str, target_client_id=None):
+        await irc_inbound(room_id, nick, message, target_client_id)
+    return callback
+
+
+def room_participants(room_id: str):
+    """[(client_id, username)] for everyone currently in a room."""
+    if room_id not in rooms:
+        return []
+    return [
+        (clients[ws]['id'], clients[ws]['username'])
+        for ws in rooms[room_id]['users']
+        if ws in clients
+    ]
 
 
 def get_admin_state() -> dict:
@@ -296,17 +316,17 @@ async def unregister_client(websocket: WebSocketServerProtocol):
                 'username': username
             }, exclude=websocket)
 
-            # Send IRC notification
-            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                await irc_bridge.send_message(room, "System", f"{username} left the room")
+            # Drop their IRC presence — the resulting PART is the notification.
+            if irc_bridge:
+                await irc_bridge.remove_user(room, client_id)
 
             # Transfer mod role if the disconnecting user was the moderator
             await transfer_mod_if_needed(room, client_id)
 
             # Clean up empty rooms
             if not rooms[room]['users']:
-                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                    await irc_bridge.leave_channel(room)
+                if irc_bridge:
+                    await irc_bridge.close_room(room)
                 del rooms[room]
                 logger.info(f"Room {room} deleted (empty)")
 
@@ -315,42 +335,28 @@ async def unregister_client(websocket: WebSocketServerProtocol):
         await broadcast_admin_state()
 
 
-async def create_room(room_id: str, password: Optional[str] = None, irc_channel: Optional[str] = None, moderator_id: Optional[str] = None):
-    """Create a new room."""
+async def create_room(room_id: str, password: Optional[str] = None, moderator_id: Optional[str] = None):
+    """Create a new room.
+
+    The IRC channel is always derived from the room name — there is no
+    client-supplied channel and no way to opt out of bridging.
+    """
     if room_id not in rooms:
         rooms[room_id] = {
             'users': [],        # Ordered list — join order determines owner succession
             'password': hash_password(password) if password else None,
-            'irc_channel': irc_channel,
+            'irc_channel': None,  # filled in below; derived, never client-supplied
             'moderator': moderator_id,  # Primary owner (first creator or successor)
             'co_mods': set(),   # Additional co-moderators promoted by the owner
             'banned': set(),
             'e2ee_enabled': False
         }
 
-        # Initialize IRC bridge if channel specified and not already connected
-        if irc_channel:
-            if not irc_bridge or not irc_bridge.connected:
-                logger.info(f"IRC channel specified ({irc_channel}), initializing IRC bridge...")
-                success = await init_irc_bridge()
-                if not success:
-                    logger.error(f"Failed to connect IRC bridge for room {room_id}")
-
-        # Join IRC channel if specified and bridge is available
-        if irc_bridge and irc_bridge.connected and irc_channel:
-            await irc_bridge.join_channel(irc_channel, room_id)
-
-            # Register callback for IRC messages
-            async def irc_message_callback(nick: str, message: str):
-                await broadcast_to_room(room_id, {
-                    'type': 'chat-message',
-                    'username': f"{nick} (IRC)",
-                    'message': message,
-                    'timestamp': asyncio.get_event_loop().time()
-                })
-
-            irc_bridge.register_message_callback(room_id, irc_message_callback)
-            logger.info(f"✓ IRC bridge joined channel {irc_channel} for room {room_id}")
+        if irc_bridge:
+            channel = await irc_bridge.open_room(room_id)
+            rooms[room_id]['irc_channel'] = channel
+            irc_bridge.register_message_callback(room_id, make_irc_callback(room_id))
+            logger.info(f"Room {room_id} bridged to IRC channel {channel}")
 
         logger.info(f"Room {room_id} created")
 
@@ -401,58 +407,25 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     rooms[room_id]['users'].append(websocket)
     client_info['room'] = room_id
 
-    # Initialize IRC bridge if room has IRC channel and bridge is not connected
-    irc_channel = rooms[room_id].get('irc_channel')
-    irc_status_msg = None
+    # Never let two people in a room share a nick — rename the newcomer, since
+    # renaming whoever was already here would be worse.
+    deduped = unique_username(room_id, username, exclude_ws=websocket)
+    if deduped != username:
+        logger.info(f"Nick '{username}' taken in room {room_id}, joining as '{deduped}'")
+        client_info['username'] = deduped
+        await websocket.send(json.dumps({
+            'type': 'username-assigned',
+            'username': deduped,
+            'reason': f'"{username}" is already taken in this room'
+        }))
+        username = deduped
 
-    if irc_channel:
-        if not irc_bridge or not irc_bridge.connected:
-            logger.info(f"Room has IRC channel ({irc_channel}), ensuring IRC bridge is connected...")
-            # Send connecting message
-            await broadcast_to_room(room_id, {
-                'type': 'chat-message',
-                'username': 'System',
-                'message': f'🔌 Connecting to IRC ({irc_channel})...',
-                'timestamp': asyncio.get_event_loop().time()
-            })
-
-            success = await init_irc_bridge()
-            if not success:
-                irc_status_msg = f'❌ Failed to connect to IRC bridge'
-            else:
-                irc_status_msg = f'✓ Connected to IRC bridge'
-
-        # Join IRC channel if bridge is available and we're not already in it
-        if irc_bridge and irc_bridge.connected and room_id not in irc_bridge.room_channels:
-            await irc_bridge.join_channel(irc_channel, room_id)
-
-            # Register callback for IRC messages
-            async def irc_message_callback(nick: str, message: str):
-                await broadcast_to_room(room_id, {
-                    'type': 'chat-message',
-                    'username': f"{nick} (IRC)",
-                    'message': message,
-                    'timestamp': asyncio.get_event_loop().time()
-                })
-
-            irc_bridge.register_message_callback(room_id, irc_message_callback)
-            logger.info(f"✓ IRC bridge joined channel {irc_channel} for room {room_id}")
-            irc_status_msg = f'✓ IRC bridge active on {irc_channel}'
-        elif irc_bridge and irc_bridge.connected:
-            # Already in channel
-            irc_status_msg = f'✓ IRC bridge already connected to {irc_channel}'
-        elif not irc_bridge or not irc_bridge.connected:
-            if not irc_status_msg:  # Only if we didn't already set error message
-                irc_status_msg = f'❌ IRC bridge not connected'
-
-    # Send IRC status message if we have one
-    if irc_status_msg:
-        await broadcast_to_room(room_id, {
-            'type': 'chat-message',
-            'username': 'System',
-            'message': irc_status_msg,
-            'timestamp': asyncio.get_event_loop().time()
-        })
+    # Give this participant their own presence on IRC. The channel is already
+    # open (create_room derived it); no status chatter — people see a real JOIN.
+    if irc_bridge:
+        rooms[room_id]['irc_channel'] = await irc_bridge.open_room(room_id)
+        irc_bridge.register_message_callback(room_id, make_irc_callback(room_id))
+        await irc_bridge.add_user(room_id, client_id, username)
 
     # Get list of other users in room
     other_users = [
@@ -493,9 +466,7 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         'username': username
     }, exclude=websocket)
 
-    # Send IRC notification
-    if irc_bridge and irc_bridge.connected and rooms[room_id].get('irc_channel'):
-        await irc_bridge.send_message(room_id, "System", f"{username} joined the room")
+    # No IRC notice needed — the user's own connection JOINs the channel.
 
     return True
 
@@ -566,13 +537,17 @@ async def leave_room(websocket: WebSocketServerProtocol):
             'username': client_info['username']
         }, exclude=websocket)
 
+        # Drop their IRC presence — the resulting PART is the notification.
+        if irc_bridge:
+            await irc_bridge.remove_user(room, client_info['id'])
+
         # Transfer mod role if the leaver was the moderator
         await transfer_mod_if_needed(room, client_info['id'])
 
         # Clean up empty rooms
         if not rooms[room]['users']:
-            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                await irc_bridge.leave_channel(room)
+            if irc_bridge:
+                await irc_bridge.close_room(room)
             del rooms[room]
 
 
@@ -599,6 +574,31 @@ async def relay_to_peer(target_id: str, message: dict):
             await websocket.send(json.dumps(message))
             return True
     return False
+
+
+def unique_username(room_id: str, desired: str, exclude_ws=None) -> str:
+    """IRC-style de-duplication: append _2, _3 ... until the nick is free.
+
+    Comparison is case-insensitive so 'Dave' can't shadow an existing 'dave' —
+    two near-identical names in the user list are exactly the confusion this
+    is meant to prevent. Returns `desired` unchanged when it is already free.
+    """
+    if room_id not in rooms:
+        return desired
+
+    taken = {
+        clients[ws]['username'].lower()
+        for ws in rooms[room_id]['users']
+        if ws is not exclude_ws and ws in clients
+    }
+
+    if desired.lower() not in taken:
+        return desired
+
+    suffix = 2
+    while f"{desired}_{suffix}".lower() in taken:
+        suffix += 1
+    return f"{desired}_{suffix}"
 
 
 def is_privileged(room: dict, client_id: str) -> bool:
@@ -639,9 +639,10 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             # Create a new room
             room_id = data.get('roomId')
             password = data.get('password')
-            irc_channel = data.get('ircChannel')
+            # Any 'ircChannel' in the payload is ignored — the channel is
+            # always derived from the room name, server-side.
             client_id = clients[websocket]['id']
-            await create_room(room_id, password, irc_channel, client_id)
+            await create_room(room_id, password, client_id)
             await join_room(websocket, room_id, password)
 
         elif msg_type == 'join-room':
@@ -672,6 +673,7 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'type': 'chat-message',
                     'username': username,
                     'message': msg_content,
+                    'origin': 'conference',
                     'timestamp': asyncio.get_event_loop().time()
                 }
                 # Pass through E2EE payload opaquely if present
@@ -682,9 +684,13 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     broadcast_msg['imageData'] = data['imageData']
                 await broadcast_to_room(room, broadcast_msg)
 
-                # Send to IRC if bridged
-                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                    await irc_bridge.send_message(room, username, msg_content)
+                # Relay to IRC as this user. Encrypted rooms are never bridged —
+                # the bridge is suspended for them, and 'encrypted' in the payload
+                # means the plaintext only exists on the clients anyway.
+                if irc_bridge and 'encrypted' not in data:
+                    await irc_bridge.send_user_message(
+                        room, client_info['id'], username, msg_content
+                    )
 
         elif msg_type == 'video-state':
             # User toggled their video - broadcast to room
@@ -721,12 +727,30 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             client_id = client_info['id']
 
             if room and rooms[room]['moderator'] == client_id:  # only owner controls E2EE
-                rooms[room]['e2ee_enabled'] = data.get('enabled', False)
+                enabled = data.get('enabled', False)
+                rooms[room]['e2ee_enabled'] = enabled
                 await broadcast_to_room(room, {
                     'type': 'e2ee-toggle',
                     'clientId': client_id,
-                    'enabled': rooms[room]['e2ee_enabled']
+                    'enabled': enabled
                 })
+
+                # Encrypted rooms are not bridged: leave IRC entirely while
+                # E2EE is on, and rejoin when it goes back off.
+                if irc_bridge:
+                    if enabled:
+                        await irc_bridge.suspend_room(room)
+                        notice = '🔒 End-to-end encryption on — this room has left IRC'
+                    else:
+                        await irc_bridge.resume_room(room, room_participants(room))
+                        notice = f'🔓 Encryption off — this room is back on {rooms[room].get("irc_channel")}'
+
+                    await broadcast_to_room(room, {
+                        'type': 'chat-message',
+                        'username': 'System',
+                        'message': notice,
+                        'timestamp': asyncio.get_event_loop().time()
+                    })
 
         elif msg_type in ['offer', 'answer', 'ice-candidate', 'public-key', 'e2ee-room-key']:
             # WebRTC signaling messages - relay to target peer
@@ -836,6 +860,17 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             new_username = data.get('newUsername', '').strip()
 
             if new_username and room:
+                # Keep nicks unique; the client picked the name optimistically,
+                # so tell it what it actually ended up with.
+                requested = new_username
+                new_username = unique_username(room, requested, exclude_ws=websocket)
+                if new_username != requested:
+                    await websocket.send(json.dumps({
+                        'type': 'username-assigned',
+                        'username': new_username,
+                        'reason': f'"{requested}" is already taken in this room'
+                    }))
+
                 # Update username
                 client_info['username'] = new_username
 
@@ -847,9 +882,9 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'newUsername': new_username
                 }, exclude=websocket)
 
-                # Send IRC notification if bridged
-                if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                    await irc_bridge.send_message(room, "System", f"{old_username} changed their name to {new_username}")
+                # Follow the rename onto IRC as a real NICK change.
+                if irc_bridge:
+                    irc_bridge.rename_user(room, client_info['id'], new_username)
 
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
 
@@ -900,8 +935,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                             'coModIds': list(rooms[room]['co_mods'])
                         })
 
-                        if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                            await irc_bridge.send_message(room, "System", f"{info['username']} is now the room owner")
+                        if irc_bridge:
+                            await irc_bridge.send_system(room, f"{info['username']} is now the room owner")
 
                         logger.info(f"Ownership transferred to {target_id} in room {room}")
                         break
@@ -932,8 +967,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                             'username': info['username']
                         })
 
-                        if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                            await irc_bridge.send_message(room, "System", f"{info['username']} is now a co-moderator")
+                        if irc_bridge:
+                            await irc_bridge.send_system(room, f"{info['username']} is now a co-moderator")
 
                         logger.info(f"User {target_id} added as co-mod in room {room}")
                         break
@@ -987,6 +1022,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     for ws, info in clients.items():
                         if info['id'] == target_id and info['room'] == room:
                             old_username = info['username']
+                            # Keep nicks unique even when a mod assigns one.
+                            new_username = unique_username(room, new_username, exclude_ws=ws)
                             info['username'] = new_username
 
                             # Notify the target user
@@ -1003,9 +1040,9 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                                 'newUsername': new_username
                             })
 
-                            # Send IRC notification if bridged
-                            if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                                await irc_bridge.send_message(room, "System", f"Moderator changed {old_username}'s name to {new_username}")
+                            # Follow the rename onto IRC as a real NICK change.
+                            if irc_bridge:
+                                irc_bridge.rename_user(room, target_id, new_username)
 
                             logger.info(f"Moderator changed {old_username} to {new_username} in room {room}")
                             break
@@ -1238,8 +1275,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         'oldUsername': old_username,
                         'newUsername': new_username
                     })
-                    if irc_bridge and irc_bridge.connected and rooms.get(room_id, {}).get('irc_channel'):
-                        await irc_bridge.send_message(room_id, "System", f"Admin changed {old_username}'s name to {new_username}")
+                    if irc_bridge:
+                        irc_bridge.rename_user(room_id, target_id, new_username)
                     logger.info(f'Admin renamed {target_id} to {new_username} in {room_id}')
                     break
             await broadcast_admin_state()
@@ -1280,8 +1317,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                         'message': text,
                         'timestamp': asyncio.get_event_loop().time()
                     })
-                    if irc_bridge and irc_bridge.connected and rooms[rid].get('irc_channel'):
-                        await irc_bridge.send_message(rid, "System", text)
+                    if irc_bridge:
+                        await irc_bridge.send_system(rid, text)
             logger.info(f"Admin broadcast to {'room ' + room_id if room_id else 'all rooms'}: {text}")
 
         else:
@@ -1333,7 +1370,12 @@ async def main():
         raise
 
     logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
-    logger.info("Features: Multi-participant, IRC bridge (on-demand), Password protection")
+    logger.info("Features: Multi-participant, IRC bridge (always on), Password protection")
+
+    # Every room is bridged, so the bridge is always-on rather than on-demand.
+    # IRCConnection owns its reconnect loop, so this never needs retrying here.
+    init_irc_bridge()
+
     if not os.environ.get('ADMIN_SECRET'):
         logger.warning("ADMIN_SECRET not set in environment — a random secret was generated for this session")
     else:
