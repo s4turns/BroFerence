@@ -253,7 +253,13 @@ class IRCConnection:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(f'IRC[{self.label}] connection error: {type(e).__name__}: {e}')
+                if self._closing:
+                    # We are tearing this connection down on purpose; the read
+                    # loop just lost the race with close(). Not worth a warning
+                    # — it reads exactly like a server-side kill in the logs.
+                    logger.debug(f'IRC[{self.label}] closing: {type(e).__name__}')
+                else:
+                    logger.warning(f'IRC[{self.label}] connection error: {type(e).__name__}: {e}')
 
             await self._teardown()
 
