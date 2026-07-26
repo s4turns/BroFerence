@@ -95,12 +95,28 @@ async def get_video_url(request):
         if not url:
             return web.json_response({'error': 'No URL provided'}, status=400)
 
+        # SECURITY: yt-dlp parses any argument starting with '-' as an option,
+        # and some of those (--exec, --config-location) execute commands. Reject
+        # such values outright rather than relying on '--' alone.
+        if not isinstance(url, str) or not url.startswith(('http://', 'https://')):
+            logger.warning("Blocked non-http(s) extract URL")
+            return web.json_response({'error': 'Invalid URL'}, status=400)
+
+        # SECURITY: same SSRF allowlist the /stream endpoint enforces. Without
+        # this the extract path had no domain validation at all, and would hand
+        # the YouTube session cookies to any host an attacker named.
+        is_safe, error_msg = is_safe_url(url)
+        if not is_safe:
+            logger.warning(f"Blocked unsafe extract URL: {error_msg}")
+            return web.json_response({'error': 'Forbidden'}, status=403)
+
         logger.info(f"Extracting video URL for: {url}")
 
         cmd = ['yt-dlp', '-f', 'best[height<=720]/best', '-g', '--no-warnings', '--no-playlist']
         if os.path.exists(COOKIES_FILE):
             cmd += ['--cookies', COOKIES_FILE]
-        cmd.append(url)
+        # '--' ends option parsing so the URL can only ever be positional.
+        cmd += ['--', url]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
