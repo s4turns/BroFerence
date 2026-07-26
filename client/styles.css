@@ -414,27 +414,27 @@ body::before {
 }
 
 .prejoin-devices {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    /* Shared grid so every label column is the same width and all
+       selects start/end at the same x, no matter the label text. */
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 8px 10px;
     margin-top: 16px;
 }
 
 .prejoin-device-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: contents;
 }
 
 .prejoin-device-row label {
     white-space: nowrap;
     font-size: 0.85rem;
     color: var(--primary);
-    min-width: 80px;
 }
 
 .prejoin-device-row select {
-    flex: 1;
+    min-width: 0;
     background: var(--bg-secondary);
     color: var(--text-primary);
     border: 1px solid var(--border);
@@ -2011,7 +2011,6 @@ body::before {
     }
 
     .prejoin-device-row label {
-        min-width: 68px;
         font-size: 13px;
     }
 
