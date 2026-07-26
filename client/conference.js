@@ -92,6 +92,23 @@ class ConferenceClient {
     updateModStatus() {
         this.isOwner = this.clientId === this.moderatorId;
         this.isModerator = this.isOwner || this.coModIds.has(this.clientId);
+        this.refreshOwnLabelBadge();
+    }
+
+    // Your own tile gets the same crown/shield everyone else sees on you.
+    // Without this the owner is the only person in the room with no badge.
+    refreshOwnLabelBadge() {
+        const role = this.isOwner ? 'owner' : (this.isModerator ? 'co-mod' : 'user');
+        this.applyLabelBadge('local', this.localLabelName || 'You (Local)', role);
+    }
+
+    // Rename your own tile without dropping the role badge, and keep the
+    // avatar initial in sync.
+    setLocalLabelName(name) {
+        this.localLabelName = name;
+        const avatar = document.getElementById('localAvatar');
+        if (avatar && name) avatar.textContent = name.charAt(0).toUpperCase();
+        this.refreshOwnLabelBadge();
     }
 
     // --- Crypto helpers ---
@@ -1117,18 +1134,22 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.addChatMessage('System', `${message.oldUsername} changed their name to ${message.newUsername}`, true);
                 break;
 
+            case 'username-assigned':
+                // The server renamed us because the nick was already taken here.
+                this.username = message.username;
+                localStorage.setItem('broference-username', this.username);
+                this.setLocalLabelName(this.username);
+                this.addChatMessage(
+                    'System',
+                    `${message.reason}. You joined as ${message.username}.`,
+                    true
+                );
+                break;
+
             case 'name-changed-by-moderator':
                 // Your name was changed by moderator
                 this.username = message.newUsername;
-                // Update local avatar and label
-                const localAvatarMod = document.getElementById('localAvatar');
-                if (localAvatarMod) {
-                    localAvatarMod.textContent = this.username.charAt(0).toUpperCase();
-                }
-                const localLabelMod = document.querySelector('#localContainer .video-label');
-                if (localLabelMod) {
-                    localLabelMod.textContent = this.username;
-                }
+                this.setLocalLabelName(this.username);
                 this.addChatMessage('System', `Moderator changed your name to ${message.newUsername}`, true);
                 break;
 
@@ -3003,10 +3024,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
-    // Apply or update the badge (crown/shield/none) on a remote video label.
-    // Pass an existing label element to update in-place, or omit to find it by peerId.
+    // Apply or update the badge (crown/shield/none) on a video label.
+    // Pass an existing label element to update in-place, omit to find it by
+    // peerId, or pass peerId 'local' for your own tile.
     applyLabelBadge(peerId, username, role, labelEl) {
-        const label = labelEl || document.querySelector(`#video-${peerId} .video-label`);
+        const selector = peerId === 'local'
+            ? '#localContainer .video-label'
+            : `#video-${peerId} .video-label`;
+        const label = labelEl || document.querySelector(selector);
         if (!label) return;
         label.innerHTML = '';
         if (role === 'owner') {

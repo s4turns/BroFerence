@@ -401,6 +401,19 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
     rooms[room_id]['users'].append(websocket)
     client_info['room'] = room_id
 
+    # Never let two people in a room share a nick — rename the newcomer, since
+    # renaming whoever was already here would be worse.
+    deduped = unique_username(room_id, username, exclude_ws=websocket)
+    if deduped != username:
+        logger.info(f"Nick '{username}' taken in room {room_id}, joining as '{deduped}'")
+        client_info['username'] = deduped
+        await websocket.send(json.dumps({
+            'type': 'username-assigned',
+            'username': deduped,
+            'reason': f'"{username}" is already taken in this room'
+        }))
+        username = deduped
+
     # Initialize IRC bridge if room has IRC channel and bridge is not connected
     irc_channel = rooms[room_id].get('irc_channel')
     irc_status_msg = None
@@ -599,6 +612,31 @@ async def relay_to_peer(target_id: str, message: dict):
             await websocket.send(json.dumps(message))
             return True
     return False
+
+
+def unique_username(room_id: str, desired: str, exclude_ws=None) -> str:
+    """IRC-style de-duplication: append _2, _3 ... until the nick is free.
+
+    Comparison is case-insensitive so 'Dave' can't shadow an existing 'dave' —
+    two near-identical names in the user list are exactly the confusion this
+    is meant to prevent. Returns `desired` unchanged when it is already free.
+    """
+    if room_id not in rooms:
+        return desired
+
+    taken = {
+        clients[ws]['username'].lower()
+        for ws in rooms[room_id]['users']
+        if ws is not exclude_ws and ws in clients
+    }
+
+    if desired.lower() not in taken:
+        return desired
+
+    suffix = 2
+    while f"{desired}_{suffix}".lower() in taken:
+        suffix += 1
+    return f"{desired}_{suffix}"
 
 
 def is_privileged(room: dict, client_id: str) -> bool:
@@ -836,6 +874,17 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             new_username = data.get('newUsername', '').strip()
 
             if new_username and room:
+                # Keep nicks unique; the client picked the name optimistically,
+                # so tell it what it actually ended up with.
+                requested = new_username
+                new_username = unique_username(room, requested, exclude_ws=websocket)
+                if new_username != requested:
+                    await websocket.send(json.dumps({
+                        'type': 'username-assigned',
+                        'username': new_username,
+                        'reason': f'"{requested}" is already taken in this room'
+                    }))
+
                 # Update username
                 client_info['username'] = new_username
 
@@ -987,6 +1036,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     for ws, info in clients.items():
                         if info['id'] == target_id and info['room'] == room:
                             old_username = info['username']
+                            # Keep nicks unique even when a mod assigns one.
+                            new_username = unique_username(room, new_username, exclude_ws=ws)
                             info['username'] = new_username
 
                             # Notify the target user
