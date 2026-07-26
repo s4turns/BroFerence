@@ -505,16 +505,83 @@ class ConferenceClient {
     }
 
     /**
-     * Time how long a TURN server takes to hand back a relay candidate.
+     * Measure a true one-round-trip ping to a TURN server.
      *
-     * This is NOT a ping. TURN allocation with long-term credentials is two
-     * round trips (Allocate -> 401 with realm/nonce -> Allocate with creds),
-     * so expect roughly 2x the true RTT plus server processing. It is used
-     * only to rank servers against each other, never as a latency readout.
+     * Sends an unauthenticated STUN Binding request to the same host/port
+     * (coturn answers Binding on its TURN port) and times how long the server
+     * takes to reflect our address back. That is exactly one round trip, so
+     * the number is comparable to `ping` — unlike a TURN allocation, which
+     * costs two round trips because of the 401/realm/nonce challenge.
      *
-     * To keep the comparison fair the timer starts after setLocalDescription
-     * (when gathering actually begins, excluding SDP overhead) and the probe
-     * forces UDP so a TCP handshake can't skew one server's number.
+     * The reflexive candidate is gathered locally and the connection is closed
+     * immediately; it is never signalled to a peer, so this does not weaken
+     * the relay-only policy that keeps participants' IPs private.
+     *
+     * Falls back to timing a relay allocation if no reflexive candidate
+     * arrives, so a server that only answers TURN still gets ranked.
+     * Resolves to Infinity if the server answers neither.
+     */
+    pingTurnServer(turnConfig, timeoutMs = 2000) {
+        return new Promise((resolve) => {
+            let pc = null;
+            let timer = null;
+            let start = null;
+
+            const finish = (ms) => {
+                if (!pc) return;
+                clearTimeout(timer);
+                try { pc.close(); } catch (e) { /* already closed */ }
+                pc = null;
+                resolve(ms);
+            };
+
+            // Same host and port as the TURN URL, but spoken as STUN.
+            const stunUrls = (Array.isArray(turnConfig.urls) ? turnConfig.urls : [turnConfig.urls])
+                .filter(u => !/transport=tcp/i.test(u))
+                .map(u => u.replace(/^turns?:/i, 'stun:').replace(/\?.*$/, ''));
+
+            if (!stunUrls.length) {
+                resolve(Infinity);
+                return;
+            }
+
+            try {
+                pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrls }] });
+            } catch (error) {
+                console.warn('STUN ping could not create peer connection:', error);
+                resolve(Infinity);
+                return;
+            }
+
+            timer = setTimeout(() => finish(Infinity), timeoutMs);
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    // Host candidates are local and instant; only srflx proves
+                    // the server answered.
+                    if (event.candidate.candidate.includes('typ srflx')) {
+                        finish(performance.now() - (start ?? performance.now()));
+                    }
+                } else {
+                    finish(Infinity); // gathering done, server never replied
+                }
+            };
+
+            pc.createDataChannel('stun-ping');
+            pc.createOffer()
+                .then((offer) => pc && pc.setLocalDescription(offer))
+                .then(() => { start = performance.now(); })
+                .catch((error) => {
+                    console.warn('STUN ping offer failed:', error);
+                    finish(Infinity);
+                });
+        });
+    }
+
+    /**
+     * Time a full TURN allocation. Two round trips (Allocate -> 401 with
+     * realm/nonce -> Allocate with creds), so it reads far higher than a ping.
+     * Used as a reachability fallback and to confirm the credentials work.
      *
      * Resolves to Infinity if the server never produces a relay candidate.
      */
@@ -591,24 +658,37 @@ class ConferenceClient {
                 }
             } catch (e) { /* ignore malformed cache */ }
 
+            // Rank on the STUN ping (one round trip). Only if a server does not
+            // answer STUN do we fall back to timing its allocation, which costs
+            // two round trips and would otherwise be unfair to compare against.
             const timings = await Promise.all(
-                this.turnConfigs.map(async (config) => ({
-                    config,
-                    url: config.urls[0],
-                    rtt: await this.probeTurnServer(config)
-                }))
+                this.turnConfigs.map(async (config) => {
+                    const ping = await this.pingTurnServer(config);
+                    if (Number.isFinite(ping)) {
+                        return { config, url: config.urls[0], ping, measure: 'ping' };
+                    }
+                    const alloc = await this.probeTurnServer(config);
+                    // Halve it so it is roughly ping-comparable for ordering.
+                    return {
+                        config,
+                        url: config.urls[0],
+                        ping: Number.isFinite(alloc) ? alloc / 2 : Infinity,
+                        measure: 'alloc/2'
+                    };
+                })
             );
 
-            const reachable = timings.filter(t => Number.isFinite(t.rtt));
-            console.log('TURN probe results:', timings.map(t => `${t.url} = ${Math.round(t.rtt)}ms`).join(', '));
+            const reachable = timings.filter(t => Number.isFinite(t.ping));
+            console.log('TURN ping results:',
+                timings.map(t => `${t.url} = ${Math.round(t.ping)}ms (${t.measure})`).join(', '));
 
             if (reachable.length === 0) {
-                console.warn('No TURN server answered the probe; keeping default order');
+                console.warn('No TURN server answered the ping; keeping default order');
                 return;
             }
 
             // Unreachable servers stay in the list (they may recover) but go last.
-            timings.sort((a, b) => a.rtt - b.rtt);
+            timings.sort((a, b) => a.ping - b.ping);
             const order = timings.map(t => t.url);
             this.applyTurnOrder(order);
 
@@ -617,7 +697,8 @@ class ConferenceClient {
             } catch (e) { /* storage unavailable */ }
 
             this.bestTurnUrl = timings[0].url;
-            console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].rtt)}ms)`);
+            this.turnPings = timings.map(t => ({ url: t.url, ping: t.ping }));
+            console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].ping)}ms ping)`);
         })();
 
         return this.turnSelectionPromise;
