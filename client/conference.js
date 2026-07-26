@@ -98,10 +98,8 @@ class ConferenceClient {
     // Your own tile gets the same crown/shield everyone else sees on you.
     // Without this the owner is the only person in the room with no badge.
     refreshOwnLabelBadge() {
-        const name = this.localLabelName || this.username;
-        if (!name) return;
         const role = this.isOwner ? 'owner' : (this.isModerator ? 'co-mod' : 'user');
-        this.applyLabelBadge('local', name, role);
+        this.applyLabelBadge('local', this.localLabelName || 'You (Local)', role);
     }
 
     // Rename your own tile without dropping the role badge, and keep the
@@ -505,91 +503,16 @@ class ConferenceClient {
     }
 
     /**
-     * Measure a true one-round-trip ping to a TURN server.
-     *
-     * Sends an unauthenticated STUN Binding request to the same host/port
-     * (coturn answers Binding on its TURN port) and times how long the server
-     * takes to reflect our address back. That is exactly one round trip, so
-     * the number is comparable to `ping` — unlike a TURN allocation, which
-     * costs two round trips because of the 401/realm/nonce challenge.
-     *
-     * The reflexive candidate is gathered locally and the connection is closed
-     * immediately; it is never signalled to a peer, so this does not weaken
-     * the relay-only policy that keeps participants' IPs private.
-     *
-     * Falls back to timing a relay allocation if no reflexive candidate
-     * arrives, so a server that only answers TURN still gets ranked.
-     * Resolves to Infinity if the server answers neither.
-     */
-    pingTurnServer(turnConfig, timeoutMs = 2000) {
-        return new Promise((resolve) => {
-            let pc = null;
-            let timer = null;
-            let start = null;
-
-            const finish = (ms) => {
-                if (!pc) return;
-                clearTimeout(timer);
-                try { pc.close(); } catch (e) { /* already closed */ }
-                pc = null;
-                resolve(ms);
-            };
-
-            // Same host and port as the TURN URL, but spoken as STUN.
-            const stunUrls = (Array.isArray(turnConfig.urls) ? turnConfig.urls : [turnConfig.urls])
-                .filter(u => !/transport=tcp/i.test(u))
-                .map(u => u.replace(/^turns?:/i, 'stun:').replace(/\?.*$/, ''));
-
-            if (!stunUrls.length) {
-                resolve(Infinity);
-                return;
-            }
-
-            try {
-                pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrls }] });
-            } catch (error) {
-                console.warn('STUN ping could not create peer connection:', error);
-                resolve(Infinity);
-                return;
-            }
-
-            timer = setTimeout(() => finish(Infinity), timeoutMs);
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    // Host candidates are local and instant; only srflx proves
-                    // the server answered.
-                    if (event.candidate.candidate.includes('typ srflx')) {
-                        finish(performance.now() - (start ?? performance.now()));
-                    }
-                } else {
-                    finish(Infinity); // gathering done, server never replied
-                }
-            };
-
-            pc.createDataChannel('stun-ping');
-            pc.createOffer()
-                .then((offer) => pc && pc.setLocalDescription(offer))
-                .then(() => { start = performance.now(); })
-                .catch((error) => {
-                    console.warn('STUN ping offer failed:', error);
-                    finish(Infinity);
-                });
-        });
-    }
-
-    /**
-     * Time a full TURN allocation. Two round trips (Allocate -> 401 with
-     * realm/nonce -> Allocate with creds), so it reads far higher than a ping.
-     * Used as a reachability fallback and to confirm the credentials work.
-     *
+     * Time how long a TURN server takes to hand back a relay candidate.
+     * That round trip covers DNS + the UDP allocation handshake, so it is a
+     * decent proxy for "how far is this relay from the user".
      * Resolves to Infinity if the server never produces a relay candidate.
      */
     probeTurnServer(turnConfig, timeoutMs = 2500) {
         return new Promise((resolve) => {
             let pc = null;
             let timer = null;
-            let start = null;
+            const start = performance.now();
 
             const finish = (rtt) => {
                 if (!pc) return;
@@ -599,13 +522,9 @@ class ConferenceClient {
                 resolve(rtt);
             };
 
-            // Compare like for like: UDP only, dropping any ?transport=tcp URL.
-            const udpUrls = (Array.isArray(turnConfig.urls) ? turnConfig.urls : [turnConfig.urls])
-                .filter(u => !/transport=tcp/i.test(u));
-
             try {
                 pc = new RTCPeerConnection({
-                    iceServers: [{ ...turnConfig, urls: udpUrls.length ? udpUrls : turnConfig.urls }],
+                    iceServers: [turnConfig],
                     iceTransportPolicy: 'relay'
                 });
             } catch (error) {
@@ -618,7 +537,7 @@ class ConferenceClient {
 
             pc.onicecandidate = (event) => {
                 if (event.candidate && event.candidate.candidate.includes('typ relay')) {
-                    finish(performance.now() - (start ?? performance.now()));
+                    finish(performance.now() - start);
                 } else if (!event.candidate) {
                     // Gathering finished without a relay candidate: server unusable.
                     finish(Infinity);
@@ -629,7 +548,6 @@ class ConferenceClient {
             pc.createDataChannel('turn-probe');
             pc.createOffer()
                 .then((offer) => pc && pc.setLocalDescription(offer))
-                .then(() => { start = performance.now(); })
                 .catch((error) => {
                     console.warn('TURN probe offer failed:', error);
                     finish(Infinity);
@@ -658,37 +576,24 @@ class ConferenceClient {
                 }
             } catch (e) { /* ignore malformed cache */ }
 
-            // Rank on the STUN ping (one round trip). Only if a server does not
-            // answer STUN do we fall back to timing its allocation, which costs
-            // two round trips and would otherwise be unfair to compare against.
             const timings = await Promise.all(
-                this.turnConfigs.map(async (config) => {
-                    const ping = await this.pingTurnServer(config);
-                    if (Number.isFinite(ping)) {
-                        return { config, url: config.urls[0], ping, measure: 'ping' };
-                    }
-                    const alloc = await this.probeTurnServer(config);
-                    // Halve it so it is roughly ping-comparable for ordering.
-                    return {
-                        config,
-                        url: config.urls[0],
-                        ping: Number.isFinite(alloc) ? alloc / 2 : Infinity,
-                        measure: 'alloc/2'
-                    };
-                })
+                this.turnConfigs.map(async (config) => ({
+                    config,
+                    url: config.urls[0],
+                    rtt: await this.probeTurnServer(config)
+                }))
             );
 
-            const reachable = timings.filter(t => Number.isFinite(t.ping));
-            console.log('TURN ping results:',
-                timings.map(t => `${t.url} = ${Math.round(t.ping)}ms (${t.measure})`).join(', '));
+            const reachable = timings.filter(t => Number.isFinite(t.rtt));
+            console.log('TURN probe results:', timings.map(t => `${t.url} = ${Math.round(t.rtt)}ms`).join(', '));
 
             if (reachable.length === 0) {
-                console.warn('No TURN server answered the ping; keeping default order');
+                console.warn('No TURN server answered the probe; keeping default order');
                 return;
             }
 
             // Unreachable servers stay in the list (they may recover) but go last.
-            timings.sort((a, b) => a.ping - b.ping);
+            timings.sort((a, b) => a.rtt - b.rtt);
             const order = timings.map(t => t.url);
             this.applyTurnOrder(order);
 
@@ -697,8 +602,7 @@ class ConferenceClient {
             } catch (e) { /* storage unavailable */ }
 
             this.bestTurnUrl = timings[0].url;
-            this.turnPings = timings.map(t => ({ url: t.url, ping: t.ping }));
-            console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].ping)}ms ping)`);
+            console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].rtt)}ms)`);
         })();
 
         return this.turnSelectionPromise;
@@ -735,6 +639,7 @@ class ConferenceClient {
         // Input elements
         this.usernameInput = document.getElementById('usernameInput');
         this.roomInput = document.getElementById('roomInput');
+        this.ircChannelInput = document.getElementById('ircChannelInput');
         this.passwordInput = document.getElementById('passwordInput');
         this.chatInput = document.getElementById('chatInput');
 
@@ -1133,10 +1038,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     await this.createPeerConnection(user.id, user.username, true);
                 }
 
-                // Every room is an IRC channel; show which one.
+                // Show IRC status if bridged
                 if (message.ircChannel) {
                     document.getElementById('ircStatus').textContent =
-                        `💬 ${message.ircChannel}`;
+                        `💬 Bridged to IRC: ${message.ircChannel}`;
                 }
 
                 // Show moderator status
@@ -1178,12 +1083,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.playJoinSound();
                 // E2EE: exchange public keys with the new user
                 await this.sendPublicKey(message.clientId);
-                // Re-announce our state so the new peer can render us correctly.
-                // Video state matters even with the camera off: the avatar is
-                // only visible on a tile marked .no-video, so a peer that never
-                // hears our state shows us as a blank black tile.
-                this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled || this.isScreenSharing });
-                this.sendMessage({ type: 'audio-state', audioEnabled: this.audioEnabled });
+                // Send our gravatar hash so the new peer can render our avatar
                 if (this.gravatarHash) {
                     this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
                 }
@@ -1368,19 +1268,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 break;
 
             case 'chat-message': {
-                // Structural, not a substring of the display name — otherwise
-                // renaming yourself to "bob (IRC)" impersonates an IRC user.
-                const isIRC = message.origin === 'irc';
-                const isOwn = !isIRC && message.username === this.username;
+                const isIRC = message.username.includes('(IRC)');
+                const isOwn = message.username === this.username;
                 if (!isOwn) this.playChatSound();
-                if (message.private) {
-                    this.addChatMessage(
-                        message.username,
-                        `(private) ${message.message}`,
-                        false, true, false
-                    );
-                    break;
-                }
                 if (message.encrypted) {
                     if (!this.e2eeRoomKey) {
                         this.addChatMessage(message.username, '[encrypted message]', false, isIRC, isOwn, false, true);
@@ -2268,6 +2158,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const roomId = this.roomInput.value.trim();
         const password = this.passwordInput.value.trim() || null;
         this.roomPassword = password; // Store for WebSocket reconnection
+        const ircChannel = this.ircChannelInput.value.trim() || null;
 
         try {
             // Hide prejoin screen
@@ -2315,9 +2206,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     localAvatar.textContent = this.username.charAt(0).toUpperCase();
                 }
             }
-            // Route through setLocalLabelName so the owner/co-mod badge survives.
-            if (this.username) {
-                this.setLocalLabelName(this.username);
+            const localLabel = document.querySelector('#localContainer .video-label');
+            if (localLabel && this.username) {
+                localLabel.textContent = this.username;
             }
 
             // Set initial video state for local container
@@ -2352,12 +2243,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             await this.initE2EE();
 
             // Create or join room
-            // The IRC channel is derived server-side from the room name; the
-            // client neither chooses it nor can opt out.
             this.sendMessage({
                 type: 'create-room',
                 roomId: roomId,
-                password: password
+                password: password,
+                ircChannel: ircChannel
             });
 
         } catch (error) {
@@ -2794,11 +2684,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         // Monitor video track to show/hide avatar
         const videoTrack = stream.getVideoTracks()[0];
-        if (!videoTrack && signaledState === undefined) {
-            // No track and no signal yet: assume camera off so the avatar shows
-            // rather than leaving a blank tile until a video-state arrives.
-            container.classList.add('no-video');
-        }
         if (videoTrack) {
             // Check initial state only if no signaled state overrides it
             if (signaledState === undefined && (!videoTrack.enabled || videoTrack.muted)) {
@@ -4416,8 +4301,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.username = newName.trim();
             localStorage.setItem('broference-username', this.username);
 
-            // Update local video label, keeping the owner/co-mod badge.
-            this.setLocalLabelName(this.username);
+            // Update local video label
+            const localLabel = document.querySelector('#localContainer .video-label');
+            if (localLabel) {
+                localLabel.textContent = this.username;
+            }
 
             // Update local avatar
             const localAvatar = document.getElementById('localAvatar');

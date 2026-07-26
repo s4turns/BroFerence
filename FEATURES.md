@@ -15,27 +15,17 @@ This is a Jitsi-like public video conferencing server with IRC chat bridge integ
 
 ### 2. IRC Chat Bridge
 
-The killer feature - every conference room *is* an IRC channel.
+The killer feature - seamlessly bridge your video conference chat with IRC channels!
 
 **How it works:**
-- Every room is bridged automatically. There is no setting, no channel field, no opt-out.
-- The channel is derived from the room name: room `blcknd` → `#bro-blcknd`.
-- Each participant gets **their own IRC connection and nick**, so they appear on the
-  network as real users. IRC people can see them in `/names`, highlight them, and `/msg`
-  them — a private message is delivered to that one participant in the conference chat.
-- Presence is real: joining a room JOINs the channel, leaving PARTs it, renaming sends NICK.
-- IRC messages appear inline in the main chat, tagged by origin rather than by a `(IRC)`
-  suffix on the display name.
-- The channel lives as long as the room does; when the last person leaves, the bot parts
-  and the channel goes away with it.
+- When creating a room, enter an IRC channel (e.g., `#webrtc`)
+- All chat messages from WebRTC users are sent to IRC
+- All IRC messages are displayed in the WebRTC chat
+- IRC users see: `<Username> message text`
+- WebRTC users see: `Username (IRC): message text`
 
-**IRC Server:** irc.blcknd.network:6697 (SSL), configurable via `IRC_SERVER` / `IRC_PORT` / `IRC_SSL`
-**Bot Nickname:** `webrtc` (`IRC_BOT_NICK`) — reads channel traffic and posts room notices
-**Channel prefix:** `bro-` (`IRC_CHANNEL_PREFIX`)
-
-**Encryption:** rooms with end-to-end encryption enabled are **not** bridged. Turning E2EE on
-parts the channel and disconnects the user sessions; turning it off rejoins. Encrypted
-messages never reach IRC.
+**IRC Server:** irc.blcknd.network:6697 (SSL)
+**Bot Nickname:** webrtc
 
 **Use cases:**
 - Bridge conference rooms with existing IRC communities
@@ -114,15 +104,14 @@ messages never reach IRC.
 ## Room Lifecycle
 
 1. **Create Room**
-   - User enters room name and optional password
+   - User enters room name, optional password, optional IRC channel
    - Server creates room object
-   - Server derives the IRC channel from the room name and the bot joins it
+   - If IRC channel specified, bot joins IRC channel
    - Room persists until last user leaves
 
 2. **Join Room**
    - User provides room name (and password if required)
    - Server adds user to room
-   - Server opens that user's own IRC connection, which JOINs the channel
    - Server sends list of existing participants
    - User creates WebRTC connections to all participants
 
@@ -133,17 +122,16 @@ messages never reach IRC.
    - Peer-to-peer connections established
 
 4. **Chat Bridge**
-   - WebRTC chat messages → that user's own IRC connection → IRC channel
-   - IRC channel messages → bot → All WebRTC users
-   - IRC private messages → that participant only
-   - Suspended entirely while the room has E2EE enabled
+   - WebRTC chat messages → Server → IRC channel
+   - IRC channel messages → Server → All WebRTC users
+   - IRC bot nickname: `webrtc`
 
 5. **Leave Room**
    - User disconnects
    - Server notifies other participants
-   - That user's IRC connection quits, producing a real PART
    - Peer connections are closed
-   - If last user, room is deleted and the bot parts the channel
+   - If last user, room is deleted
+   - If IRC bridged, bot leaves IRC channel
 
 ## Security Considerations
 
@@ -170,37 +158,34 @@ messages never reach IRC.
 
 ## IRC Bridge Details
 
-### IRC Connections
+### IRC Connection
 
-- Server: irc.blcknd.network, port 6697 (SSL/TLS)
-- **Bot** (`webrtc`): joins every active room's channel, is the sole reader of channel
-  traffic, and posts room notices (ownership changes, admin broadcasts).
-- **One connection per participant**, nick derived from their conference username.
-  Nick collisions on the network are resolved by the server's `433` reply — the
-  connection retries as `name_`, `name__`, then a numeric suffix.
-
-Because every participant holds a connection, the BroFerence server needs a raised
-per-IP client limit on the ircd (a 16-person room is 17 connections from one IP).
-`IRC_MAX_USER_CONNECTIONS` caps the total; participants over the cap still talk, relayed
-through the bot as `<Alice> message` instead of appearing as their own nick.
-
-All connections share a rate limiter (`IRC_SEND_RATE`, default one line per 0.6s) and
-split long messages on UTF-8 boundaries, so neither a busy room nor a long paste trips
-the network's flood protection.
+- Server: irc.blcknd.network
+- Port: 6697 (SSL/TLS)
+- Nickname: webrtc
+- Realname: WebRTC Bridge Bot
 
 ### Message Format
 
-**WebRTC → IRC:** the participant's own nick says it directly.
+**WebRTC → IRC:**
 ```
 <Alice> Hello from the video conference!
 ```
-(The `<Alice> ...` relay form only appears for participants over the connection cap.)
 
-**IRC → WebRTC:** delivered into the main chat, tagged by origin and styled as IRC.
+**IRC → WebRTC:**
+```
+Alice (IRC): Hello from IRC!
+```
+
+**System messages:**
+```
+System: Alice joined the room
+System: Bob left the room
+```
 
 ### IRC Commands Support
 
-Private messages (`/msg <user>`) are routed to that participant. Not yet supported:
+Currently no IRC commands are supported. Future enhancements:
 - `/me` action messages
 - IRC user list synchronization
 - Topic synchronization
@@ -277,9 +262,7 @@ To support 10+ participants:
 3. **No persistence** - Rooms disappear when empty
 4. **Single screen share** - Only one person can share at a time
 5. **No recording** - Can't record sessions
-6. **IRC channels are not durable** - a channel exists only while its room does; when the
-   last participant leaves, the bot parts and the channel is gone. Persisting one would
-   need ChanServ registration.
+6. **IRC join/leave spam** - IRC bot joins/leaves with room lifecycle
 
 ## Troubleshooting
 
