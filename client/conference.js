@@ -1083,7 +1083,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.playJoinSound();
                 // E2EE: exchange public keys with the new user
                 await this.sendPublicKey(message.clientId);
-                // Send our gravatar hash so the new peer can render our avatar
+                // Re-announce our state so the new peer can render us correctly.
+                // Video state matters even with the camera off: the avatar is
+                // only visible on a tile marked .no-video, so a peer that never
+                // hears our state shows us as a blank black tile.
+                this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled || this.isScreenSharing });
+                this.sendMessage({ type: 'audio-state', audioEnabled: this.audioEnabled });
                 if (this.gravatarHash) {
                     this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
                 }
@@ -2684,6 +2689,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         // Monitor video track to show/hide avatar
         const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack && signaledState === undefined) {
+            // No track and no signal yet: assume camera off so the avatar shows
+            // rather than leaving a blank tile until a video-state arrives.
+            container.classList.add('no-video');
+        }
         if (videoTrack) {
             // Check initial state only if no signaled state overrides it
             if (signaledState === undefined && (!videoTrack.enabled || videoTrack.muted)) {
