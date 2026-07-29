@@ -99,7 +99,9 @@ class ConferenceClient {
     // Without this the owner is the only person in the room with no badge.
     refreshOwnLabelBadge() {
         const role = this.isOwner ? 'owner' : (this.isModerator ? 'co-mod' : 'user');
-        this.applyLabelBadge('local', this.localLabelName || 'You (Local)', role);
+        const name = this.localLabelName || this.username;
+        if (!name) return;
+        this.applyLabelBadge('local', name, role);
     }
 
     // Rename your own tile without dropping the role badge, and keep the
@@ -107,7 +109,12 @@ class ConferenceClient {
     setLocalLabelName(name) {
         this.localLabelName = name;
         const avatar = document.getElementById('localAvatar');
-        if (avatar && name) avatar.textContent = name.charAt(0).toUpperCase();
+        if (avatar && name) {
+            const initial = name.charAt(0).toUpperCase();
+            avatar.dataset.initial = initial;
+            // Don't stomp a gravatar image with the initial letter.
+            if (!this.gravatarHash) avatar.textContent = initial;
+        }
         this.refreshOwnLabelBadge();
     }
 
@@ -2206,9 +2213,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     localAvatar.textContent = this.username.charAt(0).toUpperCase();
                 }
             }
-            const localLabel = document.querySelector('#localContainer .video-label');
-            if (localLabel && this.username) {
-                localLabel.textContent = this.username;
+            if (this.username) {
+                this.setLocalLabelName(this.username);
             }
 
             // Set initial video state for local container
@@ -4301,17 +4307,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.username = newName.trim();
             localStorage.setItem('broference-username', this.username);
 
-            // Update local video label
-            const localLabel = document.querySelector('#localContainer .video-label');
-            if (localLabel) {
-                localLabel.textContent = this.username;
-            }
-
-            // Update local avatar
-            const localAvatar = document.getElementById('localAvatar');
-            if (localAvatar) {
-                localAvatar.textContent = this.username.charAt(0).toUpperCase();
-            }
+            // Update local video label and avatar (keeps the role badge)
+            this.setLocalLabelName(this.username);
 
             // Notify server and other users
             this.sendMessage({
