@@ -35,11 +35,13 @@ The killer feature - seamlessly bridge your video conference chat with IRC chann
 
 ### 3. Screen Sharing
 
-- Click the 🖥️ screen share button to share your screen
+- Click the screen share button on your own tile to share your screen
 - Choose entire screen, window, or browser tab
-- Your camera feed is replaced with screen share for all participants
-- Click again to stop sharing and return to camera
-- **Note:** Only one person can share screen at a time (mesh limitation)
+- The screen joins the grid as its own tile, labelled "<name>'s screen" — your camera keeps running alongside it
+- Desktop audio travels with the screen tile and has its own volume/mute, independent of your microphone
+- Click any tile to spotlight it, which is the quickest way to make a shared screen fullscreen
+- Click the button again, or use the browser's own "Stop sharing" bar, to stop
+- **Note:** Only one person can share at a time; the button is disabled for everyone else while someone presents
 
 ### 4. Password-Protected Rooms
 
@@ -257,10 +259,10 @@ To support 10+ participants:
 
 ## Known Limitations
 
-1. **No E2E encryption** - Traffic is encrypted in transit but server can access
-2. **Mesh topology** - Doesn't scale beyond ~10 users
+1. **E2E encryption is opt-in** - Available (AES-GCM-256) but off by default and toggled by the room owner; until it is on, media is encrypted in transit only and the relay path is trusted
+2. **Mesh topology** - Doesn't scale beyond ~10 users, and a screen share adds one more connection per peer
 3. **No persistence** - Rooms disappear when empty
-4. **Single screen share** - Only one person can share at a time
+4. **Single screen share** - Only one person can share at a time (now enforced server-side rather than being an accident of the topology)
 5. **No recording** - Can't record sessions
 6. **IRC join/leave spam** - IRC bot joins/leaves with room lifecycle
 

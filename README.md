@@ -14,7 +14,7 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Multi-participant video** — Unlimited users per room (mesh topology, best for ≤10)
 - **Real-time text chat** — In-app messaging with optional IRC bridge
 - **Password-protected rooms** — PBKDF2-HMAC-SHA256 hashed, per-room
-- **AI Noise Suppression** — Adjustable noise gate with real-time mic level visualization
+- **Noise suppression** — Adjustable noise gate with adaptive noise-floor tracking, keyboard/mouse click suppression, and real-time mic level visualization
 - **Microphone selector** — Switch input device live, including NVIDIA Broadcast / RTX Voice
 - **Low Bandwidth Mode** — Caps video to 480p/15fps and audio to 32kbps
 - **Video quality selector** — 480p, 720p, or 1080p; persists across sessions
@@ -26,7 +26,7 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Per-user volume controls** — Independent volume per participant
 - **Per-participant hide video** — Disables inbound track decoding to save CPU/GPU
 - **DEFCON button** — Kill all video feeds instantly
-- **Screen share with audio mixer** — Independent mic and desktop audio sliders
+- **Screen share as its own tile** — The shared screen joins the grid as a separate tile with desktop audio, while your camera keeps running; one presenter at a time
 - **Hardware codec preference** — H.264 → VP9 → AV1 → VP8
 - **Gravatar avatars** — Set your email in Options; shared peer-to-peer automatically
 - **Nickname persistence** — Display name saved and auto-filled on return
@@ -131,6 +131,8 @@ Two independent Coturn instances for asymmetric relay — covers same-NAT hairpi
 ### Web Client (`client/`)
 Vanilla JS + WebRTC API. No frameworks. Mesh peer connections, dynamic video grid, audio worklet noise gate, E2E encryption worker.
 
+A screen share does not replace the sharer's camera. It opens a second, send-only peer connection per viewer, carrying the screen video and desktop audio, and renders as its own tile. Screen offers/answers/candidates reuse the normal signaling relay, tagged with `channel: 'screen'` inside the payload. The sharer always offers and the viewer always answers on that channel, so it cannot collide with the camera mesh's negotiation.
+
 ---
 
 ## Usage
@@ -154,19 +156,19 @@ https://yourdomain.com/?room=RoomName&name=YourName
 
 | Control | Action |
 |---------|--------|
-| 🎤 | Mute/unmute mic |
-| 📹 | Camera on/off |
-| 🖥️ | Share screen (with optional audio) |
-| 💬 | Toggle chat sidebar |
-| ☰ | Options panel |
-| Click video | Spotlight/fullscreen that participant |
-| Hover video | Volume slider for that participant |
+| Mic | Mute/unmute your microphone |
+| Camera | Camera on/off |
+| Screen | Share screen (with optional desktop audio) — appears as its own tile |
+| Chat | Toggle chat sidebar |
+| Options | Options panel |
+| Click video | Spotlight/fullscreen that tile |
+| Hover video | Volume slider for that participant, or for a shared screen's audio |
 
 ### Options Panel
 
 - Change name mid-call
 - Gravatar email
-- AI Noise Suppression + threshold
+- Noise suppression + gate threshold
 - Low Bandwidth Mode
 - Video quality (480p / 720p / 1080p)
 - Theme selector
@@ -305,8 +307,9 @@ BroFerence/
 ├── client/
 │   ├── app.html               # Main conference UI
 │   ├── conference.js          # WebRTC logic, ICE, media, UI
+│   ├── icons.js               # Inline SVG icon set (no emoji, no icon font)
 │   ├── e2ee-worker.js         # AES-GCM-256 E2E encryption worker
-│   ├── noise-processor.js     # Audio worklet noise gate
+│   ├── noise-processor.js     # Audio worklet noise gate (DSP, no ML)
 │   ├── styles.css             # Retro terminal themes
 │   └── admin.html             # Admin panel
 ├── server/
@@ -412,6 +415,15 @@ pip install -r server/requirements.txt
 ---
 
 ## Recent Updates
+
+### v1.9 (unreleased — `testing` branch)
+- **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once
+- **Screen audio is separate** — Desktop audio travels with the screen tile and has its own volume/mute, so muting someone's screen no longer mutes their voice. Replaces the old mic/desktop mixer, which existed only because there was a single audio sender
+- **One presenter at a time** — Tracked server-side, released automatically if the presenter leaves or crashes
+- **E2EE covers screen shares** — Encryption transforms are applied to the screen connections too
+- **Camera throttled while presenting** — Drops to ~400 kbps at half resolution, since camera + screen to every peer is a lot of relayed uplink
+- **SVG icons throughout** — Replaced ~80 emoji with inline stroke icons that inherit each theme's colour
+- **Renamed "AI Noise Suppression" to "Noise suppression"** — It never used a model; it is a DSP noise gate
 
 ### v1.8 (2026-05)
 - **New domain** — Migrated to broference.cam
