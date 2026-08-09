@@ -4,6 +4,7 @@
 
 <img width="1913" height="910" alt="image" src="https://github.com/user-attachments/assets/132524df-a1e2-4266-b78b-cade81818ff8" />
 
+<img width="1737" height="794" alt="image" src="https://github.com/user-attachments/assets/e6ddde5a-f5f1-4cc2-8fcc-46c1da651c9d" />
 
 A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no third-party media servers — just a Python signaling server, dual TURN relay, and a browser client.
 
