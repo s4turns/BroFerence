@@ -43,6 +43,14 @@ class ConferenceClient {
         this.screenStream = null;
         this.isScreenSharing = false;
 
+        // Screen share runs on its own peer connections, separate from the camera
+        // mesh. The sharer always offers and the viewer always answers, so glare is
+        // impossible here and none of the main-mesh ICE-restart machinery applies.
+        this.screenPeerConnections = new Map(); // Map<peerId, {connection, username, retryCount}> — our screen → peer
+        this.screenReceivers = new Map();       // Map<peerId, {connection, username}> — their screen → us
+        this.screenPendingIce = new Map();      // Map<`${peerId}:${role}`, Array<candidate>>
+        this.currentPresenterId = null;         // room-wide presenter, null when nobody is sharing
+
         // ICE servers - will be set dynamically in initICEServers()
         this.iceServers = null;
         this.turnSelectionPromise = null; // in-flight/completed TURN latency probe
@@ -115,6 +123,8 @@ class ConferenceClient {
             // Don't stomp a gravatar image with the initial letter.
             if (!this.gravatarHash) avatar.textContent = initial;
         }
+        const screenLabel = document.querySelector('#video-local-screen .video-label');
+        if (screenLabel && name) screenLabel.textContent = `${name}'s screen`;
         this.refreshOwnLabelBadge();
     }
 
@@ -279,18 +289,16 @@ class ConferenceClient {
         }
     }
 
-    applyMediaTransformsToPeer(peerId) {
-        if (!this.e2eeWorker) return;
-        const peer = this.peerConnections.get(peerId);
-        if (!peer) return;
-        peer.connection.getSenders().forEach(sender => {
+    applyMediaTransformsToConnection(pc) {
+        if (!this.e2eeWorker || !pc) return;
+        pc.getSenders().forEach(sender => {
             if (!sender.track) return;
             try {
                 sender.transform = new RTCRtpScriptTransform(
                     this.e2eeWorker, { operation: 'encrypt', kind: sender.track.kind });
             } catch (e) { console.warn('Could not set sender transform:', e); }
         });
-        peer.connection.getReceivers().forEach(receiver => {
+        pc.getReceivers().forEach(receiver => {
             if (!receiver.track) return;
             try {
                 receiver.transform = new RTCRtpScriptTransform(
@@ -299,17 +307,32 @@ class ConferenceClient {
         });
     }
 
+    applyMediaTransformsToPeer(peerId) {
+        const peer = this.peerConnections.get(peerId);
+        if (!peer) return;
+        this.applyMediaTransformsToConnection(peer.connection);
+    }
+
+    // Every connection carrying media must be covered, screen channel included.
+    // A screen PC left out here would send frames in the clear while the rest of
+    // the room is encrypted — and still render perfectly on the far side, so the
+    // gap would be invisible.
     applyMediaTransformsToAll() {
         for (const peerId of this.peerConnections.keys()) {
             this.applyMediaTransformsToPeer(peerId);
         }
+        this.screenPeerConnections.forEach(p => this.applyMediaTransformsToConnection(p.connection));
+        this.screenReceivers.forEach(p => this.applyMediaTransformsToConnection(p.connection));
     }
 
     removeMediaTransforms() {
-        this.peerConnections.forEach(peer => {
-            peer.connection.getSenders().forEach(s => { try { s.transform = null; } catch {} });
-            peer.connection.getReceivers().forEach(r => { try { r.transform = null; } catch {} });
-        });
+        const clear = pc => {
+            pc.getSenders().forEach(s => { try { s.transform = null; } catch {} });
+            pc.getReceivers().forEach(r => { try { r.transform = null; } catch {} });
+        };
+        this.peerConnections.forEach(peer => clear(peer.connection));
+        this.screenPeerConnections.forEach(peer => clear(peer.connection));
+        this.screenReceivers.forEach(peer => clear(peer.connection));
         if (this.e2eeWorker) {
             this.e2eeWorker.terminate();
             this.e2eeWorker = null;
@@ -326,12 +349,12 @@ class ConferenceClient {
                 await this.distributeRoomKey();
                 this.applyMediaTransformsToAll();
             }
-            this.addChatMessage('System', '🔒 End-to-end encryption enabled.', true);
+            this.addChatMessage('System', 'End-to-end encryption enabled.', true);
             this.speakText('End to end encrypted');
         } else {
             this.e2eeRoomKey = null;
             this.removeMediaTransforms();
-            this.addChatMessage('System', '🔓 End-to-end encryption disabled.', true);
+            this.addChatMessage('System', 'End-to-end encryption disabled.', true);
             this.speakText('Encryption disabled');
         }
         this.updateE2EEUI();
@@ -855,7 +878,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const container = document.getElementById(`video-${peerId}`);
         if (!container) return;
         const hidden = container.classList.toggle('video-hidden');
-        btn.textContent = hidden ? '🙈' : '📹';
+        setIcon(btn, hidden ? 'eye-off' : 'eye');
         btn.title = hidden ? 'Show Video' : 'Hide Video';
 
         // Disable the inbound video track so the browser skips decoding
@@ -881,7 +904,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const localVideo = document.querySelector('#localContainer video');
         if (localVideo) localVideo.style.display = this.defconActive ? 'none' : '';
 
-        btn.textContent = this.defconActive ? '📺 DEFCON' : '📵 DEFCON';
+        btn.innerHTML = `<span class="ic-wrap">${iconSvg(this.defconActive ? 'tv' : 'tv-off')}</span> DEFCON`;
         btn.classList.toggle('active', this.defconActive);
     }
 
@@ -1045,10 +1068,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     await this.createPeerConnection(user.id, user.username, true);
                 }
 
+                // A WS reconnect skips already-connected peers above, so any screen
+                // channel lost during the outage has to be reopened explicitly.
+                this.reconcileScreenBroadcast();
+
+                // Someone may already be presenting when we walk in
+                if (message.presenterId && message.presenterId !== this.clientId) {
+                    this.handleScreenShareState(message.presenterId, message.presenterUsername);
+                }
+
                 // Show IRC status if bridged
                 if (message.ircChannel) {
                     document.getElementById('ircStatus').textContent =
-                        `💬 Bridged to IRC: ${message.ircChannel}`;
+                        `Bridged to IRC: ${message.ircChannel}`;
                 }
 
                 // Show moderator status
@@ -1075,7 +1107,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
                 // Send initial video, audio state, and gravatar to other users
                 setTimeout(() => {
-                    this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled || this.isScreenSharing });
+                    this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
                     this.sendMessage({ type: 'audio-state', audioEnabled: this.audioEnabled });
                     if (this.gravatarHash) {
                         this.sendMessage({ type: 'gravatar', hash: this.gravatarHash });
@@ -1137,6 +1169,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     if (avatar) {
                         avatar.textContent = message.newUsername.charAt(0).toUpperCase();
                     }
+                }
+                // Their screen tile carries their name too
+                {
+                    const screenLabel = document.querySelector(`#video-${message.clientId}-screen .video-label`);
+                    if (screenLabel) screenLabel.textContent = `${message.newUsername}'s screen`;
                 }
                 this.addChatMessage('System', `${message.oldUsername} changed their name to ${message.newUsername}`, true);
                 break;
@@ -1262,16 +1299,38 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 await this.handleE2EEToggle(message.enabled);
                 break;
 
+            // The screen share rides the same relay as the camera mesh; `channel`
+            // inside the payload is what separates the two.
             case 'offer':
-                await this.handleOffer(message.senderId, message.data);
+                if (message.data?.channel === 'screen') {
+                    await this.handleScreenOffer(message.senderId, message.data);
+                } else {
+                    await this.handleOffer(message.senderId, message.data);
+                }
                 break;
 
             case 'answer':
-                await this.handleAnswer(message.senderId, message.data);
+                if (message.data?.channel === 'screen') {
+                    await this.handleScreenAnswer(message.senderId, message.data);
+                } else {
+                    await this.handleAnswer(message.senderId, message.data);
+                }
                 break;
 
             case 'ice-candidate':
-                await this.handleIceCandidate(message.senderId, message.data);
+                if (message.data?.channel === 'screen') {
+                    await this.handleScreenIceCandidate(message.senderId, message.data, message.data.origin);
+                } else {
+                    await this.handleIceCandidate(message.senderId, message.data);
+                }
+                break;
+
+            case 'screen-share-state':
+                this.handleScreenShareState(message.presenterId, message.username);
+                break;
+
+            case 'screen-share-denied':
+                this.handleScreenShareDenied(message.presenterId, message.username);
                 break;
 
             case 'chat-message': {
@@ -1342,7 +1401,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         if (!mutedIndicator) {
                             mutedIndicator = document.createElement('div');
                             mutedIndicator.className = 'muted-indicator';
-                            mutedIndicator.textContent = '🔇';
+                            setIcon(mutedIndicator, 'mic-off');
                             audioContainer.appendChild(mutedIndicator);
                         }
                     } else {
@@ -1968,18 +2027,18 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Sync button states
             const audioBtn = document.getElementById('prejoinToggleAudioBtn');
             audioBtn.classList.remove('active');
-            audioBtn.querySelector('.icon').textContent = '🎤';
+            setIcon(audioBtn.querySelector('.icon'), 'mic');
             audioBtn.querySelector('.btn-status').textContent = 'ON';
 
             const videoBtn = document.getElementById('prejoinToggleVideoBtn');
             videoBtn.classList.add('active');
-            videoBtn.querySelector('.icon').textContent = '📷';
+            setIcon(videoBtn.querySelector('.icon'), 'camera-off');
             videoBtn.querySelector('.btn-status').textContent = 'OFF';
 
             const lwBtn = document.getElementById('prejoinLowBandwidthBtn');
             if (lwBtn) {
                 lwBtn.classList.toggle('active', this.lowBandwidthMode);
-                lwBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+                setIcon(lwBtn.querySelector('.icon'), this.lowBandwidthMode ? 'signal-low' : 'signal');
                 lwBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
             }
 
@@ -2012,7 +2071,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             const btn = document.getElementById('prejoinToggleAudioBtn');
             btn.classList.toggle('active', !this.prejoinAudioEnabled);
-            btn.querySelector('.icon').textContent = this.prejoinAudioEnabled ? '🎤' : '🔇';
+            setIcon(btn.querySelector('.icon'), this.prejoinAudioEnabled ? 'mic' : 'mic-off');
             btn.querySelector('.btn-status').textContent = this.prejoinAudioEnabled ? 'ON' : 'OFF';
         }
     }
@@ -2026,7 +2085,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             const btn = document.getElementById('prejoinToggleVideoBtn');
             btn.classList.toggle('active', !this.prejoinVideoEnabled);
-            btn.querySelector('.icon').textContent = this.prejoinVideoEnabled ? '📹' : '📷';
+            setIcon(btn.querySelector('.icon'), this.prejoinVideoEnabled ? 'camera' : 'camera-off');
             btn.querySelector('.btn-status').textContent = this.prejoinVideoEnabled ? 'ON' : 'OFF';
         }
     }
@@ -2046,7 +2105,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const prejoinBtn = document.getElementById('prejoinLowBandwidthBtn');
         if (prejoinBtn) {
             prejoinBtn.classList.toggle('active', this.lowBandwidthMode);
-            prejoinBtn.querySelector('.icon').textContent = this.lowBandwidthMode ? '📶' : '📡';
+            setIcon(prejoinBtn.querySelector('.icon'), this.lowBandwidthMode ? 'signal-low' : 'signal');
             prejoinBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
         }
 
@@ -2233,16 +2292,16 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Update main control buttons to match prejoin state
             const audioBtn = document.getElementById('toggleAudioBtn');
             audioBtn.classList.toggle('active', !this.audioEnabled);
-            audioBtn.querySelector('.icon').textContent = this.audioEnabled ? '🎤' : '🔇';
+            setIcon(audioBtn.querySelector('.icon'), this.audioEnabled ? 'mic' : 'mic-off');
 
             const videoBtn = document.getElementById('toggleVideoBtn');
             videoBtn.classList.toggle('active', !this.videoEnabled);
-            videoBtn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
+            setIcon(videoBtn.querySelector('.icon'), this.videoEnabled ? 'camera' : 'camera-off');
 
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
-            // Auto-enable AI noise suppression on all devices
+            // Auto-enable noise suppression on all devices
             try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
 
             // Generate E2EE key pair before joining room
@@ -2286,31 +2345,17 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
 
         // Add local stream tracks with optimized RTP parameters.
-        // Pick the tracks deliberately rather than iterating a single stream:
-        // during a screen share the video is the screen track and the audio is
-        // the mic+screen stereo mix (or the mic alone if the share has no system
-        // audio). screenStream itself contains no mic track, so a peer joining
-        // mid-share must be wired from these sources explicitly — otherwise the
-        // late joiner gets screenStream's (often absent) audio and can't hear
-        // the streamer at all.
-        const activeStream = this.isScreenSharing && this.screenStream ? this.screenStream : this.localStream;
+        // The main connection always carries camera + mic, screen share or not —
+        // a share rides its own peer connection (see createScreenPeerConnection),
+        // so nothing here has to know about it.
+        const activeStream = this.localStream;
 
         const videoTrack = activeStream.getVideoTracks()[0];
 
-        let audioTrack;
-        if (this.isScreenSharing) {
-            // Mirror exactly what existing peers receive (see startStereoScreenAudioMix):
-            // the stereo mix when the share has system audio, otherwise the
-            // processed/raw mic track so the streamer's voice still gets through.
-            audioTrack = this.stereoMixTrack
-                || this.micDestination?.stream.getAudioTracks()[0]
-                || this.localStream.getAudioTracks()[0];
-        } else if (this.micDestination) {
-            // Use processed audio track if noise suppression is enabled
-            audioTrack = this.micDestination.stream.getAudioTracks()[0] || this.localStream.getAudioTracks()[0];
-        } else {
-            audioTrack = this.localStream.getAudioTracks()[0];
-        }
+        const audioTrack = this.micDestination
+            // Processed audio track when noise suppression is enabled
+            ? (this.micDestination.stream.getAudioTracks()[0] || this.localStream.getAudioTracks()[0])
+            : this.localStream.getAudioTracks()[0];
 
         const tracksToAdd = [];
         if (audioTrack) tracksToAdd.push(audioTrack);
@@ -2341,19 +2386,18 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             }
 
-            // Video bitrate: give a mid-share late joiner the same screen-share
-            // encoding existing peers got; otherwise the normal mesh cap.
+            // Camera bitrate: the normal mesh cap, or the reduced share cap if we
+            // are presenting (the screen PC needs the headroom more than the webcam).
             if (track.kind === 'video' && sender.getParameters) {
-                if (this.isScreenSharing) {
-                    this.applyScreenShareEncoding(sender);
-                } else {
-                    const parameters = sender.getParameters();
-                    if (parameters.encodings && parameters.encodings.length > 0) {
-                        parameters.encodings[0].maxBitrate = this.lowBandwidthMode ? 200000 : 1500000;
-                        sender.setParameters(parameters).catch(err => {
-                            console.warn('Could not set video encoding parameters:', err);
-                        });
-                    }
+                const parameters = sender.getParameters();
+                if (parameters.encodings && parameters.encodings.length > 0) {
+                    parameters.encodings[0].maxBitrate = this.isScreenSharing
+                        ? this.cameraBitrateDuringShare()
+                        : (this.lowBandwidthMode ? 200000 : 1500000);
+                    if (this.isScreenSharing) parameters.encodings[0].scaleResolutionDownBy = 2;
+                    sender.setParameters(parameters).catch(err => {
+                        console.warn('Could not set video encoding parameters:', err);
+                    });
                 }
             }
         });
@@ -2515,6 +2559,16 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             } catch (error) {
                 console.error('Error creating offer:', error);
             }
+        }
+
+        // If we are presenting, open the screen channel to this peer too. Covers
+        // both callers — room-joined and handleOffer — so a late joiner sees the
+        // share without any extra signaling. Not awaited: the screen handshake
+        // must not delay the camera connection.
+        if (this.isScreenSharing && this.screenStream) {
+            this.createScreenPeerConnection(peerId, peerUsername).catch(err => {
+                console.warn('Could not open screen channel to', peerId, err);
+            });
         }
     }
 
@@ -2781,7 +2835,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                         // Update the mute button state
                         const muteBtn = container.querySelector('.remote-audio-controls button');
                         if (muteBtn) {
-                            muteBtn.textContent = '🔊';
+                            setIcon(muteBtn, 'volume');
                             muteBtn.classList.remove('muted');
                         }
                     })
@@ -2813,7 +2867,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         });
         this.sendMessage({
             type: 'video-state',
-            videoEnabled: this.videoEnabled || this.isScreenSharing
+            videoEnabled: this.videoEnabled
         });
 
         this.updateRoomInfo(this.peerConnections.size + 1);
@@ -2828,13 +2882,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         // Mute button
         const muteBtn = document.createElement('button');
-        muteBtn.textContent = '🔊';
+        setIcon(muteBtn, 'volume');
         muteBtn.title = 'Mute/Unmute';
         muteBtn.onclick = () => this.toggleRemoteMute(peerId, muteBtn);
 
         // Hide video button
         const hideVideoBtn = document.createElement('button');
-        hideVideoBtn.textContent = '📹';
+        setIcon(hideVideoBtn, 'eye');
         hideVideoBtn.title = 'Hide/Show Video';
         hideVideoBtn.onclick = () => this.toggleRemoteVideo(peerId, hideVideoBtn);
 
@@ -2877,7 +2931,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Owner: transfer ownership button (only on non-mod users)
             if (this.isOwner && !targetIsCoMod) {
                 const promoteBtn = document.createElement('button');
-                promoteBtn.textContent = '👑';
+                setIcon(promoteBtn, 'crown');
                 promoteBtn.title = 'Transfer ownership';
                 promoteBtn.dataset.modControl = 'promote';
                 promoteBtn.onclick = () => this.promoteToModerator(peerId);
@@ -2888,14 +2942,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (this.isOwner) {
                 if (targetIsCoMod) {
                     const demoteBtn = document.createElement('button');
-                    demoteBtn.textContent = '🛡️';
+                    setIcon(demoteBtn, 'shield');
                     demoteBtn.title = 'Remove co-moderator';
                     demoteBtn.dataset.modControl = 'demote-comod';
                     demoteBtn.onclick = () => this.removeCoMod(peerId);
                     audioControls.appendChild(demoteBtn);
                 } else {
                     const coModBtn = document.createElement('button');
-                    coModBtn.textContent = '🛡️';
+                    setIcon(coModBtn, 'shield');
                     coModBtn.title = 'Add as co-moderator';
                     coModBtn.dataset.modControl = 'add-comod';
                     coModBtn.onclick = () => this.addCoMod(peerId);
@@ -2904,19 +2958,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             }
 
             const renameBtn = document.createElement('button');
-            renameBtn.textContent = '✏️';
+            setIcon(renameBtn, 'pencil');
             renameBtn.title = 'Change user name';
             renameBtn.dataset.modControl = 'rename';
             renameBtn.onclick = () => this.moderatorChangeName(peerId);
 
             const kickBtn = document.createElement('button');
-            kickBtn.textContent = '👢';
+            setIcon(kickBtn, 'user-minus');
             kickBtn.title = 'Kick user';
             kickBtn.dataset.modControl = 'kick';
             kickBtn.onclick = () => this.kickUser(peerId);
 
             const muteBtn = document.createElement('button');
-            muteBtn.textContent = '🔇';
+            setIcon(muteBtn, 'mic-off');
             muteBtn.title = 'Mute user';
             muteBtn.dataset.modControl = 'mute';
             muteBtn.onclick = () => this.muteUser(peerId);
@@ -2928,7 +2982,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Ban button: owner only
             if (this.isOwner) {
                 const banBtn = document.createElement('button');
-                banBtn.textContent = '🚫';
+                setIcon(banBtn, 'ban');
                 banBtn.title = 'Ban user';
                 banBtn.dataset.modControl = 'ban';
                 banBtn.onclick = () => this.banUser(peerId);
@@ -2942,10 +2996,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (!btn) return;
         btn.style.display = this.isOwner ? '' : 'none';
         if (this.roomLocked) {
-            btn.textContent = '🔒 Locked';
+            btn.innerHTML = `<span class="ic-wrap">${iconSvg('lock')}</span> Locked`;
             btn.classList.add('active');
         } else {
-            btn.textContent = '🔓 Lock Room';
+            btn.innerHTML = `<span class="ic-wrap">${iconSvg('unlock')}</span> Lock Room`;
             btn.classList.remove('active');
         }
     }
@@ -3043,13 +3097,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (role === 'owner') {
             const span = document.createElement('span');
             span.className = 'mod-crown';
-            span.textContent = '👑';
+            setIcon(span, 'crown');
             label.appendChild(span);
             label.appendChild(document.createTextNode(' ' + username));
         } else if (role === 'co-mod') {
             const span = document.createElement('span');
             span.className = 'mod-badge';
-            span.textContent = '🛡️';
+            setIcon(span, 'shield');
             label.appendChild(span);
             label.appendChild(document.createTextNode(' ' + username));
         } else {
@@ -3083,10 +3137,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         controls.videoElement.muted = controls.isMuted;
 
         if (controls.isMuted) {
-            button.textContent = '🔇';
+            setIcon(button, 'volume-off');
             button.classList.add('muted');
         } else {
-            button.textContent = '🔊';
+            setIcon(button, 'volume');
             button.classList.remove('muted');
         }
     }
@@ -3164,7 +3218,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         const overlay = document.createElement('div');
         overlay.className = 'play-overlay';
-        overlay.innerHTML = '▶️ Tap to play';
+        overlay.innerHTML = `<span class="ic-wrap">${iconSvg('play')}</span> Tap to play`;
         overlay.style.cssText = `
             position: absolute;
             top: 50%;
@@ -3200,7 +3254,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         const overlay = document.createElement('div');
         overlay.className = 'unmute-overlay';
-        overlay.innerHTML = '🔇 Tap to unmute';
+        overlay.innerHTML = `<span class="ic-wrap">${iconSvg('volume-off')}</span> Tap to unmute`;
         overlay.style.cssText = `
             position: absolute;
             top: 50%;
@@ -3226,7 +3280,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Update the mute button state in remote audio controls
             const controls = container.querySelector('.remote-audio-controls button');
             if (controls) {
-                controls.textContent = '🔊';
+                setIcon(controls, 'volume');
                 controls.classList.remove('muted');
             }
         };
@@ -3241,6 +3295,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             peer.connection.close();
             this.peerConnections.delete(peerId);
         }
+
+        // Tear down both directions of the screen channel with this peer
+        this.removeScreenPeerConnection(peerId);
+        this.removeScreenReceiver(peerId);
 
         // Clean up audio controls
         this.remoteAudioControls.delete(peerId);
@@ -3375,8 +3433,61 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
+    // While presenting, the camera gives up most of its budget to the screen —
+    // both streams share one uplink and the screen is what people are looking at.
+    cameraBitrateDuringShare() {
+        return this.lowBandwidthMode ? 120000 : 400000;
+    }
+
+    // The screen cap scales down as the mesh grows: every peer costs another full
+    // copy of the stream, all of it relayed through TURN.
+    screenBitrateForMesh() {
+        if (this.lowBandwidthMode) return 800000;
+        return this.peerConnections.size > 4 ? 2500000 : 4000000;
+    }
+
+    throttleCameraForShare() {
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (!sender || !sender.getParameters) return;
+            try {
+                const params = sender.getParameters();
+                if (!params.encodings || params.encodings.length === 0) return;
+                params.degradationPreference = 'balanced';
+                params.encodings[0].maxBitrate = this.cameraBitrateDuringShare();
+                params.encodings[0].scaleResolutionDownBy = 2;
+                sender.setParameters(params).catch(err => {
+                    console.warn('Could not throttle camera for share:', err);
+                });
+            } catch (err) {
+                console.warn('Error throttling camera for share:', err);
+            }
+        });
+    }
+
+    unthrottleCameraAfterShare() {
+        this.peerConnections.forEach(peer => {
+            const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (!sender || !sender.getParameters) return;
+            try {
+                const params = sender.getParameters();
+                if (!params.encodings || params.encodings.length === 0) return;
+                delete params.encodings[0].scaleResolutionDownBy;
+                sender.setParameters(params).catch(() => {});
+            } catch (err) {
+                console.warn('Error restoring camera resolution:', err);
+            }
+            this.restoreCameraEncoding(sender);
+        });
+    }
+
     async toggleScreenShare() {
         if (!this.isScreenSharing) {
+            if (this.currentPresenterId && this.currentPresenterId !== this.clientId) {
+                const name = this.knownUsernames.get(this.currentPresenterId) || 'Someone else';
+                this.addChatMessage('System', `${name} is already sharing their screen.`, true);
+                return;
+            }
             try {
                 // Request screen sharing with system audio
                 const screenQuality = this.getVideoConstraints();
@@ -3398,29 +3509,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     }
                 });
 
-                // Replace video track in all peer connections
                 const screenVideoTrack = this.screenStream.getVideoTracks()[0];
                 // Screen content is high-detail / low-motion: hint the encoder so it
-                // keeps resolution sharp instead of collapsing frame rate, then give it
-                // real bitrate headroom (the camera path is capped at 1.5 Mbps, which
-                // starves screen content and is the main cause of choppy/low-FPS shares).
+                // keeps resolution sharp instead of collapsing frame rate.
                 screenVideoTrack.contentHint = 'detail';
-                this.peerConnections.forEach(peer => {
-                    const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        sender.replaceTrack(screenVideoTrack);
-                        this.applyScreenShareEncoding(sender);
-                    }
-                });
-
-                // Mix mic + stereo screen audio and push to peers.
-                // AI noise suppression stays active: the mix taps the processed
-                // mic chain output, so the gate keeps working on the mic while
-                // screen audio passes through untouched.
-                this.startStereoScreenAudioMix(this.screenStream);
-
-                // Update local video to show screen
-                this.localVideo.srcObject = this.screenStream;
 
                 // Handle stream end (user clicks "Stop sharing" in browser UI)
                 screenVideoTrack.onended = () => {
@@ -3430,142 +3522,431 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('active');
 
-                // Hide avatar when screen sharing (screen is visible content)
-                document.getElementById('localContainer').classList.remove('no-video');
+                // Claim the presenter slot. We start optimistically and roll back only
+                // if the server denies — against a server without the presenter lock
+                // this message is simply ignored and sharing still works.
+                this.sendMessage({ type: 'screen-share-start' });
 
-                // Tell remote peers to hide our avatar
-                this.sendMessage({ type: 'video-state', videoEnabled: true });
+                this.startScreenBroadcast();
+                this.throttleCameraForShare();
 
                 console.log('Screen sharing started');
 
             } catch (error) {
                 console.error('Error sharing screen:', error);
-                alert('Could not start screen sharing. Please try again.');
+                if (error && error.name !== 'NotAllowedError') {
+                    alert('Could not start screen sharing. Please try again.');
+                }
             }
         } else {
-            // Stop screen sharing
+            this.stopScreenBroadcast();
+            this.unthrottleCameraAfterShare();
+
             if (this.screenStream) {
                 this.screenStream.getTracks().forEach(track => track.stop());
+                this.screenStream = null;
             }
 
-            // Restore camera video track
-            const cameraVideoTrack = this.localStream.getVideoTracks()[0];
-            if (cameraVideoTrack) cameraVideoTrack.contentHint = 'motion';
-            this.peerConnections.forEach(peer => {
-                const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(cameraVideoTrack);
-                    this.restoreCameraEncoding(sender);
-                }
-            });
-
-            // Tear down stereo screen audio mix, restore mic track in senders
-            this.stopStereoScreenAudioMix();
-
-            this.localVideo.srcObject = this.localStream;
             this.isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('active');
-
-            // Restore correct avatar state after screen share ends
-            document.getElementById('localContainer').classList.toggle('no-video', !this.videoEnabled);
-
-            // Tell remote peers to restore correct avatar state
-            this.sendMessage({ type: 'video-state', videoEnabled: this.videoEnabled });
+            this.sendMessage({ type: 'screen-share-stop' });
 
             console.log('Screen sharing stopped');
         }
     }
 
-    startStereoScreenAudioMix(screenStream) {
-        const screenAudioTracks = screenStream.getAudioTracks();
-        if (screenAudioTracks.length === 0) {
-            console.log('No screen audio available');
+    // --- Screen share channel ---
+
+    // Open a send-only connection carrying the screen to one peer. We always
+    // offer here; the viewer only ever answers.
+    async createScreenPeerConnection(peerId, peerUsername) {
+        if (!this.screenStream) return;
+        this.removeScreenPeerConnection(peerId);
+
+        const pc = new RTCPeerConnection(this.iceServers);
+        const entry = { connection: pc, username: peerUsername, retryCount: 0 };
+        this.screenPeerConnections.set(peerId, entry);
+
+        const videoTrack = this.screenStream.getVideoTracks()[0];
+        const audioTrack = this.screenStream.getAudioTracks()[0];
+
+        if (videoTrack) {
+            const tr = pc.addTransceiver(videoTrack, {
+                direction: 'sendonly',
+                streams: [this.screenStream]
+            });
+            this.applyScreenShareEncoding(tr.sender);
+        }
+        if (audioTrack) {
+            pc.addTransceiver(audioTrack, {
+                direction: 'sendonly',
+                streams: [this.screenStream]
+            });
+        }
+
+        this.setPreferredCodecs(pc);
+
+        if (this.e2eeEnabled && this.e2eeWorker) {
+            pc.getSenders().forEach(sender => {
+                if (!sender.track) return;
+                try {
+                    sender.transform = new RTCRtpScriptTransform(
+                        this.e2eeWorker, { operation: 'encrypt', kind: sender.track.kind });
+                } catch (e) { console.warn('Could not set screen sender transform:', e); }
+            });
+        }
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                this.sendScreenIceCandidate(peerId, event.candidate, 'sharer');
+            }
+        };
+
+        // Deliberately minimal recovery. The main-mesh helpers (attemptIceRestart,
+        // reconnectWithFallback, turnFailedPeers) all read this.peerConnections and
+        // would corrupt camera state if called with a screen peer id.
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState !== 'failed') return;
+            const current = this.screenPeerConnections.get(peerId);
+            if (!current || current.connection !== pc) return;
+            if (current.retryCount >= 1) {
+                console.warn('Screen channel to', peerId, 'failed; giving up');
+                this.removeScreenPeerConnection(peerId);
+                return;
+            }
+            const retryCount = current.retryCount + 1;
+            console.warn('Screen channel to', peerId, 'failed; retrying once');
+            this.createScreenPeerConnection(peerId, peerUsername).then(() => {
+                const next = this.screenPeerConnections.get(peerId);
+                if (next) next.retryCount = retryCount;
+            }).catch(() => {});
+        };
+
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            this.sendMessage({
+                type: 'offer',
+                targetId: peerId,
+                data: { type: offer.type, sdp: offer.sdp, channel: 'screen', origin: 'sharer' }
+            });
+        } catch (error) {
+            console.error('Error creating screen offer for', peerId, error);
+        }
+    }
+
+    async handleScreenOffer(senderId, offer) {
+        // A re-offer means the sharer restarted the channel — drop the old one.
+        this.removeScreenReceiver(senderId, { keepTile: true });
+
+        const username = this.peerConnections.get(senderId)?.username
+            || this.knownUsernames.get(senderId)
+            || 'User';
+
+        const pc = new RTCPeerConnection(this.iceServers);
+        this.screenReceivers.set(senderId, { connection: pc, username });
+
+        let tileAdded = false;
+        pc.ontrack = (event) => {
+            const stream = (event.streams && event.streams.length > 0)
+                ? event.streams[0]
+                : new MediaStream([event.track]);
+
+            if (!tileAdded) {
+                tileAdded = true;
+                this.addScreenTile(senderId, username, stream);
+            } else {
+                const videoEl = document.querySelector(`#video-${senderId}-screen video`);
+                if (videoEl && videoEl.srcObject !== stream) videoEl.srcObject = stream;
+            }
+
+            if (this.e2eeEnabled && this.e2eeWorker) {
+                try {
+                    event.receiver.transform = new RTCRtpScriptTransform(
+                        this.e2eeWorker, { operation: 'decrypt', kind: event.track.kind });
+                } catch (e) { console.warn('Could not set screen receiver transform:', e); }
+            }
+        };
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                this.sendScreenIceCandidate(senderId, event.candidate, 'viewer');
+            }
+        };
+
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                const current = this.screenReceivers.get(senderId);
+                if (current && current.connection === pc) this.removeScreenReceiver(senderId);
+            }
+        };
+
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: offer.type, sdp: offer.sdp }));
+            await this.drainScreenIce(senderId, 'sharer', pc);
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            this.sendMessage({
+                type: 'answer',
+                targetId: senderId,
+                data: { type: answer.type, sdp: answer.sdp, channel: 'screen', origin: 'viewer' }
+            });
+        } catch (error) {
+            console.error('Error handling screen offer from', senderId, error);
+            this.removeScreenReceiver(senderId);
+        }
+    }
+
+    async handleScreenAnswer(senderId, answer) {
+        const entry = this.screenPeerConnections.get(senderId);
+        if (!entry) return;
+
+        const pc = entry.connection;
+        if (pc.signalingState !== 'have-local-offer') {
+            console.warn('Dropping stale screen answer from', senderId, '- signalingState:', pc.signalingState);
             return;
         }
 
         try {
-            this.stereoMixCtx = new AudioContext({ sampleRate: 48000 });
-            // Resume in case the context starts suspended (autoplay policy) — otherwise the mix is silent
-            if (this.stereoMixCtx.state === 'suspended') this.stereoMixCtx.resume().catch(() => {});
-            const destination = this.stereoMixCtx.createMediaStreamDestination();
-            destination.channelCount = 2;
-
-            // Screen audio (stereo)
-            this.stereoScreenGain = this.stereoMixCtx.createGain();
-            const screenSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
-            screenSource.connect(this.stereoScreenGain);
-            this.stereoScreenGain.connect(destination);
-
-            // Mic audio from the persistent mic chain, so AI noise suppression
-            // (when enabled) keeps processing the mic during screen share.
-            // Falls back to the raw track if the chain isn't up.
-            // Mono — browser auto-upmixes to both channels.
-            const micTrack = this.micDestination?.stream.getAudioTracks()[0]
-                || this.localStream?.getAudioTracks()[0];
-            if (micTrack) {
-                this.stereoMicGain = this.stereoMixCtx.createGain();
-                const micSource = this.stereoMixCtx.createMediaStreamSource(new MediaStream([micTrack]));
-                micSource.connect(this.stereoMicGain);
-                this.stereoMicGain.connect(destination);
-            }
-
-            // Push stereo track to all peer senders
-            this.stereoMixTrack = destination.stream.getAudioTracks()[0];
-            this.peerConnections.forEach(peer => {
-                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
-                if (sender) sender.replaceTrack(this.stereoMixTrack);
-            });
-
-            // Wire mixer UI
-            const mixer = document.getElementById('screenAudioMixer');
-            if (mixer) {
-                mixer.classList.remove('hidden');
-                const micSlider = document.getElementById('micGainSlider');
-                const screenSlider = document.getElementById('screenGainSlider');
-                const micVal = document.getElementById('micGainValue');
-                const screenVal = document.getElementById('screenGainValue');
-                micSlider.value = 100;
-                screenSlider.value = 100;
-                micVal.textContent = '100%';
-                screenVal.textContent = '100%';
-                micSlider.oninput = (e) => {
-                    if (this.stereoMicGain) this.stereoMicGain.gain.value = e.target.value / 100;
-                    micVal.textContent = e.target.value + '%';
-                };
-                screenSlider.oninput = (e) => {
-                    if (this.stereoScreenGain) this.stereoScreenGain.gain.value = e.target.value / 100;
-                    screenVal.textContent = e.target.value + '%';
-                };
-            }
-
-            console.log('Stereo screen audio mix started');
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: answer.type, sdp: answer.sdp }));
+            await this.drainScreenIce(senderId, 'viewer', pc);
         } catch (error) {
-            console.error('Error starting stereo screen audio mix:', error);
+            console.error('Error handling screen answer from', senderId, error);
         }
     }
 
-    stopStereoScreenAudioMix() {
-        if (!this.stereoMixCtx) return;
+    // `origin` is who sent the candidate, so it selects which of our two screen
+    // maps it belongs to. Without it, two people sharing at once would cross wires.
+    async handleScreenIceCandidate(senderId, candidate, origin) {
+        const entry = origin === 'sharer'
+            ? this.screenReceivers.get(senderId)
+            : this.screenPeerConnections.get(senderId);
 
-        // Restore mic track in all peer senders
-        const micTrack = this.micDestination?.stream.getAudioTracks()[0];
-        if (micTrack) {
-            this.peerConnections.forEach(peer => {
-                const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
-                if (sender) sender.replaceTrack(micTrack);
-            });
+        const pc = entry && entry.connection;
+
+        // ws.onmessage is async and the browser does not serialize invocations, so
+        // a candidate can land while the offer is still being processed.
+        if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
+            this.queueScreenIce(senderId, origin, candidate);
+            return;
         }
 
-        this.stereoMixCtx.close();
-        this.stereoMixCtx = null;
-        this.stereoMixTrack = null;
-        this.stereoScreenGain = null;
-        this.stereoMicGain = null;
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (error) {
+            console.error('Error adding screen ICE candidate for', senderId, error);
+        }
+    }
 
-        const mixer = document.getElementById('screenAudioMixer');
-        if (mixer) mixer.classList.add('hidden');
+    sendScreenIceCandidate(peerId, candidate, origin) {
+        // Strip raddr/rport from relay candidates — they leak the real public IP
+        // even in relay-only mode.
+        let payload = candidate.toJSON ? candidate.toJSON() : candidate;
+        if (payload.candidate && payload.candidate.includes('typ relay')) {
+            payload = {
+                ...payload,
+                candidate: payload.candidate.replace(/\s+raddr\s+\S+\s+rport\s+\d+/g, '')
+            };
+        }
+        this.sendMessage({
+            type: 'ice-candidate',
+            targetId: peerId,
+            data: { ...payload, channel: 'screen', origin }
+        });
+    }
 
-        console.log('Restored original mic audio');
+    queueScreenIce(peerId, origin, candidate) {
+        const key = `${peerId}:${origin}`;
+        if (!this.screenPendingIce.has(key)) this.screenPendingIce.set(key, []);
+        this.screenPendingIce.get(key).push(candidate);
+    }
+
+    async drainScreenIce(peerId, origin, pc) {
+        const key = `${peerId}:${origin}`;
+        const queued = this.screenPendingIce.get(key);
+        if (!queued) return;
+        for (const candidate of queued) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.error('Error adding queued screen ICE candidate:', err);
+            }
+        }
+        this.screenPendingIce.delete(key);
+    }
+
+    startScreenBroadcast() {
+        this.peerConnections.forEach((peer, peerId) => {
+            this.createScreenPeerConnection(peerId, peer.username).catch(err => {
+                console.warn('Could not open screen channel to', peerId, err);
+            });
+        });
+        this.addScreenTile('local', this.localLabelName || this.username, this.screenStream, true);
+    }
+
+    stopScreenBroadcast() {
+        this.screenPeerConnections.forEach(peer => peer.connection.close());
+        this.screenPeerConnections.clear();
+        for (const key of [...this.screenPendingIce.keys()]) {
+            if (key.endsWith(':viewer')) this.screenPendingIce.delete(key);
+        }
+        this.removeScreenTile('local');
+    }
+
+    // A screen gets a tile of its own, like a second participant. Deliberately
+    // leaner than addRemoteVideo: no avatar, no stats monitor, no speaking
+    // indicator — those are all keyed by bare peerId and would collide.
+    addScreenTile(ownerId, username, stream, isLocal = false) {
+        const id = `video-${ownerId}-screen`;
+        const existing = document.getElementById(id);
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.className = 'video-container screen-tile';
+        container.id = id;
+
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        // Start muted even for remote screens: Chrome blocks autoplay of a stream
+        // with audio, which would leave the tile frozen on a black frame. We
+        // unmute below once playback is actually running. Our own capture stays
+        // muted for good — playing it back would echo.
+        video.muted = true;
+        video.srcObject = stream;
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'video-label';
+        labelEl.textContent = `${username}'s screen`;
+
+        container.appendChild(video);
+        if (!isLocal) container.appendChild(this.createScreenAudioControls(ownerId, video));
+        container.appendChild(labelEl);
+
+        container.style.cursor = 'pointer';
+        container.addEventListener('click', (e) => {
+            if (e.target.closest('.remote-audio-controls')) return;
+            this.toggleSpotlight(id);
+        });
+
+        this.videoGrid.appendChild(container);
+        this.updateVideoGridLayout();
+
+        video.play().then(() => {
+            // Playback is live, so unmuting no longer trips the autoplay policy.
+            if (!isLocal) video.muted = false;
+        }).catch(() => {
+            if (isLocal) return;
+            // Autoplay refused outright — the user has to click once.
+            this.addPlayButtonOverlay(container, video, `${username}'s screen`);
+        });
+    }
+
+    // Desktop audio arrives on the screen connection, so it gets its own volume
+    // and mute — muting someone's screen no longer mutes their voice.
+    createScreenAudioControls(ownerId, videoEl) {
+        const key = `${ownerId}:screen`;
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'remote-audio-controls';
+
+        const muteBtn = document.createElement('button');
+        muteBtn.title = 'Mute/Unmute screen audio';
+        setIcon(muteBtn, 'volume');
+        muteBtn.onclick = () => {
+            const controls = this.remoteAudioControls.get(key);
+            if (!controls) return;
+            controls.isMuted = !controls.isMuted;
+            videoEl.muted = controls.isMuted;
+            setIcon(muteBtn, controls.isMuted ? 'volume-off' : 'volume');
+            muteBtn.classList.toggle('muted', controls.isMuted);
+        };
+
+        const volumeSlider = document.createElement('input');
+        volumeSlider.type = 'range';
+        volumeSlider.min = '0';
+        volumeSlider.max = '100';
+        volumeSlider.value = '100';
+        volumeSlider.title = 'Screen volume';
+        volumeSlider.oninput = (e) => { videoEl.volume = e.target.value / 100; };
+
+        this.remoteAudioControls.set(key, { videoElement: videoEl, isMuted: false });
+
+        controlsDiv.appendChild(muteBtn);
+        controlsDiv.appendChild(volumeSlider);
+        return controlsDiv;
+    }
+
+    removeScreenTile(ownerId) {
+        const container = document.getElementById(`video-${ownerId}-screen`);
+        if (container) container.remove();
+        this.remoteAudioControls.delete(`${ownerId}:screen`);
+        this.updateVideoGridLayout();
+    }
+
+    removeScreenPeerConnection(peerId) {
+        const entry = this.screenPeerConnections.get(peerId);
+        if (entry) {
+            entry.connection.close();
+            this.screenPeerConnections.delete(peerId);
+        }
+        this.screenPendingIce.delete(`${peerId}:viewer`);
+    }
+
+    removeScreenReceiver(peerId, { keepTile = false } = {}) {
+        const entry = this.screenReceivers.get(peerId);
+        if (entry) {
+            entry.connection.close();
+            this.screenReceivers.delete(peerId);
+        }
+        this.screenPendingIce.delete(`${peerId}:sharer`);
+        if (!keepTile) this.removeScreenTile(peerId);
+    }
+
+    // Reopen screen channels to peers we lost track of — e.g. after a WS
+    // reconnect, where room-joined skips peers that are still connected.
+    reconcileScreenBroadcast() {
+        if (!this.isScreenSharing || !this.screenStream) return;
+        this.peerConnections.forEach((peer, peerId) => {
+            if (this.screenPeerConnections.has(peerId)) return;
+            this.createScreenPeerConnection(peerId, peer.username).catch(() => {});
+        });
+    }
+
+    handleScreenShareState(presenterId, username) {
+        this.currentPresenterId = presenterId || null;
+        if (username && presenterId) this.knownUsernames.set(presenterId, username);
+
+        // The presenter stopped — drop their tile immediately rather than waiting
+        // for the connection to time out.
+        if (!presenterId) {
+            this.screenReceivers.forEach((_, peerId) => this.removeScreenReceiver(peerId));
+        }
+
+        const btn = document.getElementById('shareScreenBtn');
+        if (btn) {
+            const lockedOut = !!presenterId && presenterId !== this.clientId;
+            btn.disabled = lockedOut;
+            btn.classList.toggle('locked', lockedOut);
+            btn.title = lockedOut ? `${username || 'Someone'} is sharing their screen` : 'Share Screen';
+        }
+    }
+
+    // The server refused our claim — another presenter got there first.
+    handleScreenShareDenied(presenterId, username) {
+        if (!this.isScreenSharing) return;
+        console.warn('Screen share denied; presenter is', username);
+        this.stopScreenBroadcast();
+        this.unthrottleCameraAfterShare();
+        if (this.screenStream) {
+            this.screenStream.getTracks().forEach(track => track.stop());
+            this.screenStream = null;
+        }
+        this.isScreenSharing = false;
+        document.getElementById('shareScreenBtn').classList.remove('active');
+        this.handleScreenShareState(presenterId, username);
+        this.addChatMessage('System', `${username || 'Someone else'} is already sharing their screen.`, true);
     }
 
     toggleAudio() {
@@ -3577,7 +3958,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             const btn = document.getElementById('toggleAudioBtn');
             btn.classList.toggle('active', !this.audioEnabled);
-            btn.querySelector('.icon').textContent = this.audioEnabled ? '🎤' : '🔇';
+            setIcon(btn.querySelector('.icon'), this.audioEnabled ? 'mic' : 'mic-off');
 
             // Notify other users of audio state change
             this.sendMessage({
@@ -3598,7 +3979,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         const btn = document.getElementById('toggleVideoBtn');
         btn.classList.toggle('active', !this.videoEnabled);
-        btn.querySelector('.icon').textContent = this.videoEnabled ? '📹' : '📷';
+        setIcon(btn.querySelector('.icon'), this.videoEnabled ? 'camera' : 'camera-off');
 
         document.getElementById('localContainer').classList.toggle('no-video', !this.videoEnabled);
 
@@ -3679,7 +4060,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.micConstantlyActiveCount = 0;
                 this.hideMicActiveWarning();
 
-                console.log('AI Noise Suppression enabled');
+                console.log('Noise suppression enabled');
 
             } catch (error) {
                 console.error('Error enabling noise suppression:', error);
@@ -3704,7 +4085,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 noiseGateSettings.classList.add('hidden');
                 this.hideMicActiveWarning();
 
-                console.log('AI Noise Suppression disabled');
+                console.log('Noise suppression disabled');
 
             } catch (error) {
                 console.error('Error disabling noise suppression:', error);
@@ -4071,7 +4452,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (this.clearedMessages.length > 0) {
                 const btn = document.createElement('button');
                 btn.className = 'load-more-btn';
-                btn.textContent = '↑ Load older messages';
+                btn.innerHTML = `<span class="ic-wrap">${iconSvg('arrow-up')}</span> Load older messages`;
                 btn.addEventListener('click', () => {
                     btn.remove();
                     this.clearedMessages.forEach(el => this.chatMessages.insertBefore(el, this.chatMessages.firstChild));
@@ -4151,7 +4532,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (isEncrypted) {
             const badge = document.createElement('span');
             badge.className = 'e2ee-lock-badge';
-            badge.textContent = '🔒';
+            setIcon(badge, 'key');
             badge.title = 'End-to-end encrypted';
             timestamp.appendChild(badge);
         }
@@ -4276,30 +4657,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         });
     }
 
-    addScreenShareTile(id, label, stream) {
-        const existing = document.getElementById(id);
-        if (existing) existing.remove();
-
-        const container = document.createElement('div');
-        container.className = 'video-container';
-        container.id = id;
-
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.playsinline = true;
-        video.muted = true;
-        video.srcObject = stream;
-
-        const labelEl = document.createElement('div');
-        labelEl.className = 'video-label';
-        labelEl.textContent = label;
-
-        container.appendChild(video);
-        container.appendChild(labelEl);
-        this.videoGrid.appendChild(container);
-        this.updateVideoGridLayout();
-    }
-
     changeName() {
         const newName = prompt('Enter your new name:', this.username);
         if (newName && newName.trim() && newName !== this.username) {
@@ -4337,6 +4694,16 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (videoElement) videoElement.remove();
         });
         this.peerConnections.clear();
+
+        // Close both directions of the screen channel and drop every screen tile
+        this.screenPeerConnections.forEach(peer => peer.connection.close());
+        this.screenPeerConnections.clear();
+        this.screenReceivers.forEach(peer => peer.connection.close());
+        this.screenReceivers.clear();
+        this.screenPendingIce.clear();
+        this.currentPresenterId = null;
+        document.querySelectorAll('.screen-tile').forEach(el => el.remove());
+
         this.pendingUsernames.clear();
         this.pendingIceCandidates.clear();
         this.remoteAudioControls.clear();
@@ -4409,7 +4776,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.wsReconnecting = false;
 
         // Reset button states
-        document.getElementById('shareScreenBtn').classList.remove('active');
+        const shareBtn = document.getElementById('shareScreenBtn');
+        shareBtn.classList.remove('active', 'locked');
+        shareBtn.disabled = false;
+        shareBtn.title = 'Share Screen';
         document.getElementById('toggleAudioBtn').classList.remove('active');
         document.getElementById('toggleVideoBtn').classList.remove('active');
 

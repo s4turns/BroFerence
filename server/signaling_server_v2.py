@@ -300,6 +300,11 @@ async def unregister_client(websocket: WebSocketServerProtocol):
             if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                 await irc_bridge.send_message(room, "System", f"{username} left the room")
 
+            # Free the screen-share slot if the disconnecting user held it,
+            # otherwise a crashed presenter wedges the room permanently
+            if rooms[room].get('presenter') == client_id:
+                await release_presenter(room)
+
             # Transfer mod role if the disconnecting user was the moderator
             await transfer_mod_if_needed(room, client_id)
 
@@ -325,7 +330,8 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
             'moderator': moderator_id,  # Primary owner (first creator or successor)
             'co_mods': set(),   # Additional co-moderators promoted by the owner
             'banned': set(),
-            'e2ee_enabled': False
+            'e2ee_enabled': False,
+            'presenter': None   # Client id currently sharing their screen (one at a time)
         }
 
         # Initialize IRC bridge if channel specified and not already connected
@@ -496,7 +502,10 @@ async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: 
         'isOwner': is_owner,
         'moderatorId': rooms[room_id]['moderator'],
         'coModIds': co_mod_ids,
-        'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False)
+        'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False),
+        'presenterId': rooms[room_id].get('presenter'),
+        'presenterUsername': get_username_by_id(room_id, rooms[room_id]['presenter'])
+                             if rooms[room_id].get('presenter') else None
     }))
 
     # Notify others in room
@@ -579,6 +588,10 @@ async def leave_room(websocket: WebSocketServerProtocol):
             'username': client_info['username']
         }, exclude=websocket)
 
+        # Free the screen-share slot if the leaver held it
+        if rooms[room].get('presenter') == client_info['id']:
+            await release_presenter(room)
+
         # Transfer mod role if the leaver was the moderator
         await transfer_mod_if_needed(room, client_info['id'])
 
@@ -587,6 +600,29 @@ async def leave_room(websocket: WebSocketServerProtocol):
             if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
                 await irc_bridge.leave_channel(room)
             del rooms[room]
+
+
+def get_username_by_id(room_id: str, client_id: str) -> str:
+    """Look up a client's display name within a room."""
+    if room_id not in rooms:
+        return 'User'
+    for websocket in rooms[room_id]['users']:
+        info = clients.get(websocket)
+        if info and info['id'] == client_id:
+            return info['username']
+    return 'User'
+
+
+async def release_presenter(room_id: str):
+    """Free the screen-share slot and tell the room it is available."""
+    if room_id not in rooms or not rooms[room_id].get('presenter'):
+        return
+    rooms[room_id]['presenter'] = None
+    await broadcast_to_room(room_id, {
+        'type': 'screen-share-state',
+        'presenterId': None,
+        'username': None
+    })
 
 
 async def broadcast_to_room(room_id: str, message: dict, exclude: WebSocketServerProtocol = None):
@@ -737,6 +773,37 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
                     'clientId': client_id,
                     'videoEnabled': video_enabled
                 }, exclude=websocket)
+
+        elif msg_type == 'screen-share-start':
+            # Claim the presenter slot. Only one screen share per room at a time.
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+            username = client_info['username']
+
+            if room and room in rooms:
+                current = rooms[room].get('presenter')
+                if current and current != client_id:
+                    await websocket.send(json.dumps({
+                        'type': 'screen-share-denied',
+                        'presenterId': current,
+                        'username': get_username_by_id(room, current)
+                    }))
+                else:
+                    rooms[room]['presenter'] = client_id
+                    await broadcast_to_room(room, {
+                        'type': 'screen-share-state',
+                        'presenterId': client_id,
+                        'username': username
+                    })
+
+        elif msg_type == 'screen-share-stop':
+            client_info = clients[websocket]
+            room = client_info['room']
+            client_id = client_info['id']
+
+            if room and room in rooms and rooms[room].get('presenter') == client_id:
+                await release_presenter(room)
 
         elif msg_type == 'audio-state':
             # User toggled their audio - broadcast to room

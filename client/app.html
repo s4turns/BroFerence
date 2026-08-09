@@ -6,7 +6,7 @@
     <title>BroFerence - Video Conferencing</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="shortcut icon" href="/favicon.ico">
-    <link rel="stylesheet" href="styles.css?v=c8f56f0">
+    <link rel="stylesheet" href="styles.css?v=scrn1">
 </head>
 <body>
     <div class="container">
@@ -15,13 +15,13 @@
             <h1>BroFerence</h1>
             <div class="room-info" id="roomInfo" style="display:none;">
                 <button id="chatToggleBtn" class="btn btn-secondary" style="position: relative;">
-                    💬 Chat
+                    <span class="ic-wrap" data-icon="message"></span> Chat
                     <span id="chatNotificationBadge" class="notification-badge" style="display: none;"></span>
                 </button>
             </div>
             <div class="bottom-controls" id="bottomControls" style="display:none;">
                 <button id="lockRoomBtn" class="btn btn-secondary" title="Lock / unlock room" style="display:none;">
-                    🔒 Lock Room
+                    <span class="ic-wrap" data-icon="unlock"></span> Lock Room
                 </button>
                 <button id="optionsBtn" class="btn btn-secondary">
                     <svg class="waffle-icon" viewBox="0 0 18 18" fill="currentColor" width="14" height="14">
@@ -38,35 +38,35 @@
             <div id="optionsMenu" class="options-menu hidden">
                 <div class="options-header">
                     <h3>Options</h3>
-                    <button id="closeOptionsBtn" class="close-btn">✕</button>
+                    <button id="closeOptionsBtn" class="close-btn"><span class="ic-wrap" data-icon="x"></span></button>
                 </div>
                 <div class="options-list">
                     <button id="changeNameBtn" class="options-item">
-                        ✏️ Change Name
+                        <span class="ic-wrap" data-icon="pencil"></span> Change Name
                     </button>
                     <div class="options-item theme-selector">
-                        <label>📧 Gravatar:</label>
+                        <label><span class="ic-wrap" data-icon="mail"></span> Gravatar:</label>
                         <input type="email" id="gravatarEmailInput" class="options-email-input" placeholder="your@email.com">
                     </div>
                     <button id="noiseSuppressionBtn" class="options-item options-toggle" data-enabled="false">
-                        <span class="toggle-label">🎙️ AI Noise Suppression</span>
+                        <span class="toggle-label"><span class="ic-wrap" data-icon="waveform"></span> Noise Suppression</span>
                         <span class="toggle-status">OFF</span>
                     </button>
                     <button id="lowBandwidthBtn" class="options-item options-toggle" data-enabled="false">
-                        <span class="toggle-label">📶 Low Bandwidth Mode</span>
+                        <span class="toggle-label"><span class="ic-wrap" data-icon="signal"></span> Low Bandwidth Mode</span>
                         <span class="toggle-status">OFF</span>
                     </button>
                     <button id="e2eeToggleBtn" class="options-item options-toggle" data-enabled="false" style="display:none;">
-                        <span class="toggle-label">🔒 End-to-End Encryption</span>
+                        <span class="toggle-label"><span class="ic-wrap" data-icon="key"></span> End-to-End Encryption</span>
                         <span class="toggle-status">OFF</span>
                     </button>
                     <div id="noiseGateSettings" class="noise-gate-settings hidden">
                         <div class="noise-gate-header">
-                            <span>🎚️ Noise Gate Settings</span>
+                            <span><span class="ic-wrap" data-icon="sliders"></span> Noise Gate Settings</span>
                         </div>
                         <div class="noise-gate-content">
                             <div class="mic-device-container">
-                                <label>🎤 Device:</label>
+                                <label><span class="ic-wrap" data-icon="mic"></span> Device:</label>
                                 <select id="micDeviceSelect"></select>
                             </div>
                             <div class="mic-level-container">
@@ -83,19 +83,19 @@
                             </div>
                         </div>
                         <div id="noiseGateActiveWarning" class="mic-active-warning hidden">
-                            ⚠️ Your mic is constantly active! Adjust the threshold higher.
+                            <span class="ic-wrap" data-icon="alert-triangle"></span> Your mic is constantly active! Adjust the threshold higher.
                         </div>
                     </div>
                     <div class="options-item theme-selector">
-                        <label>📹 Camera:</label>
+                        <label><span class="ic-wrap" data-icon="camera"></span> Camera:</label>
                         <select id="cameraDeviceSelect"></select>
                     </div>
                     <div class="options-item theme-selector">
-                        <label>🎤 Microphone:</label>
+                        <label><span class="ic-wrap" data-icon="mic"></span> Microphone:</label>
                         <select id="micDeviceSelectOptions"></select>
                     </div>
                     <div class="options-item theme-selector">
-                        <label>📹 Video Quality:</label>
+                        <label><span class="ic-wrap" data-icon="monitor"></span> Video Quality:</label>
                         <select id="videoQualitySelect">
                             <option value="480">480p</option>
                             <option value="720" selected>720p</option>
@@ -103,7 +103,7 @@
                         </select>
                     </div>
                     <div class="options-item theme-selector">
-                        <label>🎨 Theme:</label>
+                        <label><span class="ic-wrap" data-icon="palette"></span> Theme:</label>
                         <select id="themeSelect">
                             <option value="matrix">Matrix (Green)</option>
                             <option value="cyberpunk">Cyberpunk (Purple)</option>
@@ -115,16 +115,16 @@
                         </select>
                     </div>
                     <button id="inviteLinkBtn" class="options-item">
-                        📋 Copy Invite Link
+                        <span class="ic-wrap" data-icon="clipboard"></span> Copy Invite Link
                     </button>
                     <button id="defconBtn" class="options-item">
-                        📵 DEFCON
+                        <span class="ic-wrap" data-icon="tv-off"></span> DEFCON
                     </button>
                     <a href="https://github.com/s4turns/BroFerence/issues" target="_blank" rel="noopener noreferrer" class="options-item options-item-link">
-                        🐛 Report a Bug
+                        <span class="ic-wrap" data-icon="bug"></span> Report a Bug
                     </a>
                     <button id="leaveRoomBtn" class="options-item options-item-danger">
-                        🚪 Leave Room
+                        <span class="ic-wrap" data-icon="log-out"></span> Leave Room
                     </button>
                 </div>
             </div>
@@ -144,35 +144,35 @@
 
                     <div class="landing-features">
                         <div class="landing-feature">
-                            <span class="lf-icon">🔒</span>
+                            <span class="lf-icon" data-icon="key"></span>
                             <div>
                                 <strong>End-to-End Encrypted</strong>
                                 <span>All audio and video is encrypted between participants — the server never sees your media.</span>
                             </div>
                         </div>
                         <div class="landing-feature">
-                            <span class="lf-icon">📡</span>
+                            <span class="lf-icon" data-icon="signal"></span>
                             <div>
                                 <strong>Works Through Any NAT</strong>
                                 <span>Dual TURN relay servers ensure you connect even on strict corporate or mobile networks.</span>
                             </div>
                         </div>
                         <div class="landing-feature">
-                            <span class="lf-icon">🖥️</span>
+                            <span class="lf-icon" data-icon="screen-share"></span>
                             <div>
                                 <strong>Screen Sharing</strong>
-                                <span>Share your screen or a specific window with full audio mixing support.</span>
+                                <span>Share your screen or a window in its own tile, with desktop audio, while your camera keeps running.</span>
                             </div>
                         </div>
                         <div class="landing-feature">
-                            <span class="lf-icon">🎙️</span>
+                            <span class="lf-icon" data-icon="waveform"></span>
                             <div>
-                                <strong>AI Noise Suppression</strong>
-                                <span>Real-time AI filtering removes background noise and echo from your mic.</span>
+                                <strong>Noise Suppression</strong>
+                                <span>A noise gate with adaptive noise-floor tracking mutes background hiss and suppresses keyboard and mouse clicks.</span>
                             </div>
                         </div>
                         <div class="landing-feature">
-                            <span class="lf-icon">📶</span>
+                            <span class="lf-icon" data-icon="signal-low"></span>
                             <div>
                                 <strong>Low Bandwidth Mode</strong>
                                 <span>Automatically reduces quality on slow connections to keep calls stable.</span>
@@ -224,22 +224,22 @@
 
                 <div class="prejoin-controls">
                     <button id="prejoinToggleAudioBtn" class="btn btn-secondary">
-                        <span class="icon">🎤</span> Microphone <span class="btn-status">ON</span>
+                        <span class="icon" data-icon="mic"></span> Microphone <span class="btn-status">ON</span>
                     </button>
                     <button id="prejoinToggleVideoBtn" class="btn btn-secondary">
-                        <span class="icon">📹</span> Camera <span class="btn-status">OFF</span>
+                        <span class="icon" data-icon="camera-off"></span> Camera <span class="btn-status">OFF</span>
                     </button>
                     <button id="prejoinLowBandwidthBtn" class="btn btn-secondary">
-                        <span class="icon">📡</span> Low Bandwidth <span class="btn-status">OFF</span>
+                        <span class="icon" data-icon="signal"></span> Low Bandwidth <span class="btn-status">OFF</span>
                     </button>
                 </div>
                 <div class="prejoin-devices">
                     <div class="prejoin-device-row">
-                        <label>🎤 Mic:</label>
+                        <label><span class="ic-wrap" data-icon="mic"></span> Mic:</label>
                         <select id="prejoinMicSelect"></select>
                     </div>
                     <div class="prejoin-device-row">
-                        <label>📹 Camera:</label>
+                        <label><span class="ic-wrap" data-icon="camera"></span> Camera:</label>
                         <select id="prejoinCameraSelect"></select>
                     </div>
                 </div>
@@ -253,18 +253,18 @@
 
         <!-- Hot mic warning toast -->
         <div id="micActiveWarning" class="hotmic-warning hidden">
-            <span class="hotmic-icon">🎤</span>
+            <span class="hotmic-icon" data-icon="mic"></span>
             <div class="hotmic-text">
                 <strong>Hot mic!</strong> Your microphone is transmitting loud background audio.
                 <button id="hotMicEnableNoiseBtn" class="hotmic-action">Enable Noise Suppression</button>
             </div>
-            <button id="hotMicDismissBtn" class="hotmic-dismiss" title="Dismiss">✕</button>
+            <button id="hotMicDismissBtn" class="hotmic-dismiss" title="Dismiss"><span class="ic-wrap" data-icon="x"></span></button>
         </div>
 
         <!-- Main Conference Screen -->
         <div id="conferenceScreen" class="conference-screen" style="display:none;">
             <!-- E2EE Banner -->
-            <div id="e2eeBanner" class="e2ee-banner hidden">🔒 End-to-End Encrypted</div>
+            <div id="e2eeBanner" class="e2ee-banner hidden"><span class="ic-wrap" data-icon="key"></span> End-to-End Encrypted</div>
             <!-- Video Grid -->
             <div class="video-grid" id="videoGrid">
                 <!-- Local video -->
@@ -272,27 +272,15 @@
                     <video id="localVideo" autoplay muted playsinline></video>
                     <div class="video-avatar" id="localAvatar">?</div>
                     <div class="video-label"></div>
-                    <div id="screenAudioMixer" class="screen-audio-mixer hidden">
-                        <div class="mixer-row">
-                            <span title="Mic">🎤</span>
-                            <input type="range" id="micGainSlider" min="0" max="100" value="100">
-                            <span id="micGainValue">100%</span>
-                        </div>
-                        <div class="mixer-row">
-                            <span title="Desktop Audio">🖥️</span>
-                            <input type="range" id="screenGainSlider" min="0" max="100" value="100">
-                            <span id="screenGainValue">100%</span>
-                        </div>
-                    </div>
                     <div class="video-controls">
                         <button id="toggleAudioBtn" class="control-btn" title="Mute/Unmute">
-                            <span class="icon">🎤</span>
+                            <span class="icon" data-icon="mic"></span>
                         </button>
                         <button id="toggleVideoBtn" class="control-btn" title="Camera On/Off">
-                            <span class="icon">📹</span>
+                            <span class="icon" data-icon="camera"></span>
                         </button>
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
-                            <span class="icon">🖥️</span>
+                            <span class="icon" data-icon="screen-share"></span>
                         </button>
                     </div>
                 </div>
@@ -302,8 +290,8 @@
 <!-- Chat Sidebar -->
             <div class="chat-sidebar hidden" id="chatSidebar">
                 <div class="chat-header">
-                    <h3>💬 Chat <span id="e2eeStatusIndicator" class="e2ee-status-indicator hidden" title="End-to-end encrypted">🔒</span></h3>
-                    <button id="toggleChatBtn" class="btn-icon">✕</button>
+                    <h3><span class="ic-wrap" data-icon="message"></span> Chat <span id="e2eeStatusIndicator" class="e2ee-status-indicator hidden" title="End-to-end encrypted" data-icon="key"></span></h3>
+                    <button id="toggleChatBtn" class="btn-icon"><span class="ic-wrap" data-icon="x"></span></button>
                 </div>
 
                 <div class="chat-messages" id="chatMessages"></div>
@@ -311,7 +299,7 @@
                 <div class="chat-input-container">
                     <div id="chatImagePreview" class="chat-image-preview hidden">
                         <img id="chatImagePreviewImg" src="" alt="Preview">
-                        <button id="chatImageCancelBtn" class="chat-image-cancel" title="Remove image">✕</button>
+                        <button id="chatImageCancelBtn" class="chat-image-cancel" title="Remove image"><span class="ic-wrap" data-icon="x"></span></button>
                     </div>
                     <div class="chat-input-row">
                         <input type="text" id="chatInput" placeholder="Type a message..." />
@@ -343,7 +331,7 @@
     <div id="changelogModal" class="options-menu hidden">
         <div class="options-header">
             <h3>Changelog</h3>
-            <button id="closeChangelogBtn" class="btn-icon">✕</button>
+            <button id="closeChangelogBtn" class="btn-icon"><span class="ic-wrap" data-icon="x"></span></button>
         </div>
         <div class="changelog-body">
 
@@ -493,6 +481,7 @@
         </div>
     </div>
 
-    <script src="conference.js?v=c8f56f0"></script>
+    <script src="icons.js?v=scrn1"></script>
+    <script src="conference.js?v=scrn1"></script>
 </body>
 </html>

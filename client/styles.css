@@ -715,6 +715,17 @@ body::before {
     background: #000000;
 }
 
+/* A shared screen gets its own tile, like a second participant. */
+.screen-tile {
+    border-color: var(--secondary);
+}
+
+/* The webcam contrast/brightness grade washes out screen text and makes small
+   UI unreadable — screen content must be shown exactly as captured. */
+.screen-tile video {
+    filter: none;
+}
+
 .video-label {
     position: absolute;
     bottom: 16px;
@@ -968,6 +979,21 @@ body::before {
     background: #1a0000;
     border-color: var(--danger);
     box-shadow: 0 0 10px var(--danger);
+}
+
+/* Someone else holds the presenter slot */
+.control-btn.locked,
+.control-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.control-btn.locked:hover,
+.control-btn:disabled:hover {
+    background: rgba(0, 0, 0, 0.9);
+    border-color: var(--primary);
+    box-shadow: none;
 }
 
 .control-btn .icon {
@@ -2767,41 +2793,46 @@ body::before {
     opacity: 0.4;
 }
 
-/* Screen share audio mixer */
-.screen-audio-mixer {
-    position: absolute;
-    bottom: 48px;
-    left: 0;
-    right: 0;
-    background: rgba(0, 0, 0, 0.82);
-    padding: 6px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 5;
-    border-top: 1px solid var(--border);
+/* Icons
+   Stroke SVGs that inherit colour and size from whatever holds them, so a
+   button's existing font-size and color rules keep working unchanged. */
+.ic {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: -0.125em;
+    flex: none;
 }
 
-.mixer-row {
-    display: flex;
+.ic-wrap {
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--primary);
+    justify-content: center;
+    width: 1.1em;
+    flex: none;
 }
 
-.mixer-row input[type="range"] {
-    flex: 1;
-    height: 3px;
-    accent-color: var(--primary);
-    cursor: pointer;
+/* Options rows line their labels up in a column */
+.options-item .ic-wrap,
+.options-item label .ic-wrap {
+    margin-right: 2px;
 }
 
-.mixer-row span:last-child {
-    min-width: 34px;
-    text-align: right;
-    font-size: 10px;
-    opacity: 0.7;
+/* Tile controls and the local control bar size their icons off the button */
+.remote-audio-controls button .ic {
+    width: 1.1em;
+    height: 1.1em;
+    vertical-align: middle;
+}
+
+.control-btn .icon .ic {
+    width: 22px;
+    height: 22px;
+}
+
+.lf-icon .ic {
+    width: 1.4em;
+    height: 1.4em;
 }
 
 /* Utility classes */

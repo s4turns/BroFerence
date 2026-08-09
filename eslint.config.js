@@ -42,6 +42,11 @@ export default [
 
         // RNNoise specific (loaded via importScripts)
         createRNNWasmModuleSync: "readonly",
+
+        // icons.js (loaded via its own script tag before conference.js)
+        iconSvg: "readonly",
+        setIcon: "readonly",
+        hydrateIcons: "readonly",
       },
     },
     rules: {
