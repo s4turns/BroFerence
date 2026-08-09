@@ -2,7 +2,7 @@
 
 **Live demo:** https://broference.cam/
 
-<img width="1077" height="721" alt="image" src="https://github.com/user-attachments/assets/da9df2b7-5a0e-40eb-8f03-ed3132c300d0" />
+<img width="1913" height="910" alt="image" src="https://github.com/user-attachments/assets/132524df-a1e2-4266-b78b-cade81818ff8" />
 
 <img width="3380" height="1551" alt="image" src="https://github.com/user-attachments/assets/8719147f-69ba-4efa-b974-d35924090e3b" />
 
