@@ -8,8 +8,8 @@ services:
       - path: .env
         required: false
     ports:
-      - "0.0.0.0:8766:8765"
-      - "[::]:8766:8765"
+      - "0.0.0.0:8765:8765"
+      - "[::]:8765:8765"
     volumes:
       - ./ssl:/app/ssl:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
@@ -29,8 +29,8 @@ services:
       context: .
       dockerfile: Dockerfile.web
     ports:
-      - "0.0.0.0:8443:443"
-      - "[::]:8443:443"
+      - "0.0.0.0:443:443"
+      - "[::]:443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./logs/nginx:/var/log/nginx

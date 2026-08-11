@@ -1,5 +1,8 @@
 #!/bin/bash
-# Redeploy the BroFerence dev environment (web :8443, signaling :8766).
+# Redeploy the BroFerence dev environment (web :443, signaling :8765).
+#
+# Dev is its own host, so it mirrors prod's ports — no port in the URL, and the
+# client's default WebSocket port selection works without special-casing.
 #
 # Dev shares PROD's primary coturn (turn:<host>:3479), so the primary TURN
 # credential is NOT generated here — it is read from .env PRIMARY_PASSWORD,
