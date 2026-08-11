@@ -189,7 +189,9 @@ class ConferenceClient {
                 this.pendingRoomKeyData = null;
                 await this.receiveRoomKey(pending.peerId, pending.data);
             }
-            if (this.isModerator && this.e2eeEnabled && this.e2eeRoomKey) {
+            // Owner only, never co-mods: two moderators handing a joiner two
+            // different keys is how the room ends up unable to read itself.
+            if (this.isOwner && this.e2eeEnabled && this.e2eeRoomKey) {
                 await this.sendRoomKeyToPeer(peerId);
             }
         } catch (e) {
@@ -246,7 +248,10 @@ class ConferenceClient {
     }
 
     async receiveRoomKey(peerId, data) {
-        if (peerId !== this.moderatorId && !this.coModIds.has(peerId)) return;
+        // The owner is the only key authority. Accepting one from a co-mod as well
+        // let a second key into the room, and whichever arrived last silently
+        // replaced the one everyone else was encrypting with.
+        if (peerId !== this.moderatorId) return;
         const pairKey = this.peerSharedKeys.get(peerId);
         if (!pairKey) {
             // Shared key not ready yet — queue and retry after deriveSharedKey completes
@@ -344,7 +349,10 @@ class ConferenceClient {
     async handleE2EEToggle(enabled) {
         this.e2eeEnabled = enabled;
         if (enabled) {
-            if (this.isModerator) {
+            // Only the owner mints the room key. A co-mod can still turn E2EE on —
+            // the toggle is broadcast room-wide, so this handler runs on the owner's
+            // client too and it is the owner's key that gets distributed.
+            if (this.isOwner) {
                 await this.generateRoomKey();   // also stores e2eeRawKey + posts to worker
                 this.initMediaE2EEWorker();
                 await this.distributeRoomKey();
