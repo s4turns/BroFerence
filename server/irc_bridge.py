@@ -15,11 +15,19 @@ logger = logging.getLogger(__name__)
 class IRCBridge:
     """Bridge between WebRTC chat and IRC."""
 
+    # The network runs UnrealIRCd's antirandom check, which scores nick/ident/
+    # realname together and drops anything that reads as machine-generated:
+    # "webrtc"/"webrtc"/"WebRTC Bridge Bot" was rejected outright with
+    # "You look like a bot." These values are the ones the server accepts —
+    # verified against irc.blcknd.org — so keep them wordlike if you change them.
     def __init__(self, server: str = "irc.blcknd.org", port: int = 6697,
-                 nickname: str = "webrtc-bridge", use_ssl: bool = True):
+                 nickname: str = "BroFerence", use_ssl: bool = True,
+                 ident: str = None, realname: str = "BroFerence Chat Bridge"):
         self.server = server
         self.port = port
         self.nickname = nickname
+        self.ident = ident or nickname.lower()
+        self.realname = realname
         self.use_ssl = use_ssl
 
         self.reader: Optional[asyncio.StreamReader] = None
@@ -59,7 +67,7 @@ class IRCBridge:
             logger.info(f"Sending NICK {self.nickname}")
             await self.send_raw(f"NICK {self.nickname}")
             logger.info(f"Sending USER registration")
-            await self.send_raw(f"USER {self.nickname} 0 * :WebRTC Bridge Bot")
+            await self.send_raw(f"USER {self.ident} 0 * :{self.realname}")
 
             # Wait for connection to be established
             logger.info("Waiting for IRC welcome message...")
@@ -99,6 +107,15 @@ class IRCBridge:
                 token = message[5:].lstrip(':') if len(message) > 5 else ''
                 logger.info(f"IRC >> PONG :{token}")
                 await self.send_raw(f"PONG :{token}")
+
+            # Nick already taken — usually a ghost of our own previous session
+            # that the server hasn't reaped yet. Without this the loop just sits
+            # there until the read times out and the whole connect fails.
+            if " 433 " in message:
+                self.nickname = f"{self.nickname}_"
+                logger.warning(f"Nick in use, retrying as {self.nickname}")
+                await self.send_raw(f"NICK {self.nickname}")
+                continue
 
             # Check for welcome message (001) or end of MOTD (376)
             if " 001 " in message:

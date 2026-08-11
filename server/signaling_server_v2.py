@@ -77,7 +77,7 @@ async def init_irc_bridge():
         irc_bridge = IRCBridge(
             server="irc.blcknd.org",
             port=6697,
-            nickname="webrtc",
+            nickname="BroFerence",
             use_ssl=True
         )
         logger.info("Attempting to connect to IRC server...")
