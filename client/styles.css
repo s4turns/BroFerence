@@ -959,6 +959,9 @@ body::before {
 .control-btn {
     background: rgba(0, 0, 0, 0.9);
     border: 2px solid var(--primary);
+    /* The icons are drawn in currentColor — without this a <button> falls back
+       to the UA's black button text and the glyph vanishes into the dark tile. */
+    color: var(--primary);
     width: 44px;
     height: 44px;
     cursor: pointer;
@@ -972,12 +975,14 @@ body::before {
 .control-btn:hover {
     background: #001100;
     border-color: var(--secondary);
+    color: var(--secondary);
     box-shadow: 0 0 10px var(--secondary);
 }
 
 .control-btn.active {
     background: #1a0000;
     border-color: var(--danger);
+    color: var(--danger);
     box-shadow: 0 0 10px var(--danger);
 }
 
@@ -993,6 +998,7 @@ body::before {
 .control-btn:disabled:hover {
     background: rgba(0, 0, 0, 0.9);
     border-color: var(--primary);
+    color: var(--primary);
     box-shadow: none;
 }
 
@@ -2599,6 +2605,7 @@ body::before {
 [data-theme="corporate"] .control-btn:hover {
     background: #f3f2f1;
     border-color: var(--primary);
+    color: #252424;
     box-shadow: none;
 }
 

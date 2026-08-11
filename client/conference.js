@@ -2281,8 +2281,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             localContainer.classList.toggle('no-video', !this.videoEnabled);
 
             // Click local tile to spotlight it
-            localContainer.addEventListener('click', (e) => {
-                if (e.target.closest('.video-controls')) return;
+            this.sealControls(localContainer.querySelector('.video-controls'));
+            localContainer.addEventListener('click', () => {
                 this.toggleSpotlight('localContainer');
             });
 
@@ -2802,9 +2802,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.updateVideoGridLayout();
 
         // Add click handler for spotlight mode
-        container.addEventListener('click', (e) => {
-            // Don't trigger spotlight if clicking on controls
-            if (e.target.closest('.remote-audio-controls')) return;
+        this.sealControls(audioControls);
+        container.addEventListener('click', () => {
             this.toggleSpotlight(`video-${peerId}`);
         });
         container.style.cursor = 'pointer';
@@ -3319,6 +3318,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             container.remove();
         }
 
+        this.updateVideoGridLayout();
         this.updateRoomInfo(this.peerConnections.size + 1);
 
         // After a peer leaves, verify remaining containers still have mod controls
@@ -3822,12 +3822,15 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         labelEl.textContent = `${username}'s screen`;
 
         container.appendChild(video);
-        if (!isLocal) container.appendChild(this.createScreenAudioControls(ownerId, video));
+        if (!isLocal) {
+            const screenControls = this.createScreenAudioControls(ownerId, video);
+            container.appendChild(screenControls);
+            this.sealControls(screenControls);
+        }
         container.appendChild(labelEl);
 
         container.style.cursor = 'pointer';
-        container.addEventListener('click', (e) => {
-            if (e.target.closest('.remote-audio-controls')) return;
+        container.addEventListener('click', () => {
             this.toggleSpotlight(id);
         });
 
@@ -4624,6 +4627,32 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const videoContainers = this.videoGrid.querySelectorAll('.video-container');
         const count = videoContainers.length;
         this.videoGrid.setAttribute('data-participants', Math.min(count, 16));
+
+        // Whatever was spotlit may have just been removed — a screen share that
+        // stopped, a peer that left. Spotlight mode hides every other tile, so
+        // without this you're left in an empty black room with audio and no tile
+        // to click your way out of.
+        if (this.videoGrid.classList.contains('spotlight-mode') &&
+            !this.videoGrid.querySelector('.spotlight-active')) {
+            this.exitSpotlight();
+        }
+    }
+
+    // Drop spotlight mode and put every tile back in the grid.
+    exitSpotlight() {
+        this.videoGrid.classList.remove('spotlight-mode');
+        this.videoGrid.querySelectorAll('.video-container').forEach(c => {
+            c.classList.remove('spotlight-active', 'spotlight-hidden');
+        });
+    }
+
+    // Keep a tile's control cluster from spotlighting the tile underneath it.
+    // The closest('.controls') guards on the tile handlers aren't enough: an icon
+    // button swaps its own <svg> when clicked, so by the time the click bubbles up
+    // the original e.target is detached and closest() walks up to nothing. Stopping
+    // the click at the controls element doesn't depend on the target surviving.
+    sealControls(el) {
+        if (el) el.addEventListener('click', (e) => e.stopPropagation());
     }
 
     toggleSpotlight(containerId) {
@@ -4636,10 +4665,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         if (alreadySpotlit) {
             // Click same tile again → exit spotlight
-            grid.classList.remove('spotlight-mode');
-            grid.querySelectorAll('.video-container').forEach(c => {
-                c.classList.remove('spotlight-active', 'spotlight-hidden');
-            });
+            this.exitSpotlight();
             this.updateVideoGridLayout();
             return;
         }
