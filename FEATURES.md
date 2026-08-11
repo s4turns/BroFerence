@@ -24,7 +24,7 @@ The killer feature - seamlessly bridge your video conference chat with IRC chann
 - IRC users see: `<Username> message text`
 - WebRTC users see: `Username (IRC): message text`
 
-**IRC Server:** irc.blcknd.network:6697 (SSL)
+**IRC Server:** irc.blcknd.org:6697 (SSL)
 **Bot Nickname:** webrtc
 
 **Use cases:**
@@ -162,7 +162,7 @@ The killer feature - seamlessly bridge your video conference chat with IRC chann
 
 ### IRC Connection
 
-- Server: irc.blcknd.network
+- Server: irc.blcknd.org
 - Port: 6697 (SSL/TLS)
 - Nickname: webrtc
 - Realname: WebRTC Bridge Bot

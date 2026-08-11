@@ -73,9 +73,9 @@ async def init_irc_bridge():
 
     try:
         logger.info("Initializing IRC bridge (on-demand)...")
-        logger.info("IRC server: irc.blcknd.network:6697 (SSL)")
+        logger.info("IRC server: irc.blcknd.org:6697 (SSL)")
         irc_bridge = IRCBridge(
-            server="irc.blcknd.network",
+            server="irc.blcknd.org",
             port=6697,
             nickname="webrtc",
             use_ssl=True

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class IRCBridge:
     """Bridge between WebRTC chat and IRC."""
 
-    def __init__(self, server: str = "irc.blcknd.network", port: int = 6697,
+    def __init__(self, server: str = "irc.blcknd.org", port: int = 6697,
                  nickname: str = "webrtc-bridge", use_ssl: bool = True):
         self.server = server
         self.port = port
