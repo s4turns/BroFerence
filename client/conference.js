@@ -1377,6 +1377,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.cleanup();
                 break;
 
+            case 'server-restart':
+                this.showRestartWarning(message.seconds);
+                break;
+
             case 'error':
                 alert('Error: ' + message.message);
                 break;
@@ -4655,6 +4659,32 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.videoGrid.querySelectorAll('.video-container').forEach(c => {
             c.classList.remove('spotlight-active', 'spotlight-hidden');
         });
+    }
+
+    // The deploy script signals the server before it takes the containers down.
+    // Counts down in place so people can wrap up instead of being cut off mid-call.
+    showRestartWarning(seconds) {
+        const banner = document.getElementById('restartWarning');
+        const countdown = document.getElementById('restartCountdown');
+        if (!banner || !countdown) return;
+
+        let remaining = Math.max(0, parseInt(seconds, 10) || 60);
+        clearInterval(this.restartCountdownInterval);
+        banner.classList.remove('hidden');
+        hydrateIcons(banner);
+
+        const render = () => {
+            countdown.textContent = remaining > 0 ? `in ${remaining}s` : 'now';
+            if (remaining <= 0) {
+                clearInterval(this.restartCountdownInterval);
+                this.restartCountdownInterval = null;
+            }
+            remaining -= 1;
+        };
+
+        render();
+        this.restartCountdownInterval = setInterval(render, 1000);
+        this.addChatMessage('System', `Server restarting in ${seconds}s — your call will drop and you'll need to rejoin.`, true);
     }
 
     // Keep a tile's control cluster from spotlighting the tile underneath it.

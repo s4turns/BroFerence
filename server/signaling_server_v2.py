@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import re
+import signal
 import ssl
 import os
 import hmac
@@ -51,6 +52,14 @@ ip_ban_records: list = []
 
 # Admin secret — read from env or auto-generate
 ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
+
+# How long users are given between the restart warning and the containers going
+# down. update-vps.sh sleeps for the same span, so keep the two in step — both
+# default to 60 and both read RESTART_GRACE_SECONDS from .env.
+try:
+    RESTART_GRACE_SECONDS = max(5, int(os.environ.get('RESTART_GRACE_SECONDS', '60')))
+except ValueError:
+    RESTART_GRACE_SECONDS = 60
 
 
 async def init_irc_bridge():
@@ -639,6 +648,25 @@ async def broadcast_to_room(room_id: str, message: dict, exclude: WebSocketServe
 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def announce_restart():
+    """Warn every connected client that the server is about to go down.
+
+    Triggered by SIGUSR1 so the deploy script can give people notice without
+    needing the admin secret — `docker compose kill -s SIGUSR1 signaling`.
+    """
+    if not clients:
+        logger.info('Restart warning requested, but nobody is connected')
+        return
+
+    message_json = json.dumps({
+        'type': 'server-restart',
+        'seconds': RESTART_GRACE_SECONDS
+    })
+    tasks = [websocket.send(message_json) for websocket in list(clients.keys())]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info(f'Restart warning sent to {len(tasks)} client(s), {RESTART_GRACE_SECONDS}s grace')
 
 
 async def relay_to_peer(target_id: str, message: dict):
@@ -1456,6 +1484,16 @@ async def main():
         logger.warning("ADMIN_SECRET not set in environment — a random secret was generated for this session")
     else:
         logger.info("ADMIN_SECRET loaded from environment")
+
+    # SIGUSR1 = "tell everyone we're going down". Kept off the admin channel on
+    # purpose: ADMIN_SECRET is random per boot unless it's set in .env, so a
+    # signal is the one trigger the deploy script can always rely on.
+    try:
+        asyncio.get_running_loop().add_signal_handler(
+            signal.SIGUSR1, lambda: asyncio.create_task(announce_restart()))
+        logger.info(f'SIGUSR1 broadcasts a {RESTART_GRACE_SECONDS}s restart warning')
+    except (NotImplementedError, AttributeError):
+        logger.warning('SIGUSR1 handler unavailable on this platform — no restart warnings')
 
     # ping_interval/ping_timeout raised from the 20s default: clients in large mesh
     # calls can momentarily peg their CPU (per-peer encode/decode) and miss a keepalive

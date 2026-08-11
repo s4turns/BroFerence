@@ -7,7 +7,7 @@ echo "========================================="
 echo ""
 
 # Stash any local changes before pulling
-echo "[1/4] Pulling latest code from GitHub..."
+echo "[1/5] Pulling latest code from GitHub..."
 git stash --include-untracked 2>/dev/null
 
 git pull origin main
@@ -27,7 +27,7 @@ echo "Cache-busted assets with commit ${COMMIT_HASH}"
 
 # Generate random TURN password and detect external IP
 echo ""
-echo "[2/4] Configuring TURN server..."
+echo "[2/5] Configuring TURN server..."
 
 TURN_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
 echo "New TURN password generated (32 chars)"
@@ -82,9 +82,23 @@ fi
 # Ensure log dirs exist for fail2ban
 mkdir -p logs/nginx logs/coturn
 
+# Warn anyone in a call before pulling the floor out. SIGUSR1 makes the signaling
+# server broadcast a countdown to every connected client; we then wait out the same
+# grace period before stopping anything. RESTART_GRACE_SECONDS comes from .env
+# (sourced above) and must match the server's default of 60 if left unset.
+GRACE="${RESTART_GRACE_SECONDS:-60}"
+echo ""
+echo "[3/5] Warning connected users (${GRACE}s grace period)..."
+if docker compose kill -s SIGUSR1 signaling 2>/dev/null; then
+    echo "Warning sent — waiting ${GRACE}s before restarting"
+    sleep "${GRACE}"
+else
+    echo "WARNING: could not signal the signaling container (not running?) — restarting without notice"
+fi
+
 # Rebuild and restart Docker containers
 echo ""
-echo "[3/4] Rebuilding Docker containers with latest code..."
+echo "[4/5] Rebuilding Docker containers with latest code..."
 docker compose down
 docker compose build
 docker compose up -d
@@ -114,7 +128,7 @@ fi
 
 # Show container status
 echo ""
-echo "[4/4] Checking container status..."
+echo "[5/5] Checking container status..."
 docker compose ps
 
 # Get system hostname
