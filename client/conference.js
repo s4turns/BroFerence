@@ -50,6 +50,7 @@ class ConferenceClient {
         this.screenReceivers = new Map();       // Map<peerId, {connection, username}> — their screen → us
         this.screenPendingIce = new Map();      // Map<`${peerId}:${role}`, Array<candidate>>
         this.currentPresenterId = null;         // room-wide presenter, null when nobody is sharing
+        this.screenBroadcasting = false;        // true once the server granted us the slot and we started offering
 
         // ICE servers - will be set dynamically in initICEServers()
         this.iceServers = null;
@@ -3522,13 +3523,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 this.isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('active');
 
-                // Claim the presenter slot. We start optimistically and roll back only
-                // if the server denies — against a server without the presenter lock
-                // this message is simply ignored and sharing still works.
+                // Claim the presenter slot and wait for the server to grant it before
+                // pushing anything to peers. Broadcasting optimistically put a tile on
+                // every viewer's grid that a later denial could not clear — the denial
+                // goes only to us, so the losing sharer's now-dead tracks sat there as
+                // a black rectangle until ICE eventually timed the connection out.
+                // startScreenBroadcast() runs from handleScreenShareState() instead.
                 this.sendMessage({ type: 'screen-share-start' });
-
-                this.startScreenBroadcast();
-                this.throttleCameraForShare();
 
                 console.log('Screen sharing started');
 
@@ -3786,6 +3787,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     }
 
     stopScreenBroadcast() {
+        this.screenBroadcasting = false;
         this.screenPeerConnections.forEach(peer => peer.connection.close());
         this.screenPeerConnections.clear();
         for (const key of [...this.screenPendingIce.keys()]) {
@@ -3921,10 +3923,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.currentPresenterId = presenterId || null;
         if (username && presenterId) this.knownUsernames.set(presenterId, username);
 
-        // The presenter stopped — drop their tile immediately rather than waiting
-        // for the connection to time out.
-        if (!presenterId) {
-            this.screenReceivers.forEach((_, peerId) => this.removeScreenReceiver(peerId));
+        // Drop every screen tile that isn't the current presenter's, rather than
+        // waiting for the connection to time out. Covers the presenter stopping
+        // (nobody is presenter, so all tiles go) and a second sharer whose claim
+        // was denied after their offer had already reached us.
+        this.screenReceivers.forEach((_, peerId) => {
+            if (peerId !== presenterId) this.removeScreenReceiver(peerId);
+        });
+
+        // Our claim was granted — only now is it safe to offer the screen to peers.
+        if (presenterId && presenterId === this.clientId && this.isScreenSharing && !this.screenBroadcasting) {
+            this.screenBroadcasting = true;
+            this.startScreenBroadcast();
+            this.throttleCameraForShare();
         }
 
         const btn = document.getElementById('shareScreenBtn');
