@@ -10,8 +10,18 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ## v2.0 — 2026-08-19
 
-### Joining
-
+- **Fixed invisible tile buttons.** Volume and hide controls on video tiles render and respond
+  correctly.
+- **Dev environment matches prod**, serving on 443/8765 instead of 8443/8766.
+- **Screen share waits for the presenter slot** before broadcasting, instead of sending into a
+  slot the server has not granted.
+- **Restart warning.** A deploy broadcasts a 60-second countdown to everyone in a call before
+  containers go down (`SIGUSR1` to the signaling server; `update-vps.sh` waits out the same
+  grace period). The dev redeploy does the same.
+- **The room owner is the sole E2EE key authority**; keys are regenerated when ownership
+  changes.
+- **IRC bridge reconnects reliably** — connects to the hostname its certificate covers, and
+  registers under a nickname and realname the network's bot check accepts.
 - **Join without a mic or camera.** Devices are now requested individually instead of as a
   single `getUserMedia({video, audio})` call. That call is all-or-nothing: a missing or busy
   camera rejected the whole request, so a user with a working microphone got nothing — and
@@ -23,76 +33,25 @@ Versions match the number shown in the app footer and in `README.md`.
   then re-ran the same failing request and stopped at "Failed to join room". A participant
   with no tracks also produced an offer with zero m-lines, so they would have received
   nothing even if they had got in; receive-only transceivers are now added for any kind that
-  cannot be sent.
-- **Listeners are visible.** A peer who sends no media never fires `ontrack`, so nothing put
-  them in the grid. They now get an avatar tile on connect and can be moderated like anyone
-  else.
+  cannot be sent. A peer who sends no media never fires `ontrack` either, so nothing put them
+  in the grid — they now get an avatar tile on connect and can be moderated like anyone else.
 - **Prejoin explains itself.** Distinguishes a missing device, blocked permission, a device
   held by another app, and a non-HTTPS origin, and says how to fix each. Controls for absent
   devices are disabled and labelled rather than silently inert, and empty device dropdowns
   read "No microphone detected" instead of rendering blank.
-
-### Screen sharing
-
-- **Late joiners see a share already in progress.**
-- **Noise suppression stays active on your microphone while sharing.**
-- Fixed screen-share audio feedback, low frame rates, and late joiners not hearing the share.
-
-### Identity and moderation
-
-- **Unique nicknames per room.** A duplicate name renames the newcomer, never the person
-  already in the room.
-- **Your own tile shows your nickname and role badge** instead of "You (Local)".
-- **Soft mute** — moderators can mute someone who is then able to unmute themselves.
-- **Admin panel** — global IP bans that survive page refreshes, plus remote rename, room
-  lock/password, and room-wide broadcast.
-- **The room owner is the sole E2EE key authority**; keys are regenerated when ownership
-  changes.
-- Peers who joined earlier now render an avatar for users who arrive later.
-
-### Connectivity
-
-- **Closest TURN relay per client.** Both relays are still offered for redundancy, but the
-  ordering comes from a real latency probe run while the user is on the prejoin screen.
-- **Relay-only with no P2P fallback**, so participant IPs are never exposed — if both relays
-  are unreachable the call does not connect, by design.
-- **Stalled inbound audio self-heals**: the element is re-played, then recovered with an ICE
-  restart if that is not enough.
-- **Fewer drops in large calls** — fixed client CPU overload causing audio dropouts, and
-  raised WebSocket keepalive timeouts so a briefly pegged client is not disconnected.
-
-### Interface
-
-- **Tron is now the default theme** — animated grid floor, lightcycle ribbon, glass panels.
-- Fixed invisible buttons and click handling on video tiles, and aligned the prejoin device
-  dropdowns.
-
-### Operations
-
-- **Restart warning, then automatic reload.** A deploy broadcasts a 60-second countdown to
-  everyone in a call before containers go down (`SIGUSR1` to the signaling server;
-  `update-vps.sh` waits out the same grace period). When the countdown expires the client
-  polls the origin and reloads the moment it answers again — reloading immediately would only
-  land on a connection error, since the containers are going down as the countdown ends and
-  the rebuild takes a couple of minutes. Previously the countdown just left everyone on a
+- **Automatic reload after a restart.** When the countdown expires the client polls the origin
+  and reloads the moment it answers again. It cannot reload on the spot: the containers are
+  going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate
+  reload only lands on a connection error. Previously the countdown just left everyone on a
   dead socket with a banner telling them to rejoin by hand. After ten minutes without an
   answer the client stops and says so, rather than reloading into an error page and hiding a
   broken deploy.
 - **Fixed stale pages after a deploy.** nginx sent no cache headers for HTML, so browsers
   heuristically cached `app.html` and kept showing the previous build — including the old
   version number in the corner — even after a successful update. The `?v=<commit>`
-  cache-busting only ever covered the assets *referenced by* app.html, never app.html
-  itself. HTML is now served `no-cache`, which also stops the auto-reload from picking a
-  cached page back up.
-- **Dev environment** — `update-dev.sh` plus a dev compose stack, kept in lockstep with the
-  TURN credential prod rotates on every deploy.
-- **IRC bridge reconnects reliably** — connects to the hostname its certificate covers,
-  registers under a nickname the network accepts, and handles PONG cookie echo and
-  nick-in-use retries.
-- Secondary TURN credential moved out of git into `.env`; cross-TURN relay peers allowed so
-  calls spanning both relays are not blocked; `external-ip` no longer set on the primary
-  coturn (it silently 403'd same-server relay paths).
-- Dependency security bumps (`qs`, `follow-redirects`, `brace-expansion`).
+  cache-busting only ever covered the assets *referenced by* app.html, never app.html itself.
+  HTML is now served `no-cache`, which also stops the auto-reload from picking a cached page
+  back up.
 
 ---
 

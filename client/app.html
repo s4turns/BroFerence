@@ -351,24 +351,16 @@
                     <span class="changelog-date">2026-08-19</span>
                 </div>
                 <ul>
+                    <li>Fixed invisible buttons and click handling on video tiles</li>
+                    <li>Dev environment now serves on 443/8765 like prod</li>
+                    <li>Screen share waits for the presenter slot before broadcasting</li>
+                    <li>60-second countdown warns everyone before a deploy restarts the server</li>
+                    <li>Room owner is now the sole encryption key authority</li>
+                    <li>IRC bridge reconnects reliably — correct cert hostname and an accepted nick</li>
                     <li>Join without a mic or camera — missing, blocked, or busy devices no longer block the room</li>
                     <li>Prejoin says which device is missing and why, instead of a dead-end alert</li>
-                    <li>Late joiners now see a share already in progress</li>
-                    <li>Noise suppression stays on your mic while sharing</li>
-                    <li>Unique nicknames per room — the newcomer is renamed, not the person already here</li>
-                    <li>Your own tile shows your nickname and role badge</li>
-                    <li>Soft mute for moderators — you can unmute yourself again</li>
-                    <li>Admin panel — global IP bans, rename, room lock/password, broadcast</li>
-                    <li>Room owner is now the sole encryption key authority</li>
-                    <li>Closest TURN relay picked per client from a real latency probe</li>
-                    <li>Relay-only with no P2P fallback — participant IPs are never exposed</li>
-                    <li>Stalled remote audio self-heals: replay, then ICE restart</li>
-                    <li>Fewer dropped clients in large calls — CPU fix plus longer keepalive timeouts</li>
-                    <li>Tron is now the default theme</li>
-                    <li>Fixed invisible buttons and click handling on video tiles</li>
-                    <li>60-second countdown before a deploy restarts the server, then the page reloads itself as soon as the server is back</li>
+                    <li>After the restart countdown, the page reloads itself as soon as the server is back</li>
                     <li>Fixed browsers caching the page and showing an old version after an update</li>
-                    <li>IRC bridge reconnects reliably — correct cert hostname, accepted nick, PONG and nick-in-use fixes</li>
                 </ul>
             </div>
 

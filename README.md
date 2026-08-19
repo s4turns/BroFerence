@@ -427,37 +427,16 @@ pip install -r server/requirements.txt
 ## Recent Updates
 
 ### v2.0 (2026-08-19)
-
-**Joining**
+- **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
+- **Dev environment matches prod** — Serves on 443/8765 instead of 8443/8766
+- **Screen share waits for the presenter slot** — No more broadcasting into a slot the server has not granted
+- **Restart warning** — A deploy broadcasts a 60-second countdown to everyone in a call before containers go down, on dev as well as prod
+- **Owner-only encryption authority** — The room owner is the sole E2EE key authority; keys are regenerated when ownership changes
+- **IRC bridge reconnects reliably** — Connects to the hostname its certificate covers and registers under a nickname the network accepts
 - **Join without a mic or camera** — Devices are requested individually and the app keeps whatever the browser gives it, so a missing, blocked, or busy camera no longer costs you your microphone. With neither, you join as a listener: you see and hear everyone, appear in the grid as an avatar tile, and can chat
 - **Prejoin explains itself** — Says whether a device is missing, blocked, or in use by another app, and how to fix it, instead of a dead-end alert. Controls for absent devices are disabled rather than inert
-
-**Screen sharing**
-- **Late joiners see a share in progress** — The screen channel opens to anyone who arrives mid-share
-- **Noise suppression stays on your mic while sharing** — Previously it was disabled for the duration
-
-**Identity and moderation**
-- **Unique nicknames per room** — A duplicate name renames the newcomer, never the person already in the room
-- **Your own tile shows your nickname and role badge** — Replaces the generic "You (Local)" label
-- **Soft mute** — Moderators can mute someone who can then unmute themselves, alongside the existing hard controls
-- **Admin panel** — Global IP bans that survive refreshes, plus rename, room lock/password, and broadcast
-- **Owner-only encryption authority** — The room owner is the sole E2EE key authority; keys are regenerated when ownership changes
-
-**Connectivity**
-- **Closest TURN relay per client** — Both relays are still offered for redundancy, but ordering comes from a real latency probe run while you are on the prejoin screen
-- **Relay-only, no P2P fallback** — Participant IPs are never exposed, even if both relays are unreachable
-- **Self-healing remote audio** — A stalled inbound track is re-played, then recovered with an ICE restart
-- **Fewer drops in large calls** — Fixed client CPU overload causing audio dropouts, and raised WebSocket keepalive timeouts so a briefly pegged client is not disconnected
-
-**Interface**
-- **Tron is the default theme** — Animated grid floor, lightcycle ribbon, glass panels
-- **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
-
-**Operations**
-- **Restart warning and auto-reload** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down. When it expires the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
+- **Auto-reload after a restart** — When the countdown expires the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
 - **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html`, including the old version number in the corner, after a successful update. The `?v=<commit>` stamping only ever covered the assets `app.html` references, never `app.html` itself. HTML is now `no-cache`
-- **Dev environment** — `update-dev.sh` and a dev compose stack, kept in lockstep with prod's rotated TURN credential
-- **IRC bridge reconnects reliably** — Correct certificate hostname, a nickname the network accepts, and fixes for PONG cookie echo and nick-in-use
 
 ### v1.9 (2026-08-18)
 - **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once
