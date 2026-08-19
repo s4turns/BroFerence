@@ -426,6 +426,13 @@ pip install -r server/requirements.txt
 
 ## Recent Updates
 
+### v2.1 (2026-08-19)
+- **Fixed Safari and iOS never being prompted** — WebKit only shows the camera/microphone prompt while the click that opened the prejoin screen still counts as user activation. v2.0 checked the device list first, which spent that activation before asking, so the prompt never appeared. The request now goes out before anything else and the device probe only runs if it fails
+- **In-app browsers are detected** — A link opened inside Instagram, Facebook, TikTok or WeChat cannot get camera or mic at all. The prejoin screen now says so and tells you to open it in Safari or Chrome, instead of appearing to hang
+- **Unanswered prompts point at the address bar** — Chrome shows a small icon instead of a dialog for people who often block permissions, which reads as "it never asked me". After a few seconds the prejoin screen names the icon to look for
+- **Blocked and dismissed are told apart** — A standing block gets unblock instructions; a dismissed prompt is told to reload. Previously both got the same message
+- **Insecure origins are named** — Loading over plain HTTP now explains that as the reason devices are unavailable
+
 ### v2.0 (2026-08-19)
 - **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
 - **Dev environment matches prod** — Serves on 443/8765 instead of 8443/8766

@@ -4,7 +4,36 @@ Versions match the number shown in the app footer and in `README.md`.
 
 > **Note:** releases up to March 2026 were numbered v2.1–v2.3 in this file while the app and
 > README used the v1.x line. Those entries have been folded into the v1.x versions they
-> actually shipped in, so this file now follows one sequence: v1.0 → v1.9 → v2.0.
+> actually shipped in, so this file now follows one sequence: v1.0 → v1.9 → v2.0 → v2.1.
+
+---
+
+## v2.1 — 2026-08-19
+
+Follow-up audit of the "never prompted for mic/cam" reports. v2.0 fixed one cause; these are
+the rest, including a regression v2.0 introduced.
+
+- **Safari and iOS were never prompted — caused by v2.0.** WebKit only surfaces the permission
+  prompt while the click that opened the prejoin screen still counts as user activation, and
+  any `await` before `getUserMedia` spends it. v2.0 awaited `enumerateDevices()` first to decide
+  which kinds to ask for, which silently cost WebKit its prompt entirely. `getUserMedia` is now
+  the first thing called, with nothing awaited ahead of it; the device probe moved to the
+  failure path, where activation no longer matters. Chromium is unaffected either way, which is
+  why Chrome-only testing missed it.
+- **In-app browsers are detected.** Rooms travel by invite link, and a link opened inside
+  Instagram, Facebook, TikTok, or WeChat gets camera and mic denied with no prompt and no way
+  for the user to grant it. `isInAppBrowser()` recognises the common webview user agents and the
+  prejoin screen explains to reopen in Safari or Chrome. Joining still works for listening.
+- **Unanswered prompts now say where to look.** Chrome downgrades the prompt to a small
+  address-bar icon for users who habitually block, and a dialog behind another window is easy to
+  miss. If the request has not settled after four seconds the notice names the padlock/camera
+  icon. The timer is cleared as soon as the request settles.
+- **Blocked is distinguished from dismissed** via `navigator.permissions.query()`, called only
+  *after* a refusal so it can never reintroduce the activation bug. A standing block gets
+  unblock instructions; a dismissed prompt is told to reload. Firefox and Safari throw on the
+  descriptor, so it degrades to the block wording.
+- **Insecure origins are named** as the reason devices are unavailable, rather than presenting
+  as a silent failure.
 
 ---
 

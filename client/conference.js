@@ -1508,6 +1508,28 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         };
     }
 
+    // Webviews embedded in other apps (a link tapped inside Facebook, Instagram,
+    // TikTok, WeChat…) deny camera and mic outright, with no prompt and no way for
+    // the user to grant it. Rooms travel by invite link, so people land here a lot.
+    isInAppBrowser() {
+        return /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|musical_ly|BytedanceWebview|LinkedInApp/i
+            .test(navigator.userAgent);
+    }
+
+    // 'granted' | 'denied' | 'prompt' | 'unsupported'. Only Chromium answers for
+    // camera/microphone — Firefox and Safari throw on the descriptor, so treat any
+    // failure as unsupported. Never call this before getUserMedia: awaiting it would
+    // spend the user activation that WebKit needs to show the prompt at all.
+    async queryPermissionState(name) {
+        if (!navigator.permissions || !navigator.permissions.query) return 'unsupported';
+        try {
+            const status = await navigator.permissions.query({ name });
+            return status.state || 'unsupported';
+        } catch (_error) {
+            return 'unsupported';
+        }
+    }
+
     // What the browser will admit about the user's hardware before permission is
     // granted. Labels stay hidden until then, but the device kinds are visible,
     // which is all we need to decide what is worth asking for.
@@ -1529,11 +1551,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
-    describeMediaError(error) {
+    // permissionState comes from queryPermissionState() and is optional: without it
+    // a refusal reads as a standing block, which is the more common case and the one
+    // with actionable instructions.
+    describeMediaError(error, permissionState) {
+        if (this.isInAppBrowser()) {
+            return 'This in-app browser does not allow camera or microphone access. Open the link in Safari or Chrome to be seen and heard.';
+        }
         switch (error && error.name) {
             case 'NotAllowedError':
             case 'PermissionDeniedError':
-                return 'Camera and microphone access is blocked. Click the padlock or camera icon in your address bar, allow access, then reload.';
+                return permissionState === 'prompt'
+                    ? 'The camera and microphone request was dismissed. Reload the page to be asked again.'
+                    : 'Camera and microphone access is blocked. Click the padlock or camera icon in your address bar, allow access, then reload.';
             case 'NotFoundError':
             case 'DevicesNotFoundError':
                 return 'No microphone or camera found on this device.';
@@ -1579,26 +1609,54 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             };
         }
 
-        const { hasMic, hasCam } = await this.probeDeviceKinds();
         const audio = this.getAudioConstraints();
         const video = this.getVideoConstraints();
 
-        const attempts = [];
-        if (hasMic && hasCam) attempts.push({ audio, video });
-        if (hasMic) attempts.push({ audio });
-        if (hasCam) attempts.push({ video });
+        const request = async (constraints) => {
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log(`Media stream acquired: ${Object.keys(constraints).join(' + ')} (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
+            return stream;
+        };
 
-        let lastError = null;
-        for (const constraints of attempts) {
+        // Ask for both, FIRST, with nothing awaited ahead of it. WebKit only shows the
+        // prompt while the click that got us here still counts as user activation, and
+        // any await before this point spends it — enumerateDevices() used to sit here
+        // and cost Safari and iOS their prompt entirely. Diagnosis happens after a
+        // failure instead, where the activation no longer matters.
+        // Only read on the failure paths below, which the try always assigns first.
+        let lastError;
+        try {
+            const stream = await request({ audio, video });
+            return { stream, notice: this.mediaNoticeFor(stream, null) };
+        } catch (error) {
+            lastError = error;
+            console.warn('getUserMedia failed for audio + video:', error.name, error.message);
+        }
+
+        // A refusal covers every kind, so narrowing the request would only re-ask for
+        // something already denied. Report it instead, naming the actual reason.
+        if (lastError.name === 'NotAllowedError' || lastError.name === 'PermissionDeniedError') {
+            const state = await this.queryPermissionState('camera');
+            return {
+                stream: new MediaStream(),
+                notice: `${this.describeMediaError(lastError, state)} You can still join to listen and chat.`
+            };
+        }
+
+        // Something is missing or busy rather than blocked. Now it is worth asking the
+        // browser what hardware exists, so we only retry the kinds that could succeed.
+        const { hasMic, hasCam } = await this.probeDeviceKinds();
+        const retries = [];
+        if (hasMic) retries.push({ audio });
+        if (hasCam) retries.push({ video });
+
+        for (const constraints of retries) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                console.log(`Media stream acquired: ${Object.keys(constraints).join(' + ')} (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
+                const stream = await request(constraints);
                 return { stream, notice: this.mediaNoticeFor(stream, lastError) };
             } catch (error) {
                 lastError = error;
                 console.warn(`getUserMedia failed for ${Object.keys(constraints).join(' + ')}:`, error.name, error.message);
-                // A refused prompt covers every kind — narrowing the request just
-                // re-prompts for something the user has already said no to.
                 if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') break;
             }
         }
@@ -2133,14 +2191,38 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.prejoinStream = null;
         }
 
-        // The permission prompt can sit unanswered for a long time, and a blank
-        // preview with no explanation reads as a broken page.
-        this.setPrejoinNotice('Requesting camera and microphone access — allow it in your browser to be seen and heard.', 'pending');
+        // Name the environments that can never produce a prompt before we sit waiting
+        // on one. Both still allow joining — listen-only works fine.
+        const promptExpected = !this.isInAppBrowser() && window.isSecureContext;
+        if (this.isInAppBrowser()) {
+            this.setPrejoinNotice('This in-app browser blocks camera and microphone access. Open the link in Safari or Chrome to be seen and heard, or join now to listen and chat.', 'warn');
+        } else if (!window.isSecureContext) {
+            this.setPrejoinNotice('Camera and microphone need a secure connection. Open this site over https:// to use your devices.', 'warn');
+        } else {
+            // The prompt can sit unanswered for a long time, and a blank preview with
+            // no explanation reads as a broken page.
+            this.setPrejoinNotice('Requesting camera and microphone access — allow it in your browser to be seen and heard.', 'pending');
+        }
+
+        // Chrome downgrades the prompt to a small address-bar icon for people who
+        // habitually block, and a modal behind another window is easy to miss — both
+        // get reported as "it never asked me". If nothing has settled shortly, say
+        // where to look.
+        const slowPromptHint = promptExpected ? setTimeout(() => {
+            this.setPrejoinNotice('Still waiting on camera and microphone access — look for the padlock or camera icon in your address bar and allow it there.', 'pending');
+        }, 4000) : null;
 
         // Held so joinRoom can wait on an unanswered prompt instead of firing a
         // second getUserMedia behind the first one.
+        // NOTE: nothing may be awaited between the click that opened this screen and
+        // this call — see the activation comment in acquireLocalMedia().
         this.prejoinMediaPromise = this.acquireLocalMedia();
-        const { stream, notice } = await this.prejoinMediaPromise;
+        let stream, notice;
+        try {
+            ({ stream, notice } = await this.prejoinMediaPromise);
+        } finally {
+            if (slowPromptHint) clearTimeout(slowPromptHint);
+        }
         this.prejoinStream = stream;
         this.mediaNotice = notice;
 
