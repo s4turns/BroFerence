@@ -426,6 +426,10 @@ pip install -r server/requirements.txt
 
 ## Recent Updates
 
+### v2.0 (2026-08-19)
+- **Auto-reload after a restart** — When the restart countdown expires, the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
+- **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html`, including the old version number in the corner, after a successful update. The `?v=<commit>` stamping only ever covered the assets `app.html` references, never `app.html` itself. HTML is now `no-cache`
+
 ### v1.9 (2026-08-18)
 
 **Joining**
@@ -461,8 +465,7 @@ pip install -r server/requirements.txt
 - **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
 
 **Operations**
-- **Restart warning and auto-reload** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down. When it expires the page waits for the server to answer again, then reloads itself, so nobody is left on a dead socket or an old build
-- **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html` (and its old version number) after an update. HTML is now `no-cache`, while the `?v=<commit>` stamped assets stay cacheable
+- **Restart warning** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down
 - **Dev environment** — `update-dev.sh` and a dev compose stack, kept in lockstep with prod's rotated TURN credential
 - **IRC bridge reconnects reliably** — Correct certificate hostname, a nickname the network accepts, and fixes for PONG cookie echo and nick-in-use
 
