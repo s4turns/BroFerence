@@ -83,9 +83,18 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ### Operations
 
-- **Restart warning.** A deploy broadcasts a 60-second countdown to everyone in a call before
-  containers go down (`SIGUSR1` to the signaling server; `update-vps.sh` waits out the same
-  grace period).
+- **Restart warning, then automatic reload.** A deploy broadcasts a 60-second countdown to
+  everyone in a call before containers go down (`SIGUSR1` to the signaling server;
+  `update-vps.sh` waits out the same grace period). When the countdown expires the client
+  polls the origin and reloads the moment it answers again — reloading immediately would
+  only land on a dead server, since the rebuild that follows takes a couple of minutes.
+  After ten minutes without an answer it stops and says so rather than reloading into an
+  error page.
+- **Fixed stale pages after a deploy.** nginx sent no cache headers for HTML, so browsers
+  heuristically cached `app.html` and kept showing the previous build — including the old
+  version number in the corner — even after a successful update. The `?v=<commit>`
+  cache-busting only ever covered the assets *referenced by* app.html, never app.html
+  itself. HTML is now served `no-cache`.
 - **Dev environment** — `update-dev.sh` plus a dev compose stack, kept in lockstep with the
   TURN credential prod rotates on every deploy.
 - **IRC bridge reconnects reliably** — connects to the hostname its certificate covers,

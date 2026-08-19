@@ -28,6 +28,7 @@ server { \
     ssl_certificate_key /etc/ssl/private/privkey.pem; \
     ssl_protocols TLSv1.2 TLSv1.3; \
     ssl_ciphers HIGH:!aNULL:!MD5; \
+    add_header Cache-Control "no-cache" always; \
     location / { \
         try_files $uri $uri/ /app.html; \
     } \

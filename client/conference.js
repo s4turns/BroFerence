@@ -41,6 +41,7 @@ class ConferenceClient {
         this.localStatsInterval = null; // Interval for local connection stats
         this.localStream = null;
         this.mediaNotice = null;        // why a mic/camera is missing, surfaced in prejoin and chat
+        this.awaitingRestartReload = false; // countdown hit zero; page reloads once the server answers again
         this.screenStream = null;
         this.isScreenSharing = false;
 
@@ -979,6 +980,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.ws.onclose = () => {
                 console.log('WebSocket disconnected');
                 this.updateStatus('Disconnected', 'error');
+                // A restart reload is already pending — reconnecting and re-joining
+                // the room only to reload on top of it wastes a round trip and
+                // flashes the call back up for a moment.
+                if (this.awaitingRestartReload) {
+                    this.updateStatus('Server restarting — reloading shortly', 'error');
+                    return;
+                }
                 if (!this.isIntentionalDisconnect && this.currentRoom) {
                     this.scheduleWsReconnect();
                 } else {
@@ -4881,13 +4889,57 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (remaining <= 0) {
                 clearInterval(this.restartCountdownInterval);
                 this.restartCountdownInterval = null;
+                this.reloadWhenServerReturns();
             }
             remaining -= 1;
         };
 
         render();
         this.restartCountdownInterval = setInterval(render, 1000);
-        this.addChatMessage('System', `Server restarting in ${seconds}s — your call will drop and you'll need to rejoin.`, true);
+        this.addChatMessage('System', `Server restarting in ${seconds}s — your call will drop and this page will reload itself once it is back.`, true);
+    }
+
+    // The countdown ends with the containers going down, so reloading on the spot
+    // would just land on a dead server — and the rebuild that follows can take a
+    // couple of minutes. Poll the origin instead and reload the moment it answers,
+    // which is also the point at which the new cache-busted assets exist.
+    async reloadWhenServerReturns() {
+        if (this.awaitingRestartReload) return;
+        this.awaitingRestartReload = true;
+
+        const banner = document.getElementById('restartWarning');
+        const countdown = document.getElementById('restartCountdown');
+        const sub = banner && banner.querySelector('.restart-sub');
+        if (countdown) countdown.textContent = 'now';
+        if (sub) sub.textContent = '— reloading as soon as the server is back';
+
+        const POLL_MS = 3000;
+        const deadline = Date.now() + 10 * 60 * 1000;
+
+        while (Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, POLL_MS));
+            try {
+                // Cache-busted so a stale 200 from the HTTP cache can't pass for
+                // the server being up again.
+                const response = await fetch(`${window.location.pathname}?restartping=${Date.now()}`, {
+                    method: 'HEAD',
+                    cache: 'no-store'
+                });
+                if (response.ok) {
+                    window.location.reload();
+                    return;
+                }
+            } catch (_error) {
+                // Still down — keep waiting.
+            }
+        }
+
+        // Ten minutes without an answer means something is wrong with the deploy.
+        // Reloading into an error page would only hide that, so hand it back to
+        // the user instead.
+        this.awaitingRestartReload = false;
+        if (sub) sub.textContent = '— server did not come back; reload manually';
+        this.addChatMessage('System', 'The server has not come back after 10 minutes. Reload the page to try again.', true);
     }
 
     // Keep a tile's control cluster from spotlighting the tile underneath it.

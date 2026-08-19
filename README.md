@@ -461,7 +461,8 @@ pip install -r server/requirements.txt
 - **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
 
 **Operations**
-- **Restart warning** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down
+- **Restart warning and auto-reload** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down. When it expires the page waits for the server to answer again, then reloads itself, so nobody is left on a dead socket or an old build
+- **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html` (and its old version number) after an update. HTML is now `no-cache`, while the `?v=<commit>` stamped assets stay cacheable
 - **Dev environment** — `update-dev.sh` and a dev compose stack, kept in lockstep with prod's rotated TURN credential
 - **IRC bridge reconnects reliably** — Correct certificate hostname, a nickname the network accepts, and fixes for PONG cookie echo and nick-in-use
 
