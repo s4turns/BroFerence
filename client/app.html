@@ -222,6 +222,8 @@
                     <video id="prejoinVideo" autoplay muted playsinline></video>
                 </div>
 
+                <div id="prejoinNotice" class="prejoin-notice hidden"></div>
+
                 <div class="prejoin-controls">
                     <button id="prejoinToggleAudioBtn" class="btn btn-secondary">
                         <span class="icon" data-icon="mic"></span> Microphone <span class="btn-status">ON</span>
@@ -324,7 +326,7 @@
             <span id="statusText">Disconnected</span>
             <div class="status-footer">
                 <span class="powered-by">Powered by BLCKND</span>
-                <span class="app-version" id="changelogBtn" title="View changelog">v1.8</span>
+                <span class="app-version" id="changelogBtn" title="View changelog">v1.9</span>
                 <a href="https://github.com/s4turns/BroFerence" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
                     <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
@@ -342,6 +344,39 @@
             <button id="closeChangelogBtn" class="btn-icon"><span class="ic-wrap" data-icon="x"></span></button>
         </div>
         <div class="changelog-body">
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v1.9</span>
+                    <span class="changelog-date">2026-08-18</span>
+                </div>
+                <ul>
+                    <li>Join without a mic or camera — missing, blocked, or busy devices no longer block the room</li>
+                    <li>Prejoin says which device is missing and why, instead of a dead-end alert</li>
+                    <li>Screen share gets its own tile — your camera keeps running alongside it</li>
+                    <li>Screen audio is separate — muting someone's screen no longer mutes their voice</li>
+                    <li>One presenter at a time, released automatically if they leave or crash</li>
+                    <li>Late joiners now see a share already in progress</li>
+                    <li>End-to-end encryption covers screen shares too</li>
+                    <li>Camera throttled while presenting to protect uplink</li>
+                    <li>Noise suppression stays on your mic while sharing</li>
+                    <li>Unique nicknames per room — the newcomer is renamed, not the person already here</li>
+                    <li>Your own tile shows your nickname and role badge</li>
+                    <li>Soft mute for moderators — you can unmute yourself again</li>
+                    <li>Admin panel — global IP bans, rename, room lock/password, broadcast</li>
+                    <li>Room owner is now the sole encryption key authority</li>
+                    <li>Closest TURN relay picked per client from a real latency probe</li>
+                    <li>Relay-only with no P2P fallback — participant IPs are never exposed</li>
+                    <li>Stalled remote audio self-heals: replay, then ICE restart</li>
+                    <li>Fewer dropped clients in large calls — CPU fix plus longer keepalive timeouts</li>
+                    <li>Tron is now the default theme</li>
+                    <li>~80 emoji replaced with inline SVG icons that follow each theme</li>
+                    <li>Renamed "AI Noise Suppression" to "Noise suppression" — it is a DSP noise gate, not a model</li>
+                    <li>Fixed invisible buttons and click handling on video tiles</li>
+                    <li>60-second countdown warns everyone before a deploy restarts the server</li>
+                    <li>IRC bridge reconnects reliably — correct cert hostname, accepted nick, PONG and nick-in-use fixes</li>
+                </ul>
+            </div>
 
             <div class="changelog-version">
                 <div class="changelog-version-header">

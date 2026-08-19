@@ -15,15 +15,17 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 ## Features
 
 - **Multi-participant video** — Unlimited users per room (mesh topology, best for ≤10)
+- **Join with whatever you have** — No microphone or camera is fine; you join as a listener and can still see, hear, and chat
 - **Real-time text chat** — In-app messaging with optional IRC bridge
 - **Password-protected rooms** — PBKDF2-HMAC-SHA256 hashed, per-room
 - **Noise suppression** — Adjustable noise gate with adaptive noise-floor tracking, keyboard/mouse click suppression, and real-time mic level visualization
 - **Microphone selector** — Switch input device live, including NVIDIA Broadcast / RTX Voice
 - **Low Bandwidth Mode** — Caps video to 480p/15fps and audio to 32kbps
 - **Video quality selector** — 480p, 720p, or 1080p; persists across sessions
-- **Moderator controls** — Kick, mute, rename, promote/demote co-moderators
+- **Moderator controls** — Kick, hard/soft mute, rename, promote/demote co-moderators
 - **Moderator succession** — Auto-transfers to next user by join order on mod disconnect
-- **End-to-end encryption** — Optional AES-GCM-256 for audio and video (moderator-toggled)
+- **Admin panel** — Global IP bans, remote rename, room lock/password, room-wide broadcast
+- **End-to-end encryption** — Optional AES-GCM-256 for audio, video, and screen shares; the room owner is the sole key authority
 - **Speaking indicator** — Glowing ring pulses with voice activity
 - **Connection quality indicator** — Signal bars showing RTT and packet loss
 - **Per-user volume controls** — Independent volume per participant
@@ -38,7 +40,8 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 - **Mobile optimized** — Tap-to-unmute, auto noise suppression on mobile
 - **IRC bridge (on-demand)** — Bridge rooms to IRC channels when needed
 - **Multi-domain SSL** — Auto-discovers Let's Encrypt certs across domains
-- **Dual TURN relay** — Two independent coturn servers, asymmetric ICE paths, no third-party TURN needed
+- **Dual TURN relay** — Two independent coturn servers, ordered per client by a real latency probe, no third-party TURN needed
+- **Relay-only ICE** — Participant IPs are never exposed to other participants
 - **Echo cancellation, noise suppression, auto gain control** — Built-in audio enhancements
 
 ---
@@ -147,6 +150,10 @@ A screen share does not replace the sharer's camera. It opens a second, send-onl
 3. Enter a room name
 4. Optionally set a room password or IRC channel
 5. Click **Continue** → configure camera/mic → **Join Room**
+
+If you have no microphone or camera — or you have blocked access, or another app is holding
+the device — the prejoin screen says so and **Join Room** stays enabled. You join as a
+listener: you see and hear everyone, show up in the grid as an avatar tile, and can chat.
 
 ### Invite Links
 
@@ -419,14 +426,44 @@ pip install -r server/requirements.txt
 
 ## Recent Updates
 
-### v1.9 (unreleased — `testing` branch)
+### v1.9 (2026-08-18)
+
+**Joining**
+- **Join without a mic or camera** — Devices are requested individually and the app keeps whatever the browser gives it, so a missing, blocked, or busy camera no longer costs you your microphone. With neither, you join as a listener: you see and hear everyone, appear in the grid as an avatar tile, and can chat
+- **Prejoin explains itself** — Says whether a device is missing, blocked, or in use by another app, and how to fix it, instead of a dead-end alert. Controls for absent devices are disabled rather than inert
+
+**Screen sharing**
 - **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once
 - **Screen audio is separate** — Desktop audio travels with the screen tile and has its own volume/mute, so muting someone's screen no longer mutes their voice. Replaces the old mic/desktop mixer, which existed only because there was a single audio sender
 - **One presenter at a time** — Tracked server-side, released automatically if the presenter leaves or crashes
+- **Late joiners see a share in progress** — The screen channel opens to anyone who arrives mid-share
 - **E2EE covers screen shares** — Encryption transforms are applied to the screen connections too
 - **Camera throttled while presenting** — Drops to ~400 kbps at half resolution, since camera + screen to every peer is a lot of relayed uplink
+- **Noise suppression stays on your mic while sharing** — Previously it was disabled for the duration
+
+**Identity and moderation**
+- **Unique nicknames per room** — A duplicate name renames the newcomer, never the person already in the room
+- **Your own tile shows your nickname and role badge** — Replaces the generic "You (Local)" label
+- **Soft mute** — Moderators can mute someone who can then unmute themselves, alongside the existing hard controls
+- **Admin panel** — Global IP bans that survive refreshes, plus rename, room lock/password, and broadcast
+- **Owner-only encryption authority** — The room owner is the sole E2EE key authority; keys are regenerated when ownership changes
+
+**Connectivity**
+- **Closest TURN relay per client** — Both relays are still offered for redundancy, but ordering comes from a real latency probe run while you are on the prejoin screen
+- **Relay-only, no P2P fallback** — Participant IPs are never exposed, even if both relays are unreachable
+- **Self-healing remote audio** — A stalled inbound track is re-played, then recovered with an ICE restart
+- **Fewer drops in large calls** — Fixed client CPU overload causing audio dropouts, and raised WebSocket keepalive timeouts so a briefly pegged client is not disconnected
+
+**Interface**
+- **Tron is the default theme** — Animated grid floor, lightcycle ribbon, glass panels
 - **SVG icons throughout** — Replaced ~80 emoji with inline stroke icons that inherit each theme's colour
 - **Renamed "AI Noise Suppression" to "Noise suppression"** — It never used a model; it is a DSP noise gate
+- **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
+
+**Operations**
+- **Restart warning** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down
+- **Dev environment** — `update-dev.sh` and a dev compose stack, kept in lockstep with prod's rotated TURN credential
+- **IRC bridge reconnects reliably** — Correct certificate hostname, a nickname the network accepts, and fixes for PONG cookie echo and nick-in-use
 
 ### v1.8 (2026-05)
 - **New domain** — Migrated to broference.cam

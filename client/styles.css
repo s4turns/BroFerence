@@ -401,6 +401,23 @@ body::before {
     object-fit: cover;
 }
 
+.prejoin-notice {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border: 1px solid var(--warning);
+    background: rgba(255, 255, 0, 0.07);
+    color: var(--warning);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+/* Waiting on the browser permission prompt — informational, not a problem yet */
+.prejoin-notice.pending {
+    border-color: var(--secondary);
+    background: rgba(0, 255, 255, 0.07);
+    color: var(--secondary);
+}
+
 .prejoin-controls {
     display: flex;
     flex-wrap: wrap;
@@ -411,6 +428,18 @@ body::before {
 
 .prejoin-controls .btn {
     flex: 1 1 140px;
+}
+
+.prejoin-controls .btn:disabled,
+.prejoin-device-row select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.prejoin-controls .btn:disabled:hover {
+    box-shadow: none;
+    transform: none;
 }
 
 .prejoin-devices {

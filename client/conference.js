@@ -40,6 +40,7 @@ class ConferenceClient {
         this.e2eeRawKey = null;           // ArrayBuffer of room key — posted to worker
         this.localStatsInterval = null; // Interval for local connection stats
         this.localStream = null;
+        this.mediaNotice = null;        // why a mic/camera is missing, surfaced in prejoin and chat
         this.screenStream = null;
         this.isScreenSharing = false;
 
@@ -67,6 +68,7 @@ class ConferenceClient {
         this.moderatorUsername = null;
         // Prejoin state
         this.prejoinStream = null;
+        this.prejoinMediaPromise = null; // in-flight getUserMedia, awaited if Join is hit early
         this.prejoinAudioEnabled = true;
         this.prejoinVideoEnabled = false;
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
@@ -1498,28 +1500,121 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         };
     }
 
+    // What the browser will admit about the user's hardware before permission is
+    // granted. Labels stay hidden until then, but the device kinds are visible,
+    // which is all we need to decide what is worth asking for.
+    async probeDeviceKinds() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            return { hasMic: true, hasCam: true };
+        }
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const hasMic = devices.some(d => d.kind === 'audioinput');
+            const hasCam = devices.some(d => d.kind === 'videoinput');
+            // An empty list means the browser is withholding devices until we ask,
+            // not that the machine has none — request both and let getUserMedia judge.
+            if (!hasMic && !hasCam) return { hasMic: true, hasCam: true };
+            return { hasMic, hasCam };
+        } catch (error) {
+            console.warn('Could not enumerate devices:', error);
+            return { hasMic: true, hasCam: true };
+        }
+    }
+
+    describeMediaError(error) {
+        switch (error && error.name) {
+            case 'NotAllowedError':
+            case 'PermissionDeniedError':
+                return 'Camera and microphone access is blocked. Click the padlock or camera icon in your address bar, allow access, then reload.';
+            case 'NotFoundError':
+            case 'DevicesNotFoundError':
+                return 'No microphone or camera found on this device.';
+            case 'NotReadableError':
+            case 'TrackStartError':
+                return 'Your microphone or camera is already in use by another app.';
+            case 'OverconstrainedError':
+            case 'ConstraintNotSatisfiedError':
+                return 'Your microphone or camera does not support the requested settings.';
+            case 'SecurityError':
+                return 'Media access requires a secure (HTTPS) connection.';
+            default:
+                return (error && error.message) || 'Could not access your microphone or camera.';
+        }
+    }
+
+    mediaNoticeFor(stream, lastError) {
+        const gotAudio = stream.getAudioTracks().length > 0;
+        const gotVideo = stream.getVideoTracks().length > 0;
+        if (gotAudio && gotVideo) return null;
+
+        const why = lastError && (lastError.name === 'NotReadableError' || lastError.name === 'TrackStartError')
+            ? 'is in use by another app'
+            : 'was not found';
+
+        if (!gotAudio && !gotVideo) return 'No microphone or camera — you will join as a listener.';
+        if (!gotAudio) return `Your microphone ${why} — you can see and hear everyone, but they cannot hear you.`;
+        return `Your camera ${why} — you can still talk and hear everyone.`;
+    }
+
+    // Asks for mic and camera together, then falls back to whichever one the
+    // browser will actually hand over. Requesting both at once is all-or-nothing:
+    // a missing or busy camera used to fail the whole call and leave someone with
+    // a perfectly good mic unable to speak — or to join. Always resolves; an empty
+    // stream means listen-only, never a thrown error.
+    async acquireLocalMedia() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            return {
+                stream: new MediaStream(),
+                notice: window.isSecureContext
+                    ? 'This browser does not support camera and microphone access — you can still join to listen and chat.'
+                    : 'Camera and microphone need a secure connection. Open this site over https:// to use your devices.'
+            };
+        }
+
+        const { hasMic, hasCam } = await this.probeDeviceKinds();
+        const audio = this.getAudioConstraints();
+        const video = this.getVideoConstraints();
+
+        const attempts = [];
+        if (hasMic && hasCam) attempts.push({ audio, video });
+        if (hasMic) attempts.push({ audio });
+        if (hasCam) attempts.push({ video });
+
+        let lastError = null;
+        for (const constraints of attempts) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log(`Media stream acquired: ${Object.keys(constraints).join(' + ')} (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
+                return { stream, notice: this.mediaNoticeFor(stream, lastError) };
+            } catch (error) {
+                lastError = error;
+                console.warn(`getUserMedia failed for ${Object.keys(constraints).join(' + ')}:`, error.name, error.message);
+                // A refused prompt covers every kind — narrowing the request just
+                // re-prompts for something the user has already said no to.
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') break;
+            }
+        }
+
+        return {
+            stream: new MediaStream(),
+            notice: `${this.describeMediaError(lastError)} You can still join to listen and chat.`
+        };
+    }
+
     async getLocalStream() {
         if (!this.localStream) {
-            try {
-                this.localStream = await navigator.mediaDevices.getUserMedia({
-                    video: this.getVideoConstraints(),
-                    audio: this.getAudioConstraints()
-                });
-                console.log(`Media stream acquired (${this.isMobileDevice() ? 'mobile' : 'desktop'}${this.lowBandwidthMode ? ', low-bandwidth' : ''} mode)`);
-                this.localVideo.srcObject = this.localStream;
+            const { stream, notice } = await this.acquireLocalMedia();
+            this.localStream = stream;
+            this.mediaNotice = notice;
+            this.localVideo.srcObject = this.localStream;
 
-                // Set up persistent mic audio chain (source → destination graph)
-                await this.setupMicAudioChain();
+            // Set up persistent mic audio chain (source → destination graph)
+            await this.setupMicAudioChain();
 
-                // Start monitoring for speaking indicator
-                this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
+            // Start monitoring for speaking indicator
+            this.monitorAudioLevel(this.localStream, document.getElementById('localContainer'));
 
-                console.log('Got local stream');
-            } catch (error) {
-                console.error('Error accessing media devices:', error);
-                alert('Could not access camera/microphone. Please grant permissions.');
-                throw error;
-            }
+            console.log('Got local stream');
         }
         return this.localStream;
     }
@@ -2023,44 +2118,71 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // the closest relay is already picked by the time they hit Join.
         this.selectBestTurnServer();
 
-        // Get media for preview
-        try {
-            this.prejoinStream = await navigator.mediaDevices.getUserMedia({
-                video: this.getVideoConstraints(),
-                audio: this.getAudioConstraints()
-            });
-
-            // Default: mic ON, camera OFF
-            this.prejoinAudioEnabled = true;
-            this.prejoinVideoEnabled = false;
-            this.prejoinStream.getVideoTracks().forEach(t => { t.enabled = false; });
-
-            document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
-
-            // Sync button states
-            const audioBtn = document.getElementById('prejoinToggleAudioBtn');
-            audioBtn.classList.remove('active');
-            setIcon(audioBtn.querySelector('.icon'), 'mic');
-            audioBtn.querySelector('.btn-status').textContent = 'ON';
-
-            const videoBtn = document.getElementById('prejoinToggleVideoBtn');
-            videoBtn.classList.add('active');
-            setIcon(videoBtn.querySelector('.icon'), 'camera-off');
-            videoBtn.querySelector('.btn-status').textContent = 'OFF';
-
-            const lwBtn = document.getElementById('prejoinLowBandwidthBtn');
-            if (lwBtn) {
-                lwBtn.classList.toggle('active', this.lowBandwidthMode);
-                setIcon(lwBtn.querySelector('.icon'), this.lowBandwidthMode ? 'signal-low' : 'signal');
-                lwBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
-            }
-
-            // Populate device selectors
-            await this.updatePrejoinDeviceLists(this.prejoinStream);
-        } catch (error) {
-            console.error('Error accessing media devices:', error);
-            alert('Could not access camera/microphone. You can still join but others will not see or hear you.');
+        // Re-entering prejoin must not leave the previous stream running — the
+        // device light would stay on with nothing holding the tracks.
+        if (this.prejoinStream) {
+            this.prejoinStream.getTracks().forEach(track => track.stop());
+            this.prejoinStream = null;
         }
+
+        // The permission prompt can sit unanswered for a long time, and a blank
+        // preview with no explanation reads as a broken page.
+        this.setPrejoinNotice('Requesting camera and microphone access — allow it in your browser to be seen and heard.', 'pending');
+
+        // Held so joinRoom can wait on an unanswered prompt instead of firing a
+        // second getUserMedia behind the first one.
+        this.prejoinMediaPromise = this.acquireLocalMedia();
+        const { stream, notice } = await this.prejoinMediaPromise;
+        this.prejoinStream = stream;
+        this.mediaNotice = notice;
+
+        // Default: mic ON (when there is one), camera OFF
+        this.prejoinAudioEnabled = stream.getAudioTracks().length > 0;
+        this.prejoinVideoEnabled = false;
+        stream.getVideoTracks().forEach(t => { t.enabled = false; });
+
+        document.getElementById('prejoinVideo').srcObject = stream;
+
+        this.setPrejoinNotice(notice, 'warn');
+        this.syncPrejoinControls();
+
+        const lwBtn = document.getElementById('prejoinLowBandwidthBtn');
+        if (lwBtn) {
+            lwBtn.classList.toggle('active', this.lowBandwidthMode);
+            setIcon(lwBtn.querySelector('.icon'), this.lowBandwidthMode ? 'signal-low' : 'signal');
+            lwBtn.querySelector('.btn-status').textContent = this.lowBandwidthMode ? 'ON' : 'OFF';
+        }
+
+        // Populate device selectors
+        await this.updatePrejoinDeviceLists(stream);
+    }
+
+    setPrejoinNotice(text, kind = 'warn') {
+        const el = document.getElementById('prejoinNotice');
+        if (!el) return;
+        el.textContent = text || '';
+        el.classList.toggle('hidden', !text);
+        el.classList.toggle('pending', kind === 'pending');
+    }
+
+    // Mic and camera buttons reflect what we actually hold a track for. Without a
+    // device there is nothing to toggle, so the button says so instead of looking
+    // live and doing nothing when clicked.
+    syncPrejoinControls() {
+        const hasAudio = !!(this.prejoinStream && this.prejoinStream.getAudioTracks().length);
+        const hasVideo = !!(this.prejoinStream && this.prejoinStream.getVideoTracks().length);
+
+        const audioBtn = document.getElementById('prejoinToggleAudioBtn');
+        audioBtn.disabled = !hasAudio;
+        audioBtn.classList.toggle('active', hasAudio && !this.prejoinAudioEnabled);
+        setIcon(audioBtn.querySelector('.icon'), hasAudio && this.prejoinAudioEnabled ? 'mic' : 'mic-off');
+        audioBtn.querySelector('.btn-status').textContent = hasAudio ? (this.prejoinAudioEnabled ? 'ON' : 'OFF') : 'NONE';
+
+        const videoBtn = document.getElementById('prejoinToggleVideoBtn');
+        videoBtn.disabled = !hasVideo;
+        videoBtn.classList.toggle('active', hasVideo && !this.prejoinVideoEnabled);
+        setIcon(videoBtn.querySelector('.icon'), hasVideo && this.prejoinVideoEnabled ? 'camera' : 'camera-off');
+        videoBtn.querySelector('.btn-status').textContent = hasVideo ? (this.prejoinVideoEnabled ? 'ON' : 'OFF') : 'NONE';
     }
 
     hidePrejoinScreen() {
@@ -2069,6 +2191,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             this.prejoinStream.getTracks().forEach(track => track.stop());
             this.prejoinStream = null;
         }
+        this.prejoinMediaPromise = null;
+        this.mediaNotice = null;
+        this.setPrejoinNotice(null);
 
         // Show join screen
         document.getElementById('prejoinScreen').style.display = 'none';
@@ -2076,30 +2201,22 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     }
 
     prejoinToggleAudio() {
-        if (this.prejoinStream) {
+        if (this.prejoinStream && this.prejoinStream.getAudioTracks().length) {
             this.prejoinAudioEnabled = !this.prejoinAudioEnabled;
             this.prejoinStream.getAudioTracks().forEach(track => {
                 track.enabled = this.prejoinAudioEnabled;
             });
-
-            const btn = document.getElementById('prejoinToggleAudioBtn');
-            btn.classList.toggle('active', !this.prejoinAudioEnabled);
-            setIcon(btn.querySelector('.icon'), this.prejoinAudioEnabled ? 'mic' : 'mic-off');
-            btn.querySelector('.btn-status').textContent = this.prejoinAudioEnabled ? 'ON' : 'OFF';
+            this.syncPrejoinControls();
         }
     }
 
     prejoinToggleVideo() {
-        if (this.prejoinStream) {
+        if (this.prejoinStream && this.prejoinStream.getVideoTracks().length) {
             this.prejoinVideoEnabled = !this.prejoinVideoEnabled;
             this.prejoinStream.getVideoTracks().forEach(track => {
                 track.enabled = this.prejoinVideoEnabled;
             });
-
-            const btn = document.getElementById('prejoinToggleVideoBtn');
-            btn.classList.toggle('active', !this.prejoinVideoEnabled);
-            setIcon(btn.querySelector('.icon'), this.prejoinVideoEnabled ? 'camera' : 'camera-off');
-            btn.querySelector('.btn-status').textContent = this.prejoinVideoEnabled ? 'ON' : 'OFF';
+            this.syncPrejoinControls();
         }
     }
 
@@ -2199,7 +2316,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         pc.getTransceivers().forEach(transceiver => {
             try {
-                const kind = transceiver.sender.track?.kind;
+                // A recvonly transceiver has no sender track; its receiver still
+                // knows the kind, and its codec preferences matter just as much.
+                const kind = transceiver.sender.track?.kind || transceiver.receiver?.track?.kind;
                 if (kind === 'video') transceiver.setCodecPreferences(sortedVideo);
                 else if (kind === 'audio') transceiver.setCodecPreferences(sortedAudio);
             } catch (e) {
@@ -2243,6 +2362,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Hide prejoin screen
             document.getElementById('prejoinScreen').style.display = 'none';
 
+            // The prejoin permission prompt may still be open. Let it settle first,
+            // or we fire a second getUserMedia behind the one already showing.
+            if (this.prejoinMediaPromise) {
+                await this.prejoinMediaPromise;
+                this.prejoinMediaPromise = null;
+            }
+
             // Normally already resolved from the prejoin screen; cap the wait so
             // a hung probe can never hold up joining.
             await Promise.race([
@@ -2258,8 +2384,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             // Use prejoin stream if available, otherwise get new stream
             if (this.prejoinStream) {
                 this.localStream = this.prejoinStream;
-                this.audioEnabled = this.prejoinAudioEnabled;
-                this.videoEnabled = this.prejoinVideoEnabled;
+                // A missing device can never be "on", however the prejoin toggle
+                // was left — the stream is the authority here, not the button.
+                this.audioEnabled = this.prejoinAudioEnabled && this.localStream.getAudioTracks().length > 0;
+                this.videoEnabled = this.prejoinVideoEnabled && this.localStream.getVideoTracks().length > 0;
                 this.localVideo.srcObject = this.localStream;
 
                 // Set up persistent mic audio chain
@@ -2311,11 +2439,22 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             videoBtn.classList.toggle('active', !this.videoEnabled);
             setIcon(videoBtn.querySelector('.icon'), this.videoEnabled ? 'camera' : 'camera-off');
 
+            this.syncDeviceControlAvailability();
+
             // Start local connection stats monitoring
             this.startLocalStatsMonitoring();
 
-            // Auto-enable noise suppression on all devices
-            try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
+            // Auto-enable noise suppression on all devices — nothing to suppress
+            // without a mic, and the audio chain has no context to hang it off.
+            if (this.localStream.getAudioTracks().length > 0) {
+                try { await this.toggleNoiseSuppression(); } catch (e) { console.warn('Auto noise suppression failed:', e); }
+            }
+
+            // Say once, in chat, why the mic or camera button is dead — the prejoin
+            // notice is gone by now and the cause is not otherwise discoverable.
+            if (this.mediaNotice) {
+                this.addChatMessage('System', this.mediaNotice, true);
+            }
 
             // Generate E2EE key pair before joining room
             await this.initE2EE();
@@ -2361,18 +2500,24 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // The main connection always carries camera + mic, screen share or not —
         // a share rides its own peer connection (see createScreenPeerConnection),
         // so nothing here has to know about it.
-        const activeStream = this.localStream;
+        const activeStream = this.localStream || new MediaStream();
 
         const videoTrack = activeStream.getVideoTracks()[0];
 
         const audioTrack = this.micDestination
             // Processed audio track when noise suppression is enabled
-            ? (this.micDestination.stream.getAudioTracks()[0] || this.localStream.getAudioTracks()[0])
-            : this.localStream.getAudioTracks()[0];
+            ? (this.micDestination.stream.getAudioTracks()[0] || activeStream.getAudioTracks()[0])
+            : activeStream.getAudioTracks()[0];
 
         const tracksToAdd = [];
         if (audioTrack) tracksToAdd.push(audioTrack);
         if (videoTrack) tracksToAdd.push(videoTrack);
+
+        // A kind we cannot send still needs an m-line, or our offer gives the peer
+        // no slot to send us theirs and a user with no mic or camera joins deaf and
+        // blind. Only the offerer needs this — an answer takes its m-lines from the
+        // offer. The two calls straddle the track loop to keep audio before video.
+        if (createOffer && !audioTrack) pc.addTransceiver('audio', { direction: 'recvonly' });
 
         tracksToAdd.forEach(track => {
             const sender = pc.addTrack(track, activeStream);
@@ -2414,6 +2559,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             }
         });
+
+        if (createOffer && !videoTrack) pc.addTransceiver('video', { direction: 'recvonly' });
 
         // Prefer hardware-accelerated codecs (H.264 > VP9 > AV1 > VP8)
         this.setPreferredCodecs(pc);
@@ -2509,6 +2656,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 if (peerData) {
                     peerData.iceRestartCount = 0;
                     peerData.lastIceRestartTime = 0;
+                }
+                // A peer with no mic or camera sends nothing, so ontrack never fires
+                // and nothing would ever put them in the grid. Give them an avatar
+                // tile so they are visible — and moderatable — like everyone else.
+                // streamAdded stays false on purpose: if a track does turn up later,
+                // ontrack rebuilds this tile properly around the real stream.
+                if (!document.getElementById(`video-${peerId}`)) {
+                    this.addRemoteVideo(peerId, this.knownUsernames.get(peerId) || peerUsername, new MediaStream());
                 }
                 // Clear TURN failure flag so TURN is retried if they disconnect and reconnect
                 this.turnFailedPeers.delete(peerId);
@@ -3975,33 +4130,64 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.addChatMessage('System', `${username || 'Someone else'} is already sharing their screen.`, true);
     }
 
-    toggleAudio() {
-        if (this.localStream) {
-            this.audioEnabled = !this.audioEnabled;
-            this.localStream.getAudioTracks().forEach(track => {
-                track.enabled = this.audioEnabled;
-            });
+    hasLocalTrack(kind) {
+        if (!this.localStream) return false;
+        return (kind === 'audio' ? this.localStream.getAudioTracks() : this.localStream.getVideoTracks()).length > 0;
+    }
 
-            const btn = document.getElementById('toggleAudioBtn');
-            btn.classList.toggle('active', !this.audioEnabled);
-            setIcon(btn.querySelector('.icon'), this.audioEnabled ? 'mic' : 'mic-off');
-
-            // Notify other users of audio state change
-            this.sendMessage({
-                type: 'audio-state',
-                audioEnabled: this.audioEnabled
-            });
+    // Greys out the mic/camera buttons we have no device for, so a listener can
+    // see at a glance why they cannot unmute rather than clicking a live-looking
+    // button that does nothing.
+    syncDeviceControlAvailability() {
+        const audioBtn = document.getElementById('toggleAudioBtn');
+        if (audioBtn) {
+            const hasMic = this.hasLocalTrack('audio');
+            audioBtn.disabled = !hasMic;
+            audioBtn.title = hasMic ? 'Toggle microphone' : 'No microphone available';
+        }
+        const videoBtn = document.getElementById('toggleVideoBtn');
+        if (videoBtn) {
+            const hasCam = this.hasLocalTrack('video');
+            videoBtn.disabled = !hasCam;
+            videoBtn.title = hasCam ? 'Toggle camera' : 'No camera available';
         }
     }
 
+    toggleAudio() {
+        if (!this.hasLocalTrack('audio')) {
+            this.addChatMessage('System', this.mediaNotice || 'No microphone available — others cannot hear you.', true);
+            return;
+        }
+
+        this.audioEnabled = !this.audioEnabled;
+        this.localStream.getAudioTracks().forEach(track => {
+            track.enabled = this.audioEnabled;
+        });
+
+        const btn = document.getElementById('toggleAudioBtn');
+        btn.classList.toggle('active', !this.audioEnabled);
+        setIcon(btn.querySelector('.icon'), this.audioEnabled ? 'mic' : 'mic-off');
+
+        // Notify other users of audio state change
+        this.sendMessage({
+            type: 'audio-state',
+            audioEnabled: this.audioEnabled
+        });
+    }
+
     toggleVideo() {
+        // Without a camera track there is nothing to turn on, and announcing
+        // video-state: true would put a live tile in front of everyone else.
+        if (!this.hasLocalTrack('video')) {
+            this.addChatMessage('System', this.mediaNotice || 'No camera available — others cannot see you.', true);
+            return;
+        }
+
         this.videoEnabled = !this.videoEnabled;
 
-        if (this.localStream) {
-            this.localStream.getVideoTracks().forEach(track => {
-                track.enabled = this.videoEnabled;
-            });
-        }
+        this.localStream.getVideoTracks().forEach(track => {
+            track.enabled = this.videoEnabled;
+        });
 
         const btn = document.getElementById('toggleVideoBtn');
         btn.classList.toggle('active', !this.videoEnabled);
@@ -4051,6 +4237,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 // Ensure mic audio chain is ready (micAudioCtx + worklet already loaded by setupMicAudioChain)
                 if (!this.micAudioCtx) {
                     await this.setupMicAudioChain();
+                }
+                // setupMicAudioChain builds nothing without a mic track — there is
+                // no source to gate, so leave the toggle off rather than throwing.
+                if (!this.micAudioCtx || !this.micSource || !this.micDestination) {
+                    console.warn('Noise suppression unavailable: no microphone track');
+                    return;
                 }
                 if (this.micAudioCtx.state === 'suspended') {
                     await this.micAudioCtx.resume();
@@ -4178,73 +4370,56 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
-    async updateMicDeviceList() {
-        const select = document.getElementById('micDeviceSelect');
-        if (!select) return;
+    // An empty <select> looks like a loading bug. When there is nothing to list,
+    // say so in a disabled placeholder instead of leaving the control blank.
+    fillDeviceSelect(select, devices, currentDeviceId, noun) {
+        select.innerHTML = '';
+
+        if (devices.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = `No ${noun.toLowerCase()} detected`;
+            select.appendChild(option);
+            select.disabled = true;
+            return;
+        }
+
+        select.disabled = false;
+        devices.forEach((device, i) => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.textContent = device.label || `${noun} ${i + 1}`;
+            if (device.deviceId === currentDeviceId) option.selected = true;
+            select.appendChild(option);
+        });
+    }
+
+    async updateDeviceSelect(selectId, kind, noun) {
+        const select = document.getElementById(selectId);
+        if (!select || !navigator.mediaDevices?.enumerateDevices) return;
 
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputs = devices.filter(d => d.kind === 'audioinput');
-
-            // Get current device ID
-            const audioTrack = this.localStream?.getAudioTracks()[0];
-            const currentDeviceId = audioTrack ? audioTrack.getSettings().deviceId : null;
-
-            select.innerHTML = '';
-            audioInputs.forEach((device, i) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.textContent = device.label || `Microphone ${i + 1}`;
-                if (device.deviceId === currentDeviceId) {
-                    option.selected = true;
-                }
-                select.appendChild(option);
-            });
+            const inputs = devices.filter(d => d.kind === kind);
+            const track = kind === 'audioinput'
+                ? this.localStream?.getAudioTracks()[0]
+                : this.localStream?.getVideoTracks()[0];
+            this.fillDeviceSelect(select, inputs, track ? track.getSettings().deviceId : null, noun);
         } catch (error) {
-            console.warn('Could not enumerate mic devices:', error);
+            console.warn(`Could not enumerate ${noun.toLowerCase()} devices:`, error);
         }
+    }
+
+    async updateMicDeviceList() {
+        await this.updateDeviceSelect('micDeviceSelect', 'audioinput', 'Microphone');
     }
 
     async updateMicDeviceListOptions() {
-        const select = document.getElementById('micDeviceSelectOptions');
-        if (!select) return;
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputs = devices.filter(d => d.kind === 'audioinput');
-            const audioTrack = this.localStream?.getAudioTracks()[0];
-            const currentDeviceId = audioTrack ? audioTrack.getSettings().deviceId : null;
-            select.innerHTML = '';
-            audioInputs.forEach((device, i) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.textContent = device.label || `Microphone ${i + 1}`;
-                if (device.deviceId === currentDeviceId) option.selected = true;
-                select.appendChild(option);
-            });
-        } catch (error) {
-            console.warn('Could not enumerate mic devices:', error);
-        }
+        await this.updateDeviceSelect('micDeviceSelectOptions', 'audioinput', 'Microphone');
     }
 
     async updateCameraDeviceList() {
-        const select = document.getElementById('cameraDeviceSelect');
-        if (!select) return;
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoInputs = devices.filter(d => d.kind === 'videoinput');
-            const videoTrack = this.localStream?.getVideoTracks()[0];
-            const currentDeviceId = videoTrack ? videoTrack.getSettings().deviceId : null;
-            select.innerHTML = '';
-            videoInputs.forEach((device, i) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.textContent = device.label || `Camera ${i + 1}`;
-                if (device.deviceId === currentDeviceId) option.selected = true;
-                select.appendChild(option);
-            });
-        } catch (error) {
-            console.warn('Could not enumerate camera devices:', error);
-        }
+        await this.updateDeviceSelect('cameraDeviceSelect', 'videoinput', 'Camera');
     }
 
     async switchCamera(deviceId) {
@@ -4269,6 +4444,15 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 if (sender) sender.replaceTrack(newVideoTrack);
             });
 
+            // A camera we did not have when we joined has no sender to swap into:
+            // that m-line was negotiated receive-only and this mesh has no
+            // renegotiation path. Better to say so than to show a local preview
+            // that nobody else is receiving.
+            if (!oldVideoTrack && this.peerConnections.size > 0) {
+                this.addChatMessage('System', 'Camera connected. Rejoin the room for others to see it.', true);
+            }
+            this.syncDeviceControlAvailability();
+
             localStorage.setItem('broference-preferred-camera', deviceId);
             console.log('Switched camera to:', newVideoTrack.label);
         } catch (error) {
@@ -4277,6 +4461,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     }
 
     async updatePrejoinDeviceLists(stream) {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             const audioInputs = devices.filter(d => d.kind === 'audioinput');
@@ -4285,25 +4470,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             const currentMicId = stream?.getAudioTracks()[0]?.getSettings().deviceId;
             const currentCamId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
 
-            const micSel = document.getElementById('prejoinMicSelect');
-            micSel.innerHTML = '';
-            audioInputs.forEach((d, i) => {
-                const opt = document.createElement('option');
-                opt.value = d.deviceId;
-                opt.textContent = d.label || `Microphone ${i + 1}`;
-                if (d.deviceId === currentMicId) opt.selected = true;
-                micSel.appendChild(opt);
-            });
-
-            const camSel = document.getElementById('prejoinCameraSelect');
-            camSel.innerHTML = '';
-            videoInputs.forEach((d, i) => {
-                const opt = document.createElement('option');
-                opt.value = d.deviceId;
-                opt.textContent = d.label || `Camera ${i + 1}`;
-                if (d.deviceId === currentCamId) opt.selected = true;
-                camSel.appendChild(opt);
-            });
+            this.fillDeviceSelect(document.getElementById('prejoinMicSelect'), audioInputs, currentMicId, 'Microphone');
+            this.fillDeviceSelect(document.getElementById('prejoinCameraSelect'), videoInputs, currentCamId, 'Camera');
         } catch (error) {
             console.warn('Could not enumerate devices for prejoin:', error);
         }
@@ -4321,16 +4489,28 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Stop and replace old track
             const oldTracks = kind === 'audio' ? this.prejoinStream.getAudioTracks() : this.prejoinStream.getVideoTracks();
+            const hadTrack = oldTracks.length > 0;
             oldTracks.forEach(t => { t.stop(); this.prejoinStream.removeTrack(t); });
             this.prejoinStream.addTrack(newTrack);
 
-            // Preserve enabled state for video
-            if (kind === 'video') newTrack.enabled = this.prejoinVideoEnabled;
-            if (kind === 'audio') newTrack.enabled = this.prejoinAudioEnabled;
+            // Preserve the toggle across a swap, but a mic that only just became
+            // available starts on — its "off" was the absence of a device, not a choice.
+            if (kind === 'audio') {
+                if (!hadTrack) this.prejoinAudioEnabled = true;
+                newTrack.enabled = this.prejoinAudioEnabled;
+            } else {
+                newTrack.enabled = this.prejoinVideoEnabled;
+            }
 
             document.getElementById('prejoinVideo').srcObject = this.prejoinStream;
+
+            // Picking a device we previously had none of makes that button live again.
+            this.mediaNotice = this.mediaNoticeFor(this.prejoinStream, null);
+            this.setPrejoinNotice(this.mediaNotice);
+            this.syncPrejoinControls();
         } catch (error) {
             console.error(`Error switching prejoin ${kind} device:`, error);
+            this.setPrejoinNotice(this.describeMediaError(error));
         }
     }
 
@@ -4373,6 +4553,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             // Add new track to local stream
             this.localStream.addTrack(newAudioTrack);
+            // A mic that only just became available starts unmuted — the mute was
+            // the absence of a device, not the user's choice.
+            if (!oldAudioTrack) {
+                this.audioEnabled = true;
+                const audioBtn = document.getElementById('toggleAudioBtn');
+                audioBtn.classList.remove('active');
+                setIcon(audioBtn.querySelector('.icon'), 'mic');
+            }
 
             // Re-wire audio chain with the new source track (handles NS state automatically)
             await this.setupMicAudioChain();
@@ -4385,6 +4573,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 const sender = peer.connection.getSenders().find(s => s.track && s.track.kind === 'audio');
                 if (sender) sender.replaceTrack(destTrack);
             });
+
+            // Same receive-only limitation as switchCamera — no sender exists for a
+            // mic we did not have at join time.
+            if (!oldAudioTrack && this.peerConnections.size > 0) {
+                this.addChatMessage('System', 'Microphone connected. Rejoin the room for others to hear you.', true);
+            }
+            this.syncDeviceControlAvailability();
 
             // Save preference
             this.saveNoiseGateSetting('preferredMic', deviceId);
