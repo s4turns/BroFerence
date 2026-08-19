@@ -437,6 +437,7 @@ pip install -r server/requirements.txt
 - **Prejoin explains itself** — Says whether a device is missing, blocked, or in use by another app, and how to fix it, instead of a dead-end alert. Controls for absent devices are disabled rather than inert
 - **Auto-reload after a restart** — When the countdown expires the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
 - **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html`, including the old version number in the corner, after a successful update. The `?v=<commit>` stamping only ever covered the assets `app.html` references, never `app.html` itself. HTML is now `no-cache`
+- **Chat button no longer boxes its own icon** — A header rule meant for bare spans was giving the icon wrapper the button's border and padding, drawing a second box inside the button
 
 ### v1.9 (2026-08-18)
 - **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once

@@ -52,6 +52,11 @@ Versions match the number shown in the app footer and in `README.md`.
   cache-busting only ever covered the assets *referenced by* app.html, never app.html itself.
   HTML is now served `no-cache`, which also stops the auto-reload from picking a cached page
   back up.
+- **Chat button no longer boxes its own icon.** `.room-info span` was written for bare spans
+  sitting directly in the header, but `.room-info` now holds only the chat button, so the rule
+  was giving the icon wrapper the button's own border, padding, and background — a second box
+  inside the button. It also squared off the notification badge's border radius. Scoped to
+  `.room-info > span`, in the base rule and both breakpoint overrides.
 
 ---
 
