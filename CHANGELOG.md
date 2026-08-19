@@ -10,24 +10,6 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ## v2.0 — 2026-08-19
 
-- **Automatic reload after a restart.** When the restart countdown expires, the client polls
-  the origin and reloads the moment it answers again. It cannot reload on the spot: the
-  containers are going down as the countdown ends and the rebuild that follows takes a couple
-  of minutes, so an immediate reload only lands on a connection error. Previously the
-  countdown just left everyone on a dead socket with a banner telling them to rejoin by hand.
-  After ten minutes without an answer the client stops and says so, rather than reloading
-  into an error page and hiding a broken deploy.
-- **Fixed stale pages after a deploy.** nginx sent no cache headers for HTML, so browsers
-  heuristically cached `app.html` and kept showing the previous build — including the old
-  version number in the corner — even after a successful update. The `?v=<commit>`
-  cache-busting only ever covered the assets *referenced by* app.html, never app.html
-  itself. HTML is now served `no-cache`, which also stops the new auto-reload from picking a
-  cached page back up.
-
----
-
-## v1.9 — 2026-08-18
-
 ### Joining
 
 - **Join without a mic or camera.** Devices are now requested individually instead of as a
@@ -52,17 +34,7 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ### Screen sharing
 
-- **A share gets its own tile.** It rides a dedicated send-only peer connection and joins the
-  grid separately, so your camera keeps running alongside it.
-- **Screen audio is independent.** Desktop audio travels with the screen tile and has its own
-  volume and mute, so muting someone's screen no longer mutes their voice. This replaces the
-  old mic/desktop mixer, which only existed because there was a single audio sender.
-- **One presenter at a time**, tracked server-side and released automatically if the presenter
-  leaves or crashes.
 - **Late joiners see a share already in progress.**
-- **End-to-end encryption covers screen connections**, not just the camera mesh.
-- **Camera is throttled while presenting** — roughly 400 kbps at half resolution, since camera
-  plus screen to every peer is a lot of relayed uplink.
 - **Noise suppression stays active on your microphone while sharing.**
 - Fixed screen-share audio feedback, low frame rates, and late joiners not hearing the share.
 
@@ -92,18 +64,26 @@ Versions match the number shown in the app footer and in `README.md`.
 ### Interface
 
 - **Tron is now the default theme** — animated grid floor, lightcycle ribbon, glass panels.
-- **SVG icons throughout** — around 80 emoji replaced with inline stroke icons that inherit
-  each theme's colour.
-- **"AI Noise Suppression" renamed to "Noise suppression."** It never used a model; it is a
-  DSP noise gate.
 - Fixed invisible buttons and click handling on video tiles, and aligned the prejoin device
   dropdowns.
 
 ### Operations
 
-- **Restart warning.** A deploy broadcasts a 60-second countdown to everyone in a call before
-  containers go down (`SIGUSR1` to the signaling server; `update-vps.sh` waits out the same
-  grace period).
+- **Restart warning, then automatic reload.** A deploy broadcasts a 60-second countdown to
+  everyone in a call before containers go down (`SIGUSR1` to the signaling server;
+  `update-vps.sh` waits out the same grace period). When the countdown expires the client
+  polls the origin and reloads the moment it answers again — reloading immediately would only
+  land on a connection error, since the containers are going down as the countdown ends and
+  the rebuild takes a couple of minutes. Previously the countdown just left everyone on a
+  dead socket with a banner telling them to rejoin by hand. After ten minutes without an
+  answer the client stops and says so, rather than reloading into an error page and hiding a
+  broken deploy.
+- **Fixed stale pages after a deploy.** nginx sent no cache headers for HTML, so browsers
+  heuristically cached `app.html` and kept showing the previous build — including the old
+  version number in the corner — even after a successful update. The `?v=<commit>`
+  cache-busting only ever covered the assets *referenced by* app.html, never app.html
+  itself. HTML is now served `no-cache`, which also stops the auto-reload from picking a
+  cached page back up.
 - **Dev environment** — `update-dev.sh` plus a dev compose stack, kept in lockstep with the
   TURN credential prod rotates on every deploy.
 - **IRC bridge reconnects reliably** — connects to the hostname its certificate covers,
@@ -113,6 +93,26 @@ Versions match the number shown in the app footer and in `README.md`.
   calls spanning both relays are not blocked; `external-ip` no longer set on the primary
   coturn (it silently 403'd same-server relay paths).
 - Dependency security bumps (`qs`, `follow-redirects`, `brace-expansion`).
+
+---
+
+## v1.9 — 2026-08-18
+
+- **Screen share gets its own tile.** A share no longer replaces the sharer's camera. It rides
+  a dedicated send-only peer connection and joins the grid as a separate tile, so people see
+  the face and the screen at once.
+- **Screen audio is separate.** Desktop audio travels with the screen tile and has its own
+  volume and mute, so muting someone's screen no longer mutes their voice. Replaces the old
+  mic/desktop mixer, which only existed because there was a single audio sender.
+- **One presenter at a time**, tracked server-side and released automatically if the presenter
+  leaves or crashes.
+- **End-to-end encryption covers screen connections**, not just the camera mesh.
+- **Camera is throttled while presenting** — roughly 400 kbps at half resolution, since camera
+  plus screen to every peer is a lot of relayed uplink.
+- **SVG icons throughout** — around 80 emoji replaced with inline stroke icons that inherit
+  each theme's colour.
+- **"AI Noise Suppression" renamed to "Noise suppression."** It never used a model; it is a
+  DSP noise gate.
 
 ---
 

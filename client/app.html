@@ -351,25 +351,9 @@
                     <span class="changelog-date">2026-08-19</span>
                 </div>
                 <ul>
-                    <li>After a restart countdown, the page now reloads itself as soon as the server is back — no more dead socket or manual rejoin</li>
-                    <li>Fixed browsers caching the page and showing an old version after an update</li>
-                </ul>
-            </div>
-
-            <div class="changelog-version">
-                <div class="changelog-version-header">
-                    <span class="changelog-tag">v1.9</span>
-                    <span class="changelog-date">2026-08-18</span>
-                </div>
-                <ul>
                     <li>Join without a mic or camera — missing, blocked, or busy devices no longer block the room</li>
                     <li>Prejoin says which device is missing and why, instead of a dead-end alert</li>
-                    <li>Screen share gets its own tile — your camera keeps running alongside it</li>
-                    <li>Screen audio is separate — muting someone's screen no longer mutes their voice</li>
-                    <li>One presenter at a time, released automatically if they leave or crash</li>
                     <li>Late joiners now see a share already in progress</li>
-                    <li>End-to-end encryption covers screen shares too</li>
-                    <li>Camera throttled while presenting to protect uplink</li>
                     <li>Noise suppression stays on your mic while sharing</li>
                     <li>Unique nicknames per room — the newcomer is renamed, not the person already here</li>
                     <li>Your own tile shows your nickname and role badge</li>
@@ -381,11 +365,26 @@
                     <li>Stalled remote audio self-heals: replay, then ICE restart</li>
                     <li>Fewer dropped clients in large calls — CPU fix plus longer keepalive timeouts</li>
                     <li>Tron is now the default theme</li>
+                    <li>Fixed invisible buttons and click handling on video tiles</li>
+                    <li>60-second countdown before a deploy restarts the server, then the page reloads itself as soon as the server is back</li>
+                    <li>Fixed browsers caching the page and showing an old version after an update</li>
+                    <li>IRC bridge reconnects reliably — correct cert hostname, accepted nick, PONG and nick-in-use fixes</li>
+                </ul>
+            </div>
+
+            <div class="changelog-version">
+                <div class="changelog-version-header">
+                    <span class="changelog-tag">v1.9</span>
+                    <span class="changelog-date">2026-08-18</span>
+                </div>
+                <ul>
+                    <li>Screen share gets its own tile — your camera keeps running alongside it</li>
+                    <li>Screen audio is separate — muting someone's screen no longer mutes their voice</li>
+                    <li>One presenter at a time, released automatically if they leave or crash</li>
+                    <li>End-to-end encryption covers screen shares too</li>
+                    <li>Camera throttled while presenting to protect uplink</li>
                     <li>~80 emoji replaced with inline SVG icons that follow each theme</li>
                     <li>Renamed "AI Noise Suppression" to "Noise suppression" — it is a DSP noise gate, not a model</li>
-                    <li>Fixed invisible buttons and click handling on video tiles</li>
-                    <li>60-second countdown warns everyone before a deploy restarts the server</li>
-                    <li>IRC bridge reconnects reliably — correct cert hostname, accepted nick, PONG and nick-in-use fixes</li>
                 </ul>
             </div>
 

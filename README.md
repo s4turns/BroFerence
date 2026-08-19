@@ -427,22 +427,13 @@ pip install -r server/requirements.txt
 ## Recent Updates
 
 ### v2.0 (2026-08-19)
-- **Auto-reload after a restart** — When the restart countdown expires, the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
-- **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html`, including the old version number in the corner, after a successful update. The `?v=<commit>` stamping only ever covered the assets `app.html` references, never `app.html` itself. HTML is now `no-cache`
-
-### v1.9 (2026-08-18)
 
 **Joining**
 - **Join without a mic or camera** — Devices are requested individually and the app keeps whatever the browser gives it, so a missing, blocked, or busy camera no longer costs you your microphone. With neither, you join as a listener: you see and hear everyone, appear in the grid as an avatar tile, and can chat
 - **Prejoin explains itself** — Says whether a device is missing, blocked, or in use by another app, and how to fix it, instead of a dead-end alert. Controls for absent devices are disabled rather than inert
 
 **Screen sharing**
-- **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once
-- **Screen audio is separate** — Desktop audio travels with the screen tile and has its own volume/mute, so muting someone's screen no longer mutes their voice. Replaces the old mic/desktop mixer, which existed only because there was a single audio sender
-- **One presenter at a time** — Tracked server-side, released automatically if the presenter leaves or crashes
 - **Late joiners see a share in progress** — The screen channel opens to anyone who arrives mid-share
-- **E2EE covers screen shares** — Encryption transforms are applied to the screen connections too
-- **Camera throttled while presenting** — Drops to ~400 kbps at half resolution, since camera + screen to every peer is a lot of relayed uplink
 - **Noise suppression stays on your mic while sharing** — Previously it was disabled for the duration
 
 **Identity and moderation**
@@ -460,14 +451,22 @@ pip install -r server/requirements.txt
 
 **Interface**
 - **Tron is the default theme** — Animated grid floor, lightcycle ribbon, glass panels
-- **SVG icons throughout** — Replaced ~80 emoji with inline stroke icons that inherit each theme's colour
-- **Renamed "AI Noise Suppression" to "Noise suppression"** — It never used a model; it is a DSP noise gate
 - **Fixed invisible tile buttons** — Volume and hide controls on video tiles render and respond correctly
 
 **Operations**
-- **Restart warning** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down
+- **Restart warning and auto-reload** — Deploys broadcast a 60-second countdown to everyone in a call before containers go down. When it expires the page waits for the server to answer again and then reloads itself. It cannot reload on the spot: the containers are going down as the countdown ends and the rebuild takes a couple of minutes, so an immediate reload would just hit a connection error. After ten minutes with no answer it stops and says so rather than reloading into an error page
+- **No more stale pages after a deploy** — The web server sent no cache headers for HTML, so browsers kept serving an old `app.html`, including the old version number in the corner, after a successful update. The `?v=<commit>` stamping only ever covered the assets `app.html` references, never `app.html` itself. HTML is now `no-cache`
 - **Dev environment** — `update-dev.sh` and a dev compose stack, kept in lockstep with prod's rotated TURN credential
 - **IRC bridge reconnects reliably** — Correct certificate hostname, a nickname the network accepts, and fixes for PONG cookie echo and nick-in-use
+
+### v1.9 (2026-08-18)
+- **Screen share gets its own tile** — A share no longer replaces your camera. It rides a dedicated send-only peer connection and joins the grid as a separate tile, so people see your face and your screen at once
+- **Screen audio is separate** — Desktop audio travels with the screen tile and has its own volume/mute, so muting someone's screen no longer mutes their voice. Replaces the old mic/desktop mixer, which existed only because there was a single audio sender
+- **One presenter at a time** — Tracked server-side, released automatically if the presenter leaves or crashes
+- **E2EE covers screen shares** — Encryption transforms are applied to the screen connections too
+- **Camera throttled while presenting** — Drops to ~400 kbps at half resolution, since camera + screen to every peer is a lot of relayed uplink
+- **SVG icons throughout** — Replaced ~80 emoji with inline stroke icons that inherit each theme's colour
+- **Renamed "AI Noise Suppression" to "Noise suppression"** — It never used a model; it is a DSP noise gate
 
 ### v1.8 (2026-05)
 - **New domain** — Migrated to broference.cam
