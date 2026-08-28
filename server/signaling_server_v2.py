@@ -16,8 +16,8 @@ import secrets
 import ipaddress
 from typing import Dict, Optional, Tuple
 import websockets
-from websockets.server import WebSocketServerProtocol
 from irc_bridge import IRCBridge
+from transport import Peer, WebSocketPeer
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Store connected clients: {websocket: {'id': str, 'room': str, 'username': str}}
-clients: Dict[WebSocketServerProtocol, dict] = {}
+clients: Dict[Peer, dict] = {}
 
 # Store rooms: {room_id: {'users': list[websocket], 'password': Optional[bytes], 'irc_channel': Optional[str],
 #               'moderator': Optional[str], 'co_mods': set[str], 'banned': set[str], 'e2ee_enabled': bool}}
@@ -52,6 +52,13 @@ ip_ban_records: list = []
 
 # Admin secret — read from env or auto-generate
 ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
+
+# WebTransport-over-QUIC signaling listener. UDP, and deliberately below 49152
+# so it can never collide with coturn's relay range (min-port=49152 in
+# config/turnserver.production.conf, and coturn runs network_mode: host).
+# 8766 is not available: the client maps it to signaling on the :8443 origin.
+QUIC_PORT = int(os.environ.get('QUIC_PORT', '8767'))
+QUIC_ENABLED = os.environ.get('QUIC_ENABLED', '1') not in ('0', 'false', 'False')
 
 # How long users are given between the restart warning and the containers going
 # down. update-vps.sh sleeps for the same span, so keep the two in step — both
@@ -271,9 +278,9 @@ def find_ssl_certificates() -> Tuple[str, str]:
     return ('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
 
 
-async def register_client(websocket: WebSocketServerProtocol, client_id: str, username: str = None):
+async def register_client(websocket: Peer, client_id: str, username: str = None):
     """Register a new client connection."""
-    ip = websocket.remote_address[0] if websocket.remote_address else 'unknown'
+    ip = websocket.remote_ip or 'unknown'
     clients[websocket] = {
         'id': client_id,
         'room': None,
@@ -283,7 +290,7 @@ async def register_client(websocket: WebSocketServerProtocol, client_id: str, us
     logger.info(f"Client {client_id} ({clients[websocket]['username']}) connected. Total clients: {len(clients)}")
 
 
-async def unregister_client(websocket: WebSocketServerProtocol):
+async def unregister_client(websocket: Peer):
     """Remove a client and clean up their room."""
     if websocket in clients:
         client_info = clients[websocket]
@@ -370,7 +377,7 @@ async def create_room(room_id: str, password: Optional[str] = None, irc_channel:
         logger.info(f"Room {room_id} created")
 
 
-async def join_room(websocket: WebSocketServerProtocol, room_id: str, password: Optional[str] = None):
+async def join_room(websocket: Peer, room_id: str, password: Optional[str] = None):
     """Add client to a room."""
     client_info = clients[websocket]
     client_id = client_info['id']
@@ -578,7 +585,7 @@ async def transfer_mod_if_needed(room_id: str, departing_client_id: str):
     logger.info(f"Owner transferred to {new_mod_username} ({new_mod_id}) in room {room_id}")
 
 
-async def leave_room(websocket: WebSocketServerProtocol):
+async def leave_room(websocket: Peer):
     """Remove client from their current room."""
     client_info = clients[websocket]
     room = client_info['room']
@@ -634,7 +641,7 @@ async def release_presenter(room_id: str):
     })
 
 
-async def broadcast_to_room(room_id: str, message: dict, exclude: WebSocketServerProtocol = None):
+async def broadcast_to_room(room_id: str, message: dict, exclude: Peer = None):
     """Send a message to all clients in a room except the excluded one."""
     if room_id not in rooms:
         return
@@ -719,7 +726,7 @@ def can_act_on(room: dict, actor_id: str, target_id: str) -> bool:
     return False
 
 
-async def handle_message(websocket: WebSocketServerProtocol, message: str):
+async def handle_message(websocket: Peer, message: str):
     """Handle incoming WebSocket messages."""
     global ban_records
     try:
@@ -734,7 +741,8 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
             await websocket.send(json.dumps({
                 'type': 'registered',
                 'clientId': client_id,
-                'username': username
+                'username': username,
+                'transport': websocket.kind
             }))
 
         elif msg_type == 'create-room':
@@ -1439,32 +1447,39 @@ async def handle_message(websocket: WebSocketServerProtocol, message: str):
         logger.error(f"Error handling message: {e}", exc_info=True)
 
 
-async def handler(websocket: WebSocketServerProtocol):
-    """Main WebSocket connection handler."""
+async def run_session(peer: Peer):
+    """Drive one signaling session, whatever transport carried it here.
+
+    Both the WSS and the WebTransport listeners funnel into this, so the two
+    share the ban check, the message loop and the teardown exactly.
+    """
     # Reject connections from globally IP-banned sources before any signaling.
-    peer_ip = websocket.remote_address[0] if websocket.remote_address else None
+    peer_ip = peer.remote_ip
     if peer_ip and peer_ip in banned_ips:
-        logger.info(f"Rejected connection from IP-banned source {peer_ip}")
-        try:
-            await websocket.send(json.dumps({'type': 'banned', 'message': 'Your IP address has been banned'}))
-        except Exception:
-            pass
-        await websocket.close()
+        logger.info(f"Rejected {peer.kind} connection from IP-banned source {peer_ip}")
+        await peer.send(json.dumps({'type': 'banned', 'message': 'Your IP address has been banned'}))
+        await peer.close()
         return
     try:
-        async for message in websocket:
-            await handle_message(websocket, message)
+        async for message in peer:
+            await handle_message(peer, message)
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        admin_clients.discard(websocket)
-        await unregister_client(websocket)
+        admin_clients.discard(peer)
+        await unregister_client(peer)
+
+
+async def handler(websocket):
+    """websockets entrypoint: wrap the raw socket and hand it to run_session."""
+    await run_session(WebSocketPeer(websocket))
 
 
 async def main():
-    """Start the WebSocket server."""
+    """Start the WSS listener, and the QUIC listener alongside it if possible."""
     host = "0.0.0.0"
     port = 8765
+    quic_port = QUIC_PORT
 
     # Find SSL certificates
     cert_path, key_path = find_ssl_certificates()
@@ -1500,6 +1515,19 @@ async def main():
     # pong, which would otherwise drop them with a 1011 timeout and force a refresh.
     async with websockets.serve(handler, host, port, ssl=ssl_context, max_size=4*1024*1024,
                                 ping_interval=20, ping_timeout=60):
+        # QUIC is strictly an addition. If aioquic is missing, the UDP port is
+        # taken, or the handshake stack blows up, we log it and carry on with
+        # WSS — a QUIC problem must never take signaling down.
+        if QUIC_ENABLED:
+            try:
+                from webtransport_server import serve_webtransport
+                await serve_webtransport(run_session, host, quic_port, cert_path, key_path)
+            except ImportError as e:
+                logger.warning(f'QUIC/WebTransport unavailable (aioquic not installed?): {e}')
+            except Exception as e:
+                logger.error(f'QUIC/WebTransport listener failed to start on udp/{quic_port}: {e}')
+        else:
+            logger.info('QUIC/WebTransport disabled (QUIC_ENABLED=0)')
         await asyncio.Future()  # Run forever
 
 

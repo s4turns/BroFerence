@@ -24,6 +24,13 @@ export default [
         localStorage: "readonly",
         URLSearchParams: "readonly",
 
+        // Signaling transport globals
+        WebTransport: "readonly",
+        TextEncoder: "readonly",
+        TextDecoder: "readonly",
+        DataView: "readonly",
+        Uint8Array: "readonly",
+
         // WebRTC globals
         WebSocket: "readonly",
         RTCPeerConnection: "readonly",

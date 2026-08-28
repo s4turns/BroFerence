@@ -122,8 +122,59 @@ sudo bash setup-fail2ban.sh
 | 443 | TCP | HTTPS |
 | 8080 | TCP | HTTP (redirects to HTTPS) |
 | 8765 | TCP | WebSocket signaling |
+| 8767 | UDP | WebTransport/QUIC signaling (optional) |
 | 3479 | TCP+UDP | TURN |
 | 49152–65535 | UDP | TURN relay |
+
+`ufw allow 8767/udp comment 'BroFerence WebTransport'`
+
+Port 8767 is optional. If it is closed the app still works — clients just fall
+back to WebSocket signaling on 8765. See [Signaling transport](#signaling-transport).
+
+---
+
+## Signaling transport
+
+Signaling can travel over either a WebSocket (`wss://host:8765`) or WebTransport
+over HTTP/3 (`https://host:8767/signaling`). **Media is unaffected either way** —
+audio and video always ride WebRTC/SRTP through the coturn relays, and none of
+that changes when the signaling transport does.
+
+Pick a mode under **Options → Signaling**:
+
+| Mode | Behaviour |
+|------|-----------|
+| `Auto` (default) | Try QUIC, fall back to WebSocket on failure or timeout |
+| `QUIC` | Force WebTransport; fail with an error rather than downgrade |
+| `WebSocket` | Force WSS; never touch UDP 8767 |
+
+The status bar shows which transport is actually carrying the session.
+
+**Browser support.** Chrome/Edge 97+ and Firefox 114+ support WebTransport.
+Safari and all iOS browsers do not, so they use WebSocket via `Auto` — which is
+exactly the pre-existing behaviour — and the `QUIC` option is disabled for them.
+Networks that block outbound UDP also fall back. After a QUIC failure the client
+stops retrying it for five minutes rather than paying the timeout on every
+reconnect.
+
+**Certificate.** WebTransport requires a publicly trusted certificate. The
+existing Let's Encrypt chain works as-is. For a self-signed dev box, launch
+Chrome with `--origin-to-force-quic-on=host:8767` and
+`--ignore-certificate-errors-spki-list=<base64 SPKI>`.
+
+**Server config.** `QUIC_PORT` (default `8767`) and `QUIC_ENABLED` (set to `0`
+to disable) are read from the environment. If the QUIC listener cannot start,
+the server logs it and carries on serving WSS.
+
+**Verifying QUIC is really in use.** In DevTools → Network the `/signaling`
+request shows protocol `h3`; `chrome://net-export` records a `QUIC_SESSION` to
+port 8767; and the server logs `transport=quic` for that client. On the VPS,
+`ss -lunp | grep 8767` shows the UDP socket bound.
+
+> **Docker note:** confirm the server logs the client's real IP, not a `172.x`
+> bridge address. If Docker's userland proxy rewrites the UDP source address,
+> IP bans stop working for QUIC peers. Fix with `{"userland-proxy": false}` in
+> `/etc/docker/daemon.json`.
 
 ---
 
@@ -426,6 +477,13 @@ pip install -r server/requirements.txt
 ---
 
 ## Recent Updates
+
+### v2.2 (2026-08-28)
+- **Signaling can run over QUIC** — Signaling may now travel over WebTransport/HTTP-3 (UDP 8767) instead of a WebSocket, selectable under Options &rarr; Signaling as Auto, QUIC, or WebSocket. Auto tries QUIC and falls back to WebSocket on failure or timeout, so a blocked UDP path or an older browser changes nothing. The status bar shows which transport is actually in use
+- **Media is untouched** — Audio and video still ride WebRTC/SRTP through the coturn relays. Only the signaling channel moved, so call quality and the relay-only privacy model are unchanged
+- **Safari keeps working as before** — Safari and iOS have no WebTransport, so they use WebSocket under Auto and the QUIC option is disabled for them. After a QUIC failure the client stops retrying it for five minutes rather than paying the timeout on every reconnect
+- **Fixed a signaling connection that could never reconnect** — If the channel opened and then closed before the server confirmed registration, the connect promise settled neither way, so the reconnect loop waited forever and the client stayed offline until a manual refresh
+- **A bad signaling message no longer silently disappears** — Errors thrown while handling one became unhandled promise rejections that dropped the message mid-way through updating state; they are now caught and logged
 
 ### v2.1 (2026-08-19)
 - **Fixed Safari and iOS never being prompted** — WebKit only shows the camera/microphone prompt while the click that opened the prejoin screen still counts as user activation. v2.0 checked the device list first, which spent that activation before asking, so the prompt never appeared. The request now goes out before anything else and the device probe only runs if it fails

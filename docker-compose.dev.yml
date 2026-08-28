@@ -10,6 +10,10 @@ services:
     ports:
       - "0.0.0.0:8765:8765"
       - "[::]:8765:8765"
+      # WebTransport-over-QUIC signaling. The /udp suffix is mandatory:
+      # without it Docker publishes TCP and the handshake never arrives.
+      - "0.0.0.0:8767:8767/udp"
+      - "[::]:8767:8767/udp"
     volumes:
       - ./ssl:/app/ssl:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro

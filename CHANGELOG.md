@@ -8,6 +8,40 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ---
 
+## v2.2 — 2026-08-28
+
+Signaling gains a second transport. Media is deliberately untouched: audio and video still ride
+WebRTC/SRTP through the coturn relays, and the relay-only privacy model is unchanged.
+
+- **Signaling over QUIC, with WebSocket as the fallback.** The signaling channel can now run as
+  WebTransport over HTTP/3 on UDP 8767, alongside the existing WSS listener on 8765. Both feed
+  the same message router, so a QUIC peer and a WebSocket peer share a room with no difference
+  in behaviour. Options &rarr; Signaling picks `Auto` (try QUIC, fall back), `QUIC` (force, and
+  fail loudly rather than downgrade), or `WebSocket`. The status bar reports what is actually
+  carrying the session, since Auto would otherwise be opaque.
+- **Fallback is the common path, not an edge case.** Networks that block outbound UDP, and
+  Safari and iOS which have no WebTransport at all, land on WebSocket — which is exactly the
+  pre-existing behaviour. A failed QUIC attempt puts it on a five-minute cooldown so reconnects
+  do not pay the handshake timeout every time, and a QUIC session that dies within ten seconds
+  of opening is treated as unhealthy and pinned to WebSocket for the retry.
+- **Transport-neutral server internals.** The signaling server keyed its client registry and
+  room membership directly on the `websockets` protocol object and called `.send()` on it in 43
+  places. Those now hold a `Peer` wrapper that both transports implement, so the message router,
+  `broadcast_to_room`, and every handler are unchanged. Sends no longer raise, which removes the
+  case where one dead socket aborted a whole room broadcast.
+- **Fixed a signaling connection that could never reconnect.** `connectSignalingServer()`
+  resolved only on a `registered` reply and rejected only on a socket error, so a channel that
+  opened and then closed cleanly settled neither way. The `await` inside the reconnect loop
+  waited forever and the client never came back without a manual refresh. It now also settles on
+  an early close and on a timeout — which is what makes the QUIC fallback safe.
+- **The message pump no longer swallows errors.** `JSON.parse` and the message switch ran
+  unguarded inside an async handler, so any throw became an unhandled rejection that dropped the
+  message after it had already mutated state. Both are now caught and logged.
+
+Deploy note: UDP 8767 is optional. With it closed the app works exactly as it did in v2.1.
+
+---
+
 ## v2.1 — 2026-08-19
 
 Follow-up audit of the "never prompted for mic/cam" reports. v2.0 fixed one cause; these are

@@ -1737,6 +1737,33 @@ body::before {
     text-shadow: 0 0 5px var(--danger);
 }
 
+/* Which transport is actually carrying signaling right now. The status bar is
+   a 3-child flex with space-between, so margin-right:auto keeps this tucked
+   beside the status text instead of floating to the centre. */
+.transport-badge {
+    margin-right: auto;
+    margin-left: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    opacity: 0.75;
+    text-shadow: none;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+
+.transport-badge:empty {
+    border: 0;
+    padding: 0;
+    margin-left: 0;
+}
+
+.transport-badge[data-transport="quic"] {
+    color: var(--secondary);
+    opacity: 1;
+}
+
 .status-footer {
     display: flex;
     align-items: center;

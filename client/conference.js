@@ -1,6 +1,151 @@
 // Multi-Participant WebRTC Conference Client with IRC Bridge
 // Version: 1.6
 
+// ── Signaling transports ───────────────────────────────────────────────────
+// The conference client speaks to the signaling server through one of two
+// pipes: a plain WebSocket (wss://host:8765) or WebTransport over HTTP/3
+// (https://host:8767/signaling). Both wrappers below present the same surface
+// the rest of this file already expects from a WebSocket — numeric readyState,
+// send/close, the four on* handlers, and add/removeEventListener('message') —
+// so `this.ws` can hold either and nothing downstream needs to know which.
+//
+// Media is untouched by any of this: audio and video still ride WebRTC/SRTP
+// through the coturn relays. Only signaling moves.
+
+const SIGNALING_QUIC_PORT = 8767;
+const SIGNALING_QUIC_PATH = '/signaling';
+// Covers the QUIC handshake *and* the round trip to a `registered` reply. Kept
+// short because it is a fallback deadline, not a connection budget.
+const QUIC_CONNECT_TIMEOUT_MS = 3000;
+// After a QUIC failure, stop retrying it for a while rather than paying the
+// timeout on every reconnect attempt.
+const QUIC_BLACKLIST_MS = 5 * 60 * 1000;
+// A QUIC session that dies this fast was never really healthy; don't give it
+// the one free retry that a long-lived session gets.
+const QUIC_FLAP_THRESHOLD_MS = 10000;
+
+class WsTransport {
+    constructor(url) {
+        this.kind = 'ws';
+        this.url = url;
+        this._ws = new WebSocket(url);
+        this._ws.onopen = (e) => this.onopen && this.onopen(e);
+        this._ws.onmessage = (e) => this.onmessage && this.onmessage(e);
+        this._ws.onerror = (e) => this.onerror && this.onerror(e);
+        this._ws.onclose = (e) => this.onclose && this.onclose(e);
+    }
+
+    get readyState() { return this._ws.readyState; }
+    send(data) { this._ws.send(data); }
+    close() { this._ws.close(); }
+    addEventListener(type, fn) { this._ws.addEventListener(type, fn); }
+    removeEventListener(type, fn) { this._ws.removeEventListener(type, fn); }
+}
+
+class QuicTransport {
+    /**
+     * One bidirectional WebTransport stream carries the whole session.
+     * Framing is a 4-byte big-endian length prefix + UTF-8 JSON, matching the
+     * server. A length prefix rather than a newline delimiter because the big
+     * payload here is base64 image data in chat — prefixing gives an O(1) size
+     * check instead of scanning megabytes for a separator.
+     */
+    constructor(url) {
+        this.kind = 'quic';
+        this.url = url;
+        this.readyState = WebSocket.CONNECTING;
+        this._listeners = new Set();
+        this._writeChain = Promise.resolve();
+        this._buffer = new Uint8Array(0);
+        this._encoder = new TextEncoder();
+        this._decoder = new TextDecoder();
+
+        this._wt = new WebTransport(url);
+        this._start();
+    }
+
+    async _start() {
+        try {
+            await this._wt.ready;
+            const stream = await this._wt.createBidirectionalStream();
+            this._writer = stream.writable.getWriter();
+            this._reader = stream.readable.getReader();
+            this.readyState = WebSocket.OPEN;
+            if (this.onopen) this.onopen({});
+            this._readLoop();
+            // A session closed by either side must look like a socket close.
+            this._wt.closed.then(() => this._fireClose()).catch(() => this._fireClose());
+        } catch (err) {
+            this.readyState = WebSocket.CLOSED;
+            if (this.onerror) this.onerror(err);
+            this._fireClose();
+        }
+    }
+
+    async _readLoop() {
+        try {
+            for (;;) {
+                const { value, done } = await this._reader.read();
+                if (done) break;
+                this._appendAndDrain(value);
+            }
+        } catch (err) {
+            // A read error is just how a dropped QUIC session surfaces.
+            console.log('WebTransport read loop ended:', err && err.message);
+        }
+        this._fireClose();
+    }
+
+    _appendAndDrain(chunk) {
+        const merged = new Uint8Array(this._buffer.length + chunk.length);
+        merged.set(this._buffer, 0);
+        merged.set(chunk, this._buffer.length);
+        this._buffer = merged;
+
+        for (;;) {
+            if (this._buffer.length < 4) return;
+            const view = new DataView(this._buffer.buffer, this._buffer.byteOffset, 4);
+            const length = view.getUint32(0, false);
+            if (this._buffer.length < 4 + length) return;
+            const payload = this._buffer.subarray(4, 4 + length);
+            const text = this._decoder.decode(payload);
+            this._buffer = this._buffer.slice(4 + length);
+            const event = { data: text };
+            if (this.onmessage) this.onmessage(event);
+            this._listeners.forEach(fn => fn(event));
+        }
+    }
+
+    send(data) {
+        if (this.readyState !== WebSocket.OPEN) return;
+        const payload = this._encoder.encode(data);
+        const frame = new Uint8Array(4 + payload.length);
+        new DataView(frame.buffer).setUint32(0, payload.length, false);
+        frame.set(payload, 4);
+        // Serialised: two concurrent sendMessage() calls must not interleave
+        // halves of two frames onto the stream.
+        this._writeChain = this._writeChain
+            .then(() => this._writer.write(frame))
+            .catch(err => console.log('WebTransport write failed:', err && err.message));
+    }
+
+    close() {
+        if (this.readyState === WebSocket.CLOSED) return;
+        this.readyState = WebSocket.CLOSING;
+        try { this._wt.close(); } catch (_e) { /* already gone */ }
+        this._fireClose();
+    }
+
+    _fireClose() {
+        if (this.readyState === WebSocket.CLOSED) return;
+        this.readyState = WebSocket.CLOSED;
+        if (this.onclose) this.onclose({});
+    }
+
+    addEventListener(type, fn) { if (type === 'message') this._listeners.add(fn); }
+    removeEventListener(type, fn) { if (type === 'message') this._listeners.delete(fn); }
+}
+
 class ConferenceClient {
     constructor() {
         // WebSocket connection
@@ -74,6 +219,11 @@ class ConferenceClient {
         this.prejoinVideoEnabled = false;
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
         this.videoQuality = localStorage.getItem('broference-video-quality') || '720';
+        // Signaling transport: 'auto' (QUIC with WSS fallback), 'quic', or 'websocket'.
+        this.signalingTransportMode = localStorage.getItem('broference-signaling-transport') || 'auto';
+        this.activeTransport = null;      // what we actually ended up on
+        this.quicBlockedUntil = 0;        // epoch ms; session-scoped QUIC cooldown
+        this.quicSessionOpenedAt = 0;
         this.gravatarHash = localStorage.getItem('broference-gravatar-hash') || null;
         this.peerGravatarHashes = new Map();
         this.peerVideoStates = new Map();
@@ -773,6 +923,21 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
 
         // Video quality selector
+        const signalingTransportSelect = document.getElementById('signalingTransportSelect');
+        if (signalingTransportSelect) {
+            signalingTransportSelect.value = this.signalingTransportMode;
+            // Forcing QUIC where WebTransport does not exist can only fail, so
+            // don't offer it as a choice.
+            if (typeof window.WebTransport === 'undefined') {
+                const quicOption = signalingTransportSelect.querySelector('option[value="quic"]');
+                if (quicOption) {
+                    quicOption.disabled = true;
+                    quicOption.textContent = 'QUIC (unsupported here)';
+                }
+            }
+            signalingTransportSelect.addEventListener('change', () => this.setSignalingTransport(signalingTransportSelect.value));
+        }
+
         const videoQualitySelect = document.getElementById('videoQualitySelect');
         if (videoQualitySelect) {
             videoQualitySelect.value = this.videoQuality;
@@ -939,7 +1104,91 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
     }
 
+    /**
+     * Open a signaling channel, honouring the user's transport preference.
+     *
+     * Contract is unchanged from the WebSocket-only version: resolves once the
+     * server has sent `registered`, rejects if the channel could not be
+     * established. Crucially the QUIC -> WSS downgrade happens *inside* this
+     * promise, so scheduleWsReconnect() and joinRoom() need no changes at all
+     * and the room-join flow is preserved.
+     */
     async connectSignalingServer() {
+        const mode = this.signalingTransportMode;
+        const quicSupported = typeof window.WebTransport !== 'undefined';
+
+        if (!quicSupported) {
+            // Safari and every iOS browser land here.
+            if (mode === 'quic') {
+                this.updateStatus('QUIC is not supported in this browser', 'error');
+                throw new Error('WebTransport unsupported in this browser');
+            }
+            return this.connectViaWebSocket();
+        }
+
+        const blacklisted = Date.now() < this.quicBlockedUntil;
+        const wantQuic = mode === 'quic' || (mode === 'auto' && !blacklisted);
+        if (!wantQuic) return this.connectViaWebSocket();
+
+        try {
+            await this.connectViaQuic();
+            this.quicSessionOpenedAt = Date.now();
+            return;
+        } catch (err) {
+            console.log('QUIC signaling unavailable, falling back to WebSocket:', err && err.message);
+            this.teardownTransport();
+            this.quicBlockedUntil = Date.now() + QUIC_BLACKLIST_MS;
+            if (mode === 'quic') {
+                // Forced mode fails loudly rather than silently downgrading —
+                // the whole point of forcing it is to find out why it broke.
+                this.updateStatus('QUIC connection failed', 'error');
+                throw err;
+            }
+            return this.connectViaWebSocket();
+        }
+    }
+
+    /** Drop whatever transport is half-open, without tripping the reconnect path. */
+    teardownTransport() {
+        if (!this.ws) return;
+        const dying = this.ws;
+        this.ws = null;
+        dying.onopen = dying.onmessage = dying.onerror = dying.onclose = null;
+        try { dying.close(); } catch (_e) { /* already gone */ }
+    }
+
+    connectViaQuic() {
+        const hostname = window.location.hostname;
+        const url = `https://${hostname}:${SIGNALING_QUIC_PORT}${SIGNALING_QUIC_PATH}`;
+        console.log(`Connecting to signaling server over QUIC: ${url}`);
+        this.updateStatus('Connecting to server (QUIC)...', 'info');
+
+        return new Promise((resolve, reject) => {
+            let transport;
+            try {
+                transport = new QuicTransport(url);
+            } catch (err) {
+                reject(err);
+                return;
+            }
+            this.ws = transport;
+
+            // One deadline covering the handshake *and* the `registered` reply.
+            const timer = setTimeout(() => {
+                reject(new Error('QUIC handshake timed out'));
+            }, QUIC_CONNECT_TIMEOUT_MS);
+
+            this.attachSignalingHandlers(transport, () => {
+                clearTimeout(timer);
+                resolve();
+            }, (err) => {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
+    }
+
+    connectViaWebSocket() {
         return new Promise((resolve, reject) => {
             this.updateStatus('Connecting to server...', 'info');
 
@@ -953,58 +1202,99 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             const wsUrl = `${protocol}://${hostname}:${wsPort}`;
 
             console.log(`Connecting to signaling server: ${wsUrl}`);
-            this.ws = new WebSocket(wsUrl);
-
-            this.ws.onopen = () => {
-                console.log('WebSocket connected');
-
-                // Register with server
-                this.sendMessage({
-                    type: 'register',
-                    clientId: this.clientId,
-                    username: this.username
-                });
-            };
-
-            this.ws.onmessage = async (event) => {
-                const message = JSON.parse(event.data);
-                await this.handleSignalingMessage(message);
-            };
-
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.updateStatus('Connection error', 'error');
-                reject(error);
-            };
-
-            this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                this.updateStatus('Disconnected', 'error');
-                // A restart reload is already pending — reconnecting and re-joining
-                // the room only to reload on top of it wastes a round trip and
-                // flashes the call back up for a moment.
-                if (this.awaitingRestartReload) {
-                    this.updateStatus('Server restarting — reloading shortly', 'error');
-                    return;
-                }
-                if (!this.isIntentionalDisconnect && this.currentRoom) {
-                    this.scheduleWsReconnect();
-                } else {
-                    this.cleanup();
-                }
-            };
-
-            // Resolve when registered
-            const checkRegistered = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'registered') {
-                    this.ws.removeEventListener('message', checkRegistered);
-                    this.updateStatus('Connected', 'connected');
-                    resolve();
-                }
-            };
-            this.ws.addEventListener('message', checkRegistered);
+            const transport = new WsTransport(wsUrl);
+            this.ws = transport;
+            this.attachSignalingHandlers(transport, resolve, reject);
         });
+    }
+
+    /**
+     * Wire the on* handlers for whichever transport was just opened. Shared so
+     * the WSS and QUIC paths cannot drift apart.
+     */
+    attachSignalingHandlers(transport, resolve, reject) {
+        let settled = false;
+        const succeed = () => { if (!settled) { settled = true; resolve(); } };
+        const fail = (err) => { if (!settled) { settled = true; reject(err); } };
+
+        transport.onopen = () => {
+            console.log(`Signaling connected over ${transport.kind}`);
+
+            // Register with server
+            this.sendMessage({
+                type: 'register',
+                clientId: this.clientId,
+                username: this.username
+            });
+        };
+
+        transport.onmessage = async (event) => {
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch (err) {
+                console.warn('Discarding unparseable signaling message:', err && err.message);
+                return;
+            }
+            // A throw anywhere in the large switch used to become an unhandled
+            // rejection that silently ate the message; keep the pump alive.
+            try {
+                await this.handleSignalingMessage(message);
+            } catch (err) {
+                console.error('Error handling signaling message:', message && message.type, err);
+            }
+        };
+
+        transport.onerror = (error) => {
+            console.error(`Signaling error (${transport.kind}):`, error);
+            this.updateStatus('Connection error', 'error');
+            fail(error instanceof Error ? error : new Error('Signaling transport error'));
+        };
+
+        transport.onclose = () => {
+            console.log(`Signaling disconnected (${transport.kind})`);
+            // A close before `registered` must settle the promise, or an
+            // awaiting caller (scheduleWsReconnect, joinRoom) hangs forever.
+            fail(new Error('Signaling closed before registration'));
+
+            if (this.ws !== transport) return; // superseded by a newer transport
+            this.updateStatus('Disconnected', 'error');
+            // A restart reload is already pending — reconnecting and re-joining
+            // the room only to reload on top of it wastes a round trip and
+            // flashes the call back up for a moment.
+            if (this.awaitingRestartReload) {
+                this.updateStatus('Server restarting — reloading shortly', 'error');
+                return;
+            }
+            // A QUIC session that died almost immediately was never healthy;
+            // pin the retry to WSS so a flapping QUIC path cannot burn through
+            // the exponential backoff.
+            if (transport.kind === 'quic' &&
+                Date.now() - this.quicSessionOpenedAt < QUIC_FLAP_THRESHOLD_MS) {
+                this.quicBlockedUntil = Date.now() + QUIC_BLACKLIST_MS;
+            }
+            if (!this.isIntentionalDisconnect && this.currentRoom) {
+                this.scheduleWsReconnect();
+            } else {
+                this.cleanup();
+            }
+        };
+
+        // Resolve when registered
+        const checkRegistered = (event) => {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch (_e) { return; }
+            if (msg.type === 'registered') {
+                transport.removeEventListener('message', checkRegistered);
+                // The server reports what it actually saw, which may differ
+                // from what we asked for.
+                this.activeTransport = msg.transport || transport.kind;
+                this.updateTransportBadge();
+                this.updateStatus('Connected', 'connected');
+                succeed();
+            }
+        };
+        transport.addEventListener('message', checkRegistered);
     }
 
     scheduleWsReconnect() {
@@ -2344,6 +2634,45 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.applyBandwidthToSenders();
 
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
+    }
+
+    /**
+     * Persist the signaling transport preference. Deliberately does not swap
+     * transports mid-call — tearing down a working signaling channel to prove
+     * a point would drop the room; it takes effect on the next connect.
+     */
+    setSignalingTransport(mode) {
+        this.signalingTransportMode = mode;
+        localStorage.setItem('broference-signaling-transport', mode);
+        this.quicBlockedUntil = 0; // an explicit choice clears any cooldown
+        this.updateTransportBadge();
+        console.log('Signaling transport preference:', mode);
+    }
+
+    /** Show which transport is actually carrying signaling right now. */
+    updateTransportBadge() {
+        const badge = document.getElementById('transportBadge');
+        if (!badge) return;
+
+        if (!this.activeTransport) {
+            badge.textContent = '';
+            badge.removeAttribute('data-transport');
+            return;
+        }
+
+        const quicSupported = typeof window.WebTransport !== 'undefined';
+        let label = this.activeTransport === 'quic' ? 'QUIC' : 'WebSocket';
+
+        // Explain a mismatch rather than leaving the user guessing why the
+        // mode they picked is not what the badge says.
+        if (this.activeTransport !== 'quic' && this.signalingTransportMode === 'quic') {
+            label = quicSupported ? 'WebSocket (QUIC failed)' : 'WebSocket (QUIC unsupported)';
+        } else if (this.activeTransport !== 'quic' && this.signalingTransportMode === 'auto' && !quicSupported) {
+            label = 'WebSocket (QUIC unsupported)';
+        }
+
+        badge.textContent = label;
+        badge.setAttribute('data-transport', this.activeTransport);
     }
 
     async setVideoQuality(quality) {
@@ -5159,11 +5488,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.removeMediaTransforms();
         this.updateE2EEUI();
 
-        // Close WebSocket connection
+        // Close the signaling connection, whichever transport it is on.
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.close();
             this.ws = null;
         }
+        this.activeTransport = null;
+        this.updateTransportBadge();
 
         this.localVideo.srcObject = null;
         this.currentRoom = null;
