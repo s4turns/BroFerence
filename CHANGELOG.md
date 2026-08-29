@@ -8,6 +8,25 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ---
 
+## v2.3 — 2026-08-29
+
+Follow-up to v2.2, which shipped the QUIC signaling transport but only exposed the choice from
+the in-call Options menu.
+
+- **The signaling selector is on the prejoin screen.** It sits with the mic and camera pickers,
+  so the transport can be chosen before joining instead of only after. Both selectors read and
+  write the same `broference-signaling-transport` preference and update each other on change, so
+  neither can drift out of step — the same pattern low-bandwidth mode already uses across the
+  options menu and the prejoin controls. Where WebTransport is unavailable, the QUIC option is
+  disabled in both.
+- **QUIC handshake logging no longer floods the signaling log.** aioquic logs version
+  negotiation, ALPN selection, and several "Duplicate CRYPTO data" lines per connection at INFO.
+  Since it shares a log with the signaling server, every join added multiple lines of transport
+  detail between the events worth reading. The `quic` and `http3` loggers are now capped at
+  WARNING; genuine problems still appear.
+
+---
+
 ## v2.2 — 2026-08-28
 
 Signaling gains a second transport. Media is deliberately untouched: audio and video still ride

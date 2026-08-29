@@ -478,6 +478,10 @@ pip install -r server/requirements.txt
 
 ## Recent Updates
 
+### v2.3 (2026-08-29)
+- **Signaling transport is selectable on the prejoin screen** — The Auto/QUIC/WebSocket choice now sits alongside the mic and camera pickers on the setup screen, so it can be set before joining rather than only from the in-call Options menu. The two controls stay synchronised, matching how low-bandwidth mode already works in both places
+- **Quieter signaling logs** — aioquic logs version negotiation, ALPN, and several duplicate-CRYPTO lines per connection at INFO, which put multiple lines in the shared signaling log for every join. Handshake detail is now suppressed; warnings and errors still surface
+
 ### v2.2 (2026-08-28)
 - **Signaling can run over QUIC** — Signaling may now travel over WebTransport/HTTP-3 (UDP 8767) instead of a WebSocket, selectable under Options &rarr; Signaling as Auto, QUIC, or WebSocket. Auto tries QUIC and falls back to WebSocket on failure or timeout, so a blocked UDP path or an older browser changes nothing. The status bar shows which transport is actually in use
 - **Media is untouched** — Audio and video still ride WebRTC/SRTP through the coturn relays. Only the signaling channel moved, so call quality and the relay-only privacy model are unchanged

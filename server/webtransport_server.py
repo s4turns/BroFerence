@@ -164,6 +164,13 @@ async def serve_webtransport(session_handler, host: str, port: int,
     global _session_handler
     _session_handler = session_handler
 
+    # aioquic logs per-packet handshake detail at INFO -- version negotiation,
+    # ALPN, and several "Duplicate CRYPTO data" lines per connection. That is
+    # multiple lines for every join, drowning the signaling log this server
+    # shares. Warnings and errors still come through.
+    logging.getLogger('quic').setLevel(logging.WARNING)
+    logging.getLogger('http3').setLevel(logging.WARNING)
+
     configuration = QuicConfiguration(
         alpn_protocols=H3_ALPN,
         is_client=False,

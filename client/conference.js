@@ -923,20 +923,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         }
 
         // Video quality selector
-        const signalingTransportSelect = document.getElementById('signalingTransportSelect');
-        if (signalingTransportSelect) {
-            signalingTransportSelect.value = this.signalingTransportMode;
-            // Forcing QUIC where WebTransport does not exist can only fail, so
-            // don't offer it as a choice.
-            if (typeof window.WebTransport === 'undefined') {
-                const quicOption = signalingTransportSelect.querySelector('option[value="quic"]');
-                if (quicOption) {
-                    quicOption.disabled = true;
-                    quicOption.textContent = 'QUIC (unsupported here)';
-                }
-            }
-            signalingTransportSelect.addEventListener('change', () => this.setSignalingTransport(signalingTransportSelect.value));
-        }
+        // The same choice appears in the options menu and on the prejoin screen,
+        // mirroring how low-bandwidth mode is offered in both places.
+        this.initSignalingSelect('signalingTransportSelect');
+        this.initSignalingSelect('prejoinSignalingSelect');
 
         const videoQualitySelect = document.getElementById('videoQualitySelect');
         if (videoQualitySelect) {
@@ -2636,6 +2626,23 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
     }
 
+    /** Wire one of the signaling <select>s (options menu or prejoin). */
+    initSignalingSelect(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = this.signalingTransportMode;
+        // Forcing QUIC where WebTransport does not exist can only fail, so
+        // don't offer it as a choice.
+        if (typeof window.WebTransport === 'undefined') {
+            const quicOption = el.querySelector('option[value="quic"]');
+            if (quicOption) {
+                quicOption.disabled = true;
+                quicOption.textContent = 'QUIC (unsupported here)';
+            }
+        }
+        el.addEventListener('change', () => this.setSignalingTransport(el.value));
+    }
+
     /**
      * Persist the signaling transport preference. Deliberately does not swap
      * transports mid-call — tearing down a working signaling channel to prove
@@ -2645,6 +2652,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.signalingTransportMode = mode;
         localStorage.setItem('broference-signaling-transport', mode);
         this.quicBlockedUntil = 0; // an explicit choice clears any cooldown
+
+        // Whichever control was used, the other must not drift out of step.
+        for (const id of ['signalingTransportSelect', 'prejoinSignalingSelect']) {
+            const el = document.getElementById(id);
+            if (el && el.value !== mode) el.value = mode;
+        }
         this.updateTransportBadge();
         console.log('Signaling transport preference:', mode);
     }
