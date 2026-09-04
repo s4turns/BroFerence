@@ -10,7 +10,7 @@ COPY client/ /usr/share/nginx/html/
 RUN mkdir -p /etc/ssl/certs /etc/ssl/private
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Set app.html as the default index with HTTP and HTTPS support

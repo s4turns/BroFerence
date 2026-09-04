@@ -1,6 +1,8 @@
 #!/bin/bash
+# Run from the repo root regardless of where this script is invoked from.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 # Test TURN server connectivity
-# Run from inside the repo directory: bash test-turn-server.sh
+# Run from anywhere in the repo: bash scripts/test-turn-server.sh
 
 # Auto-detect hostname
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"

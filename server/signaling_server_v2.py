@@ -61,7 +61,7 @@ QUIC_PORT = int(os.environ.get('QUIC_PORT', '8767'))
 QUIC_ENABLED = os.environ.get('QUIC_ENABLED', '1') not in ('0', 'false', 'False')
 
 # How long users are given between the restart warning and the containers going
-# down. update-vps.sh sleeps for the same span, so keep the two in step — both
+# down. scripts/update-vps.sh sleeps for the same span, so keep the two in step — both
 # default to 60 and both read RESTART_GRACE_SECONDS from .env.
 try:
     RESTART_GRACE_SECONDS = max(5, int(os.environ.get('RESTART_GRACE_SECONDS', '60')))
@@ -336,7 +336,8 @@ async def unregister_client(websocket: Peer):
         await broadcast_admin_state()
 
 
-async def create_room(room_id: str, password: Optional[str] = None, irc_channel: Optional[str] = None, moderator_id: Optional[str] = None):
+async def create_room(room_id: str, password: Optional[str] = None,
+                      irc_channel: Optional[str] = None, moderator_id: Optional[str] = None):
     """Create a new room."""
     if room_id not in rooms:
         rooms[room_id] = {
@@ -453,9 +454,9 @@ async def join_room(websocket: Peer, room_id: str, password: Optional[str] = Non
 
             success = await init_irc_bridge()
             if not success:
-                irc_status_msg = f'❌ Failed to connect to IRC bridge'
+                irc_status_msg = '❌ Failed to connect to IRC bridge'
             else:
-                irc_status_msg = f'✓ Connected to IRC bridge'
+                irc_status_msg = '✓ Connected to IRC bridge'
 
         # Join IRC channel if bridge is available and we're not already in it
         if irc_bridge and irc_bridge.connected and room_id not in irc_bridge.room_channels:
@@ -478,7 +479,7 @@ async def join_room(websocket: Peer, room_id: str, password: Optional[str] = Non
             irc_status_msg = f'✓ IRC bridge already connected to {irc_channel}'
         elif not irc_bridge or not irc_bridge.connected:
             if not irc_status_msg:  # Only if we didn't already set error message
-                irc_status_msg = f'❌ IRC bridge not connected'
+                irc_status_msg = '❌ IRC bridge not connected'
 
     # Send IRC status message if we have one
     if irc_status_msg:
@@ -520,8 +521,8 @@ async def join_room(websocket: Peer, room_id: str, password: Optional[str] = Non
         'coModIds': co_mod_ids,
         'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False),
         'presenterId': rooms[room_id].get('presenter'),
-        'presenterUsername': get_username_by_id(room_id, rooms[room_id]['presenter'])
-                             if rooms[room_id].get('presenter') else None
+        'presenterUsername': (get_username_by_id(room_id, rooms[room_id]['presenter'])
+                              if rooms[room_id].get('presenter') else None)
     }))
 
     # Notify others in room
@@ -1001,7 +1002,8 @@ async def handle_message(websocket: Peer, message: str):
 
                 # Send IRC notification if bridged
                 if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                    await irc_bridge.send_message(room, "System", f"{old_username} changed their name to {new_username}")
+                    await irc_bridge.send_message(
+                        room, "System", f"{old_username} changed their name to {new_username}")
 
                 logger.info(f"User {old_username} changed name to {new_username} in room {room}")
 
@@ -1159,7 +1161,8 @@ async def handle_message(websocket: Peer, message: str):
 
                             # Send IRC notification if bridged
                             if irc_bridge and irc_bridge.connected and rooms[room].get('irc_channel'):
-                                await irc_bridge.send_message(room, "System", f"Moderator changed {old_username}'s name to {new_username}")
+                                await irc_bridge.send_message(
+                                    room, "System", f"Moderator changed {old_username}'s name to {new_username}")
 
                             logger.info(f"Moderator changed {old_username} to {new_username} in room {room}")
                             break
@@ -1393,7 +1396,8 @@ async def handle_message(websocket: Peer, message: str):
                         'newUsername': new_username
                     })
                     if irc_bridge and irc_bridge.connected and rooms.get(room_id, {}).get('irc_channel'):
-                        await irc_bridge.send_message(room_id, "System", f"Admin changed {old_username}'s name to {new_username}")
+                        await irc_bridge.send_message(
+                            room_id, "System", f"Admin changed {old_username}'s name to {new_username}")
                     logger.info(f'Admin renamed {target_id} to {new_username} in {room_id}')
                     break
             await broadcast_admin_state()

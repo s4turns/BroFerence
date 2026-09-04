@@ -44,7 +44,7 @@ services:
    - This may take 30-60 seconds after login
 
 3. **Check services are running**
-   - Double-click `check-status.bat`
+   - Double-click `scripts\check-status.bat`
    - Or run: `docker compose ps`
    - All three services should show "Up"
 
@@ -106,7 +106,7 @@ If you want more control, you can use Windows Task Scheduler:
    - Name: "Start WebRTC Services"
    - Trigger: "At log on"
    - Action: "Start a program"
-   - Program: `C:\Path\To\webrtc-server\start.bat`
+   - Program: `C:\Path\To\webrtc-server\scripts\start.bat`
    - Finish
 
 ### Using PowerShell Script
@@ -178,7 +178,7 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}"
 - Services will auto-restart if they crash
 
 ⚠️ **Important:**
-- If you manually stop services with `docker compose down`, they won't restart until you run `start.bat` again
+- If you manually stop services with `docker compose down`, they won't restart until you run `scripts\start.bat` again
 - Use `docker compose restart` if you want to restart without stopping auto-start
 
 📝 **Quick Test:**

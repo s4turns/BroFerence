@@ -6,13 +6,13 @@
 #
 # Dev shares PROD's primary coturn (turn:<host>:3479), so the primary TURN
 # credential is NOT generated here — it is read from .env PRIMARY_PASSWORD,
-# which prod's update-vps.sh propagates on every prod deploy. The secondary
+# which prod's scripts/update-vps.sh propagates on every prod deploy. The secondary
 # (turn2) credential comes from .env TURN2_PASSWORD.
 #
 # Run as a user with Docker access and read/write to this repo (root in our
-# setup, since prod's update-vps.sh invokes this in lockstep).
+# setup, since prod's scripts/update-vps.sh invokes this in lockstep).
 set -e
-cd "$(dirname "$(readlink -f "$0")")"
+cd "$(dirname "$(readlink -f "$0")")/.."
 
 DEV_BRANCH="${DEV_BRANCH:-testing}"
 
@@ -23,7 +23,7 @@ git reset --hard "origin/${DEV_BRANCH}"
 echo "[2/5] Substituting TURN credentials from .env..."
 [ -f .env ] && set -a && . ./.env && set +a
 if [ -z "${PRIMARY_PASSWORD}" ]; then
-    echo "ERROR: PRIMARY_PASSWORD not set in .env (propagated by prod update-vps.sh). Aborting."
+    echo "ERROR: PRIMARY_PASSWORD not set in .env (propagated by prod scripts/update-vps.sh). Aborting."
     exit 1
 fi
 [ -n "${TURN2_PASSWORD}" ] || echo "WARNING: TURN2_PASSWORD not set in .env — turn2 relay will fail"

@@ -2,7 +2,26 @@
 import js from "@eslint/js";
 
 export default [
+  // Vendored/generated code — not ours to lint.
+  {
+    ignores: ["node_modules/**", "client/lib/**"],
+  },
+
   js.configs.recommended,  // includes good defaults like no-unused-vars, semi, etc.
+
+  // Node config files (CommonJS).
+  {
+    files: ["ecosystem.config.js"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        module: "writable",
+        require: "readonly",
+        process: "readonly",
+        __dirname: "readonly",
+      },
+    },
+  },
 
   {
     languageOptions: {
@@ -22,7 +41,17 @@ export default [
         requestAnimationFrame: "readonly",
         fetch: "readonly",
         localStorage: "readonly",
+        sessionStorage: "readonly",
         URLSearchParams: "readonly",
+        URL: "readonly",
+        Blob: "readonly",
+        Image: "readonly",
+        performance: "readonly",
+        atob: "readonly",
+        btoa: "readonly",
+        crypto: "readonly",
+        SpeechSynthesisUtterance: "readonly",
+        speechSynthesis: "readonly",
 
         // Signaling transport globals
         WebTransport: "readonly",
@@ -37,6 +66,9 @@ export default [
         RTCSessionDescription: "readonly",
         RTCIceCandidate: "readonly",
         MediaStream: "readonly",
+        RTCRtpScriptTransform: "readonly",
+        RTCRtpSender: "readonly",
+        RTCRtpReceiver: "readonly",
 
         // AudioWorklet globals
         AudioWorkletProcessor: "readonly",
@@ -44,8 +76,11 @@ export default [
         registerProcessor: "readonly",
         sampleRate: "readonly",
 
-        // Web Worker globals (for AudioWorklet processors)
+        // Web Worker globals (for AudioWorklet processors and the E2EE worker)
         importScripts: "readonly",
+        self: "readonly",
+        Worker: "readonly",
+        TransformStream: "readonly",
 
         // RNNoise specific (loaded via importScripts)
         createRNNWasmModuleSync: "readonly",

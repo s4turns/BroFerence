@@ -1,4 +1,6 @@
 #!/bin/bash
+# Run from the repo root regardless of where this script is invoked from.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 # Script to update VPS with latest code and restart services
 
 echo "========================================="
@@ -18,7 +20,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Ensure update script stays executable after pull
-chmod +x update-vps.sh
+chmod +x scripts/update-vps.sh
 
 # Stamp static assets with git commit hash to bust browser cache
 COMMIT_HASH=$(git rev-parse --short HEAD)
@@ -71,7 +73,7 @@ fi
 # Sync fail2ban config if fail2ban is installed
 if command -v fail2ban-client &>/dev/null; then
     echo "Syncing fail2ban config..."
-    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_DIR="$(pwd)"
     sed "s|__REPO_DIR__|$REPO_DIR|g" fail2ban/jail.local > /etc/fail2ban/jail.local
     cp fail2ban/filter.d/coturn-auth.conf /etc/fail2ban/filter.d/coturn-auth.conf
     cp fail2ban/filter.d/nginx-req-limit.conf /etc/fail2ban/filter.d/nginx-req-limit.conf
@@ -121,9 +123,14 @@ if [ -f "$DEV_DIR/.env" ] && [ -w "$DEV_DIR/.env" ]; then
     else
         echo "PRIMARY_PASSWORD=${TURN_PASSWORD}" >> "$DEV_DIR/.env"
     fi
-    if [ -f "$DEV_DIR/update-dev.sh" ]; then
-        ( cd "$DEV_DIR" && bash update-dev.sh ) || echo "WARNING: dev redeploy failed (prod is unaffected)"
-    fi
+    # The dev repo may still be on the pre-scripts/ layout until it pulls, so
+    # accept either location.
+    for DEV_SCRIPT in "$DEV_DIR/scripts/update-dev.sh" "$DEV_DIR/update-dev.sh"; do
+        if [ -f "$DEV_SCRIPT" ]; then
+            bash "$DEV_SCRIPT" || echo "WARNING: dev redeploy failed (prod is unaffected)"
+            break
+        fi
+    done
 fi
 
 # Show container status

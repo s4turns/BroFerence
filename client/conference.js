@@ -486,8 +486,8 @@ class ConferenceClient {
 
     removeMediaTransforms() {
         const clear = pc => {
-            pc.getSenders().forEach(s => { try { s.transform = null; } catch {} });
-            pc.getReceivers().forEach(r => { try { r.transform = null; } catch {} });
+            pc.getSenders().forEach(s => { try { s.transform = null; } catch { /* transform already detached */ } });
+            pc.getReceivers().forEach(r => { try { r.transform = null; } catch { /* transform already detached */ } });
         };
         this.peerConnections.forEach(peer => clear(peer.connection));
         this.screenPeerConnections.forEach(peer => clear(peer.connection));
@@ -628,7 +628,7 @@ class ConferenceClient {
             } else {
                 play();
             }
-        } catch (e) { /* audio not available */ }
+        } catch { /* audio not available */ }
     }
 
     playJoinSound()  { this.playSoundTone(600, 900, 0.15); }
@@ -649,7 +649,7 @@ class ConferenceClient {
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
         const turnServer = isLocalhost ? 'localhost' : hostname;
 
-        // PRIMARY_TURN_CREDENTIAL rotated by update-vps.sh on each deploy
+        // PRIMARY_TURN_CREDENTIAL rotated by scripts/update-vps.sh on each deploy
         const PRIMARY_TURN_CREDENTIAL = 'TURN_CREDENTIAL_REDACTED';
         const localTurnConfig = {
             urls: [
@@ -660,7 +660,7 @@ class ConferenceClient {
             credential: PRIMARY_TURN_CREDENTIAL
         };
 
-        // SECONDARY_TURN_CREDENTIAL rotated by update-vps.sh from .env (TURN2_PASSWORD) on each deploy
+        // SECONDARY_TURN_CREDENTIAL rotated by scripts/update-vps.sh from .env (TURN2_PASSWORD) on each deploy
         const SECONDARY_TURN_CREDENTIAL = 'TURN2_CREDENTIAL_REDACTED';
         const turn2Config = {
             urls: [
@@ -709,7 +709,7 @@ class ConferenceClient {
             const finish = (rtt) => {
                 if (!pc) return;
                 clearTimeout(timer);
-                try { pc.close(); } catch (e) { /* already closed */ }
+                try { pc.close(); } catch { /* already closed */ }
                 pc = null;
                 resolve(rtt);
             };
@@ -766,7 +766,7 @@ class ConferenceClient {
                     console.log('Using cached TURN order:', cached.order);
                     return;
                 }
-            } catch (e) { /* ignore malformed cache */ }
+            } catch { /* ignore malformed cache */ }
 
             const timings = await Promise.all(
                 this.turnConfigs.map(async (config) => ({
@@ -791,7 +791,7 @@ class ConferenceClient {
 
             try {
                 sessionStorage.setItem(cacheKey, JSON.stringify({ fingerprint, order }));
-            } catch (e) { /* storage unavailable */ }
+            } catch { /* storage unavailable */ }
 
             this.bestTurnUrl = timings[0].url;
             console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].rtt)}ms)`);
@@ -882,7 +882,6 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         });
 
         const noiseBtn = document.getElementById('noiseSuppressionBtn');
-        const noiseGateSettings = document.getElementById('noiseGateSettings');
         noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
 
         // Mic device selector
@@ -1982,7 +1981,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         // Disconnect old source without disturbing the rest of the chain
         if (this.micSource) {
-            try { this.micSource.disconnect(); } catch (e) {}
+            try { this.micSource.disconnect(); } catch { /* already disconnected */ }
         }
 
         this.micSource = this.micAudioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
@@ -5085,7 +5084,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             try {
                 const encrypted = await this.encryptMessage(message);
                 this.sendMessage({ type: 'chat-message', message: '[E2EE]', encrypted });
-            } catch (e) {
+            } catch {
                 this.addChatMessage('System', 'Encryption failed. Message not sent.', true);
                 return;
             }
@@ -5266,7 +5265,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.chatInput.placeholder = 'Type a message...';
     }
 
-    updateRoomInfo(participantCount) {
+    updateRoomInfo(_participantCount) {
         document.title = `${this.currentRoom} - BroFerence`;
         document.getElementById('roomInfo').style.display = 'flex';
         this.updateVideoGridLayout();

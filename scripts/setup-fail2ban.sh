@@ -1,16 +1,16 @@
 #!/bin/bash
 # Install and configure fail2ban for BroFerence
-# Run as root from inside the repo directory: bash setup-fail2ban.sh
+# Run as root from anywhere in the repo: bash scripts/setup-fail2ban.sh
 #
 # Environment variable overrides (all optional):
-#   REPO_DIR   - path to repo (default: directory containing this script)
+#   REPO_DIR   - path to repo (default: the repo root above this script)
 #   APP_USER   - unix user that owns/runs the app (default: auto-detected from REPO_DIR owner)
 
 set -e
 
 # --- Config ---
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${REPO_DIR:-$SCRIPT_DIR}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="${REPO_DIR:-$REPO_ROOT}"
 APP_USER="${APP_USER:-$(stat -c '%U' "$REPO_DIR" 2>/dev/null || echo "$(ls -ld "$REPO_DIR" | awk '{print $3}')")}"
 
 echo "=== fail2ban setup ==="

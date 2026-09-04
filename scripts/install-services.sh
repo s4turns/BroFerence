@@ -1,4 +1,6 @@
 #!/bin/bash
+# Run from the repo root regardless of where this script is invoked from.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 # Install WebRTC services on Linux (systemd)
 
 set -e

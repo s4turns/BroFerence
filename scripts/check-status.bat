@@ -1,4 +1,6 @@
 @echo off
+REM Run from the repo root regardless of where this script is invoked from.
+cd /d "%~dp0.."
 REM Check WebRTC services status
 
 echo.
@@ -22,7 +24,6 @@ echo [OK] Docker Desktop is running
 echo.
 
 REM Check service status
-cd /d "%~dp0"
 echo Checking container status...
 echo.
 
@@ -45,7 +46,7 @@ if %errorlevel% equ 0 (
     echo [OK] All services are running!
 ) else (
     echo [!] Some services may not be running
-    echo Run 'start.bat' to start services
+    echo Run 'scripts\start.bat' to start services
 )
 
 echo.
@@ -53,7 +54,7 @@ echo Useful commands:
 echo   View logs:       docker compose logs -f
 echo   Restart:         docker compose restart
 echo   Stop:            docker compose down
-echo   Start:           start.bat
+echo   Start:           scripts\start.bat
 echo.
 
 pause

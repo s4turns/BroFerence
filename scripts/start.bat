@@ -1,4 +1,6 @@
 @echo off
+REM Run from the repo root regardless of where this script is invoked from.
+cd /d "%~dp0.."
 REM Start all WebRTC services with one command (Windows)
 
 echo Starting WebRTC Services...

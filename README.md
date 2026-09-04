@@ -53,12 +53,12 @@ A self-hosted, multi-participant WebRTC video conferencing app. No accounts, no 
 
 **Windows:**
 ```bat
-start-local-dev.bat
+scripts\start-local-dev.bat
 ```
 
 **Linux/Mac:**
 ```bash
-chmod +x start-local-dev.sh && ./start-local-dev.sh
+chmod +x scripts/start-local-dev.sh && ./scripts/start-local-dev.sh
 ```
 
 Opens at **http://localhost:8080**
@@ -98,10 +98,10 @@ certbot certonly --standalone -d yourdomain.com
 
 **4. Deploy**
 ```bash
-bash update-vps.sh
+bash scripts/update-vps.sh
 ```
 
-`update-vps.sh` handles everything in one shot:
+`scripts/update-vps.sh` handles everything in one shot:
 - Pulls latest code
 - Generates a new random TURN credential
 - Auto-detects your server's public IP
@@ -111,7 +111,7 @@ bash update-vps.sh
 
 **5. (First time) Set up fail2ban**
 ```bash
-sudo bash setup-fail2ban.sh
+sudo bash scripts/setup-fail2ban.sh
 ```
 
 **6. Open firewall ports**
@@ -258,7 +258,7 @@ Hover the bars for exact RTT and packet loss numbers.
 
 ### TURN Server
 
-TURN credentials are auto-rotated by `update-vps.sh` on every deploy. To manually set credentials, edit `config/turnserver.production.conf`:
+TURN credentials are auto-rotated by `scripts/update-vps.sh` on every deploy. To manually set credentials, edit `config/turnserver.production.conf`:
 
 ```conf
 user=webrtc:YOUR_STRONG_PASSWORD
@@ -341,23 +341,23 @@ DOCKER-USER: rate-limits new WebSocket connections to 20/min per IP.
 
 | Script | Purpose |
 |--------|---------|
-| `update-vps.sh` | Full deploy: pull, rotate TURN creds, rebuild containers, sync fail2ban |
-| `setup-fail2ban.sh` | Install and configure fail2ban (run as root, first time only) |
-| `setup-turn-ip.sh` | Manually set TURN `external-ip` in config |
-| `test-turn-server.sh` | Diagnose TURN server connectivity |
-| `start-local-dev.sh` / `.bat` | Start local dev server |
+| `scripts/update-vps.sh` | Full deploy: pull, rotate TURN creds, rebuild containers, sync fail2ban |
+| `scripts/setup-fail2ban.sh` | Install and configure fail2ban (run as root, first time only) |
+| `scripts/setup-turn-ip.sh` | Manually set TURN `external-ip` in config |
+| `scripts/test-turn-server.sh` | Diagnose TURN server connectivity |
+| `scripts/start-local-dev.sh` / `.bat` | Start local dev server |
 
 All scripts are generic — no hardcoded hostnames or paths. They auto-detect from their environment or accept overrides via environment variables:
 
 ```bash
 # setup-fail2ban.sh
-REPO_DIR=/opt/BroFerence APP_USER=myuser sudo bash setup-fail2ban.sh
+REPO_DIR=/opt/BroFerence APP_USER=myuser sudo bash scripts/setup-fail2ban.sh
 
 # setup-turn-ip.sh
-./setup-turn-ip.sh yourdomain.com
+./scripts/setup-turn-ip.sh yourdomain.com
 
 # test-turn-server.sh
-HOSTNAME=yourdomain.com TURN_PORT=3479 bash test-turn-server.sh
+HOSTNAME=yourdomain.com TURN_PORT=3479 bash scripts/test-turn-server.sh
 ```
 
 ---
@@ -386,14 +386,25 @@ BroFerence/
 │   └── filter.d/
 │       ├── coturn-auth.conf   # TURN auth failure filter
 │       └── nginx-req-limit.conf # Nginx rate limit filter
+├── scripts/
+│   ├── update-vps.sh          # Deploy script
+│   ├── update-dev.sh          # Dev-host redeploy (invoked by update-vps.sh)
+│   ├── setup-fail2ban.sh      # fail2ban setup (run as root)
+│   ├── setup-turn-ip.sh       # TURN IP config helper
+│   ├── test-turn-server.sh    # TURN diagnostic
+│   ├── docker-entrypoint.sh   # Web container entrypoint (SSL cert resolution)
+│   ├── install-services.sh    # systemd install (non-Docker deployments)
+│   └── start-local-dev.sh/.bat, start.sh/.bat, stop.sh/.bat, check-status.bat
+├── docs/
+│   ├── AUTOSTART.md           # Windows autostart guide
+│   ├── FEATURES.md            # Feature reference
+│   ├── test-guide.html        # Manual test guide
+│   └── debug-hostname.html    # Hostname/WebSocket debug page
+├── systemd/                   # Unit files for install-services.sh
 ├── ssl/                       # SSL certificates (gitignored)
 ├── logs/                      # Container log mounts for fail2ban (gitignored)
 ├── docker-compose.yml
-├── Dockerfile.web
-├── update-vps.sh              # Deploy script
-├── setup-fail2ban.sh          # fail2ban setup (run as root)
-├── setup-turn-ip.sh           # TURN IP config helper
-└── test-turn-server.sh        # TURN diagnostic
+└── Dockerfile.web
 ```
 
 ---
@@ -407,20 +418,20 @@ docker compose ps
 ```
 
 **Video slow to connect or not connecting**
-- Run `./test-turn-server.sh` to verify TURN is reachable
+- Run `./scripts/test-turn-server.sh` to verify TURN is reachable
 - Check `external-ip` in TURN config matches your server's actual public IP
 - Verify relay ports 49152–65535 UDP are open in your firewall
 
 **TURN relay shows wrong IP**
 ```bash
-# update-vps.sh auto-fixes this on deploy, or manually:
-./setup-turn-ip.sh yourdomain.com
+# scripts/update-vps.sh auto-fixes this on deploy, or manually:
+./scripts/setup-turn-ip.sh yourdomain.com
 grep external-ip config/turnserver.production.conf
 ```
 
 **fail2ban not starting**
 ```bash
-# Ensure log dirs exist (setup-fail2ban.sh creates them, or manually):
+# Ensure log dirs exist (scripts/setup-fail2ban.sh creates them, or manually):
 sudo mkdir -p /path/to/BroFerence/logs/nginx /path/to/BroFerence/logs/coturn
 sudo systemctl restart fail2ban
 sudo fail2ban-client status
@@ -457,14 +468,33 @@ Requires: WebRTC, WebSocket, `getUserMedia`, `getDisplayMedia`, AudioWorklet.
 
 ## Development
 
-```bash
-# Python linting
-cd server && pip install flake8
-flake8 *.py --max-line-length=120
+### Linting
 
-# JS linting
-cd client && npx eslint *.js
+```bash
+# JavaScript (run from the repo root — the flat config lives there)
+npx eslint .
+
+# Python
+pip install flake8
+cd server && flake8 *.py --max-line-length=120
 ```
+
+ESLint config is `eslint.config.js` at the repo root. It hand-maintains its browser/worker
+globals list rather than pulling in the `globals` package, so a newly used Web API has to be
+added there or it shows up as a `no-undef` error. `client/lib/` is ignored — it is generated
+Emscripten output for RNNoise, not hand-written code.
+
+**Current status** (2026-09-04):
+
+| Linter | Errors | Warnings |
+|--------|--------|----------|
+| ESLint (`.`) | 0 | 143 |
+| flake8 (`server/*.py`) | 0 | 0 |
+
+All 143 ESLint warnings are `no-console` (142 in `client/conference.js`, 1 in `client/icons.js`).
+The rule is deliberately set to `warn` rather than `error` — console logging is how the client
+reports ICE/TURN negotiation state, and those logs are the primary tool for debugging connection
+failures in the field. Errors are expected to stay at zero; warnings are not tracked.
 
 **Dependencies (Python):**
 - `websockets>=12.0`

@@ -66,7 +66,7 @@ class IRCBridge:
             # Send IRC registration
             logger.info(f"Sending NICK {self.nickname}")
             await self.send_raw(f"NICK {self.nickname}")
-            logger.info(f"Sending USER registration")
+            logger.info("Sending USER registration")
             await self.send_raw(f"USER {self.ident} 0 * :{self.realname}")
 
             # Wait for connection to be established

@@ -1,5 +1,5 @@
 # fail2ban jail config for BroFerence
-# Do NOT edit /etc/fail2ban/jail.local directly — edit this file and re-run setup-fail2ban.sh.
+# Do NOT edit /etc/fail2ban/jail.local directly — edit this file and re-run scripts/setup-fail2ban.sh.
 # The __REPO_DIR__ placeholder is substituted with the actual repo path at install time.
 
 [DEFAULT]
