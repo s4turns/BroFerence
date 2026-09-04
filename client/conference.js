@@ -3105,6 +3105,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
             if (pc.connectionState === 'connected') {
                 console.log('Successfully connected to', peerUsername);
+                // ICE came back before anyone was told they were gone — drop the HUD.
+                this.clearPeerStall(peerId);
                 // Reset restart counter on successful connection
                 const peerData = this.peerConnections.get(peerId);
                 if (peerData) {
@@ -3130,6 +3132,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
             } else if (pc.connectionState === 'failed') {
                 console.error('Connection failed with', peerUsername, '- attempting ICE restart');
+                // Show the HUD now rather than waiting on the server's user-left:
+                // a silent drop (closed lid, dead wifi) sends no close frame, so
+                // keepalive can take tens of seconds to notice.
+                this.markPeerStalled(peerId, peerUsername);
                 this.turnFailedPeers.add(peerId);
                 this.attemptIceRestart(peerId).catch(() => {});
                 // If still failed after giving ICE restart time to work, remove.
@@ -3143,6 +3149,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }, 20000);
             } else if (pc.connectionState === 'disconnected') {
                 console.warn('Disconnected from', peerUsername);
+                this.markPeerStalled(peerId, peerUsername);
                 // Some browsers never transition disconnected→failed; attempt ICE restart after a short delay
                 setTimeout(() => {
                     const current = this.peerConnections.get(peerId);
@@ -4014,32 +4021,80 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         hud.innerHTML =
             `<span class="ic-wrap">${iconSvg('alert-triangle')}</span>` +
             '<span class="disconnect-hud-title">Disconnected</span>' +
-            '<span class="disconnect-hud-count" data-count>removing in 10s</span>';
+            '<span class="disconnect-hud-count" data-count>reconnecting…</span>';
         container.appendChild(hud);
     }
 
-    beginPeerGrace(peerId, username) {
-        if (this.disconnectedPeers.has(peerId)) return;
+    // Shared visual setup for both phases, so a stalled tile that is later
+    // confirmed gone doesn't get its frame re-snapshotted or flicker.
+    applyPeerStallVisuals(peerId) {
         const container = document.getElementById(`video-${peerId}`);
-        if (!container) return;
-
-        if (username) this.knownUsernames.set(peerId, username);
+        if (!container || container.classList.contains('disconnected')) return container;
         this.freezeTileFrame(container);
         container.classList.add('disconnected');
-
         // Signal bars would keep polling a dead connection, and a frozen screen
-        // share is worse than none — the server already freed the presenter slot.
+        // share is worse than none — the server frees the presenter slot on drop.
         this.stopStatsMonitoring(peerId);
         this.removeScreenReceiver(peerId);
-
         this.showDisconnectedHud(container);
+        return container;
+    }
 
-        const entry = {
+    // Phase 1 — our own connection to them died. This is known within seconds and
+    // needs no signaling round trip, so it is what makes the HUD feel immediate.
+    // No countdown yet: ICE restart may still recover them, and the server has not
+    // confirmed they are gone.
+    markPeerStalled(peerId, username) {
+        if (this.disconnectedPeers.has(peerId)) return;
+        const container = this.applyPeerStallVisuals(peerId);
+        if (!container) return;
+        if (username) this.knownUsernames.set(peerId, username);
+        this.disconnectedPeers.set(peerId, {
             username: username || this.knownUsernames.get(peerId) || 'User',
-            deadline: Date.now() + PEER_GRACE_PERIOD_MS,
-            intervalId: setInterval(() => this.renderPeerGrace(peerId), 250),
-            timeoutId: setTimeout(() => this.expirePeerGrace(peerId), PEER_GRACE_PERIOD_MS)
+            confirmed: false,
+            deadline: 0,
+            intervalId: null,
+            timeoutId: null
+        });
+    }
+
+    // ICE recovered before anyone was told they were gone — undo phase 1 silently.
+    clearPeerStall(peerId) {
+        const entry = this.disconnectedPeers.get(peerId);
+        if (!entry || entry.confirmed) return;   // a confirmed drop is not ours to cancel
+        this.disconnectedPeers.delete(peerId);
+        const container = document.getElementById(`video-${peerId}`);
+        if (!container) return;
+        container.classList.remove('disconnected');
+        const frame = container.querySelector('.freeze-frame');
+        if (frame) frame.remove();
+        const hud = container.querySelector('.disconnect-hud');
+        if (hud) hud.remove();
+        const peer = this.peerConnections.get(peerId);
+        if (peer) this.startStatsMonitoring(peerId, peer.connection, container);
+    }
+
+    // Phase 2 — the server confirms they are gone. Only now does the removal
+    // countdown start, so ICE restart keeps the full window it had before.
+    // Upgrades a phase-1 entry in place when there is one.
+    beginPeerGrace(peerId, username) {
+        const existing = this.disconnectedPeers.get(peerId);
+        if (existing && existing.confirmed) return;
+
+        const container = this.applyPeerStallVisuals(peerId)
+            || document.getElementById(`video-${peerId}`);
+        if (!container) return;
+        if (username) this.knownUsernames.set(peerId, username);
+
+        const entry = existing || {
+            username: username || this.knownUsernames.get(peerId) || 'User',
+            confirmed: false, deadline: 0, intervalId: null, timeoutId: null
         };
+        if (username) entry.username = username;
+        entry.confirmed = true;
+        entry.deadline = Date.now() + PEER_GRACE_PERIOD_MS;
+        entry.intervalId = setInterval(() => this.renderPeerGrace(peerId), 250);
+        entry.timeoutId = setTimeout(() => this.expirePeerGrace(peerId), PEER_GRACE_PERIOD_MS);
         this.disconnectedPeers.set(peerId, entry);
         this.renderPeerGrace(peerId);
     }
@@ -4048,7 +4103,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     // background tab with throttled timers still shows a truthful number.
     renderPeerGrace(peerId) {
         const entry = this.disconnectedPeers.get(peerId);
-        if (!entry) return;
+        if (!entry || !entry.confirmed) return;   // phase 1 shows "reconnecting…"
         const el = document.querySelector(`#video-${peerId} .disconnect-hud [data-count]`);
         if (!el) return;
         const left = Math.max(0, Math.ceil((entry.deadline - Date.now()) / 1000));

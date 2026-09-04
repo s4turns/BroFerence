@@ -1787,6 +1787,12 @@ body::before {
 .status-bar {
     background: var(--darker);
     color: var(--primary);
+    /* The decorative body::before overlay (CRT scanlines, or the tron grid, which
+       is at full strength along the bottom edge) is fixed at z-index 1 and would
+       otherwise paint straight over the footer. Lift the bar above it, alongside
+       the video tiles at z-index 2. */
+    position: relative;
+    z-index: 2;
     padding: 10px 24px;
     display: flex;
     justify-content: space-between;
@@ -3461,7 +3467,7 @@ body::before {
 
 /* Status bar */
 [data-theme="tron"] .status-bar {
-    background: rgba(5, 14, 24, 0.85);
+    background: rgba(5, 14, 24, 0.97);
     border-top: 1px solid var(--border);
     color: #6fb9cc;
     font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
@@ -3475,7 +3481,7 @@ body::before {
 }
 
 [data-theme="tron"] .status-bar.error {
-    background: rgba(22, 9, 2, 0.9);
+    background: rgba(22, 9, 2, 0.97);
     color: var(--danger);
     border-top-color: var(--danger);
 }
