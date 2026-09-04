@@ -24,6 +24,11 @@ const QUIC_BLACKLIST_MS = 5 * 60 * 1000;
 // the one free retry that a long-lived session gets.
 const QUIC_FLAP_THRESHOLD_MS = 10000;
 
+// How long a dropped peer's tile is held on screen, under a DISCONNECTED HUD,
+// before they are removed for good. A wifi-to-cellular handover or a TURN blip
+// is usually over well inside this, so the tile never flashes out of the grid.
+const PEER_GRACE_PERIOD_MS = 10000;
+
 class WsTransport {
     constructor(url) {
         this.kind = 'ws';
@@ -171,6 +176,9 @@ class ConferenceClient {
         this.pendingIceCandidates = new Map(); // Map<clientId, Array<candidate>> for ICE candidates that arrive before remote description
         this.turnFailedPeers = new Set(); // Peers whose TURN relay has failed; retry with fresh relay-only config on next connect
         this.knownUsernames = new Map(); // Persists across peer connection teardowns for reconnection display
+        // Peers whose transport died. Their tile lingers with a countdown HUD so a
+        // reconnect inside PEER_GRACE_PERIOD_MS can reclaim it in place.
+        this.disconnectedPeers = new Map(); // Map<clientId, {username, deadline, intervalId, timeoutId}>
         this.remoteAudioControls = new Map(); // Map<clientId, {audioContext, gainNode, isMuted}>
         this.statsIntervals = new Map(); // Map<clientId, intervalId> for stats monitoring cleanup
 
@@ -839,6 +847,7 @@ class ConferenceClient {
         document.getElementById('joinBtn').addEventListener('click', () => this.showPrejoinScreen());
         document.getElementById('changeNameBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.changeName(); });
         document.getElementById('leaveRoomBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.leaveRoom(); });
+        document.getElementById('leaveRoomHeaderBtn').addEventListener('click', () => this.leaveRoom());
 
         // Prejoin buttons
         document.getElementById('prejoinToggleAudioBtn').addEventListener('click', () => this.prejoinToggleAudio());
@@ -1413,11 +1422,17 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }, 500);
                 break;
 
-            case 'user-joined':
+            case 'user-joined': {
+                // If they are reclaiming a held tile this is a recovery, not a join:
+                // no chime, no "joined the room". Catches the case where their media
+                // survived the blip and no fresh offer will ever arrive.
+                const reclaimed = this.resolvePeerGrace(message.clientId, message.username);
                 // Store the username for when we receive their offer
                 this.pendingUsernames.set(message.clientId, message.username);
-                this.addChatMessage('System', `${message.username} joined the room`, true);
-                this.playJoinSound();
+                if (!reclaimed) {
+                    this.addChatMessage('System', `${message.username} joined the room`, true);
+                    this.playJoinSound();
+                }
                 // E2EE: exchange public keys with the new user
                 await this.sendPublicKey(message.clientId);
                 // Send our gravatar hash so the new peer can render our avatar
@@ -1426,18 +1441,26 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }
                 // Wait for them to send offer
                 break;
+            }
 
-            case 'user-left':
-                this.turnFailedPeers.delete(message.clientId);
-                this.removePeerConnection(message.clientId);
-                this.addChatMessage('System', `${message.username} left the room`, true);
-                this.playLeaveSound();
-                this.peerPublicKeys.delete(message.clientId);
-                this.peerSharedKeys.delete(message.clientId);
-                this.peerGravatarHashes.delete(message.clientId);
-                this.peerVideoStates.delete(message.clientId);
+            case 'user-left': {
+                // An older server sends no reason; treat that as a deliberate leave
+                // so behaviour is unchanged against one.
+                const leftReason = message.reason || 'left';
+                const hasTile = !!document.getElementById(`video-${message.clientId}`);
+                if (leftReason === 'dropped' && hasTile) {
+                    // Transport died. Hold the tile and say nothing yet — they may
+                    // be back before the countdown runs out.
+                    this.beginPeerGrace(message.clientId, message.username);
+                } else {
+                    this.removePeerConnection(message.clientId);
+                    this.purgePeerState(message.clientId);
+                    this.addChatMessage('System', `${message.username} left the room`, true);
+                    this.playLeaveSound();
+                }
                 this.updateRoomInfo(this.peerConnections.size + 1);
                 break;
+            }
 
             case 'gravatar': {
                 const { clientId, hash } = message;
@@ -3291,8 +3314,15 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
     }
 
     addRemoteVideo(peerId, username, stream) {
+        // A peer coming back inside their grace window reclaims the slot they had,
+        // rather than being appended to the end of the grid as a new arrival. After
+        // a reload their clientId differs, so the held tile is found under the old id.
+        const ghostId = this.resolvePeerGrace(peerId, username);
+
         // Remove existing video if any
-        const existing = document.getElementById(`video-${peerId}`);
+        const existing = document.getElementById(`video-${peerId}`)
+            || (ghostId ? document.getElementById(`video-${ghostId}`) : null);
+        const slotAnchor = existing ? existing.nextSibling : null;
         if (existing) existing.remove();
 
         // Create video container
@@ -3395,7 +3425,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         container.appendChild(video);
         container.appendChild(label);
-        this.videoGrid.appendChild(container);
+        if (slotAnchor && slotAnchor.parentNode === this.videoGrid) {
+            this.videoGrid.insertBefore(container, slotAnchor);
+        } else {
+            this.videoGrid.appendChild(container);
+        }
 
         // Update grid layout for new participant count
         this.updateVideoGridLayout();
@@ -3887,7 +3921,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         container.appendChild(overlay);
     }
 
-    removePeerConnection(peerId) {
+    // Sockets, timers and transforms for a peer. Split out from removePeerConnection
+    // so the disconnect grace window can hold the tile without also killing media —
+    // a peer whose signaling blipped still has a live PeerConnection, and tearing it
+    // down here would leave nothing to recover (they skip re-offering to peers they
+    // still consider connected; see the room-joined handler).
+    teardownPeerMedia(peerId) {
         const peer = this.peerConnections.get(peerId);
         if (peer) {
             peer.connection.close();
@@ -3907,7 +3946,11 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // Clean up pending data
         this.pendingUsernames.delete(peerId);
         this.pendingIceCandidates.delete(peerId);
+    }
 
+    // The tile itself, and the grid reflow that follows. Deferred for the length of
+    // the grace window so a returning peer keeps their slot.
+    removePeerTile(peerId) {
         const container = document.getElementById(`video-${peerId}`);
         if (container) {
             // Clean up health check interval
@@ -3922,6 +3965,165 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         // After a peer leaves, verify remaining containers still have mod controls
         this.refreshModeratorControls();
+    }
+
+    // Per-peer state that outlives the connection: keys, avatars, camera state.
+    // Held through the grace window so a reclaimed tile renders correctly, then
+    // dropped when the peer is gone for good.
+    purgePeerState(peerId) {
+        this.turnFailedPeers.delete(peerId);
+        this.peerPublicKeys.delete(peerId);
+        this.peerSharedKeys.delete(peerId);
+        this.peerGravatarHashes.delete(peerId);
+        this.peerVideoStates.delete(peerId);
+    }
+
+    removePeerConnection(peerId) {
+        this.teardownPeerMedia(peerId);
+        this.removePeerTile(peerId);
+    }
+
+    // ── Disconnect grace window ────────────────────────────────────────────
+    // A peer whose transport died keeps their tile, frozen and dimmed under a
+    // countdown HUD, for PEER_GRACE_PERIOD_MS. Reconnect inside that window and
+    // they drop straight back into the same grid slot with nothing announced;
+    // miss it and they are removed exactly as an ordinary departure.
+
+    // Snapshot the current frame to a canvas. The live <video> can't be relied on
+    // to hold its last frame: the track's onmute/onended handlers add .no-video,
+    // which fades the avatar in over it, and because we deliberately leave the
+    // PeerConnection open during the window it may even keep rendering new frames.
+    freezeTileFrame(container) {
+        const video = container.querySelector('video');
+        if (!video || !video.videoWidth || !video.videoHeight) return null;
+        const canvas = document.createElement('canvas');
+        canvas.className = 'freeze-frame';
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        try {
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        } catch { /* tainted or not yet decodable — dim the avatar instead */ return null; }
+        container.appendChild(canvas);
+        return canvas;
+    }
+
+    showDisconnectedHud(container) {
+        if (container.querySelector('.disconnect-hud')) return;
+        const hud = document.createElement('div');
+        hud.className = 'disconnect-hud';
+        hud.innerHTML =
+            `<span class="ic-wrap">${iconSvg('alert-triangle')}</span>` +
+            '<span class="disconnect-hud-title">Disconnected</span>' +
+            '<span class="disconnect-hud-count" data-count>removing in 10s</span>';
+        container.appendChild(hud);
+    }
+
+    beginPeerGrace(peerId, username) {
+        if (this.disconnectedPeers.has(peerId)) return;
+        const container = document.getElementById(`video-${peerId}`);
+        if (!container) return;
+
+        if (username) this.knownUsernames.set(peerId, username);
+        this.freezeTileFrame(container);
+        container.classList.add('disconnected');
+
+        // Signal bars would keep polling a dead connection, and a frozen screen
+        // share is worse than none — the server already freed the presenter slot.
+        this.stopStatsMonitoring(peerId);
+        this.removeScreenReceiver(peerId);
+
+        this.showDisconnectedHud(container);
+
+        const entry = {
+            username: username || this.knownUsernames.get(peerId) || 'User',
+            deadline: Date.now() + PEER_GRACE_PERIOD_MS,
+            intervalId: setInterval(() => this.renderPeerGrace(peerId), 250),
+            timeoutId: setTimeout(() => this.expirePeerGrace(peerId), PEER_GRACE_PERIOD_MS)
+        };
+        this.disconnectedPeers.set(peerId, entry);
+        this.renderPeerGrace(peerId);
+    }
+
+    // Render from the deadline rather than decrementing a counter, so a
+    // background tab with throttled timers still shows a truthful number.
+    renderPeerGrace(peerId) {
+        const entry = this.disconnectedPeers.get(peerId);
+        if (!entry) return;
+        const el = document.querySelector(`#video-${peerId} .disconnect-hud [data-count]`);
+        if (!el) return;
+        const left = Math.max(0, Math.ceil((entry.deadline - Date.now()) / 1000));
+        el.textContent = `removing in ${left}s`;
+    }
+
+    // Exact clientId wins. Otherwise fall back to the username, which is the only
+    // thread back to someone who reloaded — clientId is regenerated per page load.
+    // An ambiguous name (two people down under the same one) matches nothing.
+    matchPeerGrace(peerId, username) {
+        if (this.disconnectedPeers.has(peerId)) return peerId;
+        if (!username) return null;
+        const hits = [];
+        for (const [id, entry] of this.disconnectedPeers) {
+            if (entry.username === username) hits.push(id);
+        }
+        return hits.length === 1 ? hits[0] : null;
+    }
+
+    // Returns the id of the grace slot this peer reclaimed, or null.
+    resolvePeerGrace(peerId, username) {
+        const ghostId = this.matchPeerGrace(peerId, username);
+        if (!ghostId) return null;
+
+        const entry = this.disconnectedPeers.get(ghostId);
+        clearInterval(entry.intervalId);
+        clearTimeout(entry.timeoutId);
+        this.disconnectedPeers.delete(ghostId);   // delete first: makes this idempotent
+
+        const container = document.getElementById(`video-${ghostId}`);
+        if (container) {
+            container.classList.remove('disconnected');
+            const frame = container.querySelector('.freeze-frame');
+            if (frame) frame.remove();
+            const hud = container.querySelector('.disconnect-hud');
+            if (hud) hud.remove();
+        }
+
+        if (ghostId !== peerId) {
+            // They came back under a new identity (a reload). The old one is dead.
+            this.teardownPeerMedia(ghostId);
+            this.purgePeerState(ghostId);
+            this.knownUsernames.delete(ghostId);
+        } else if (container && this.peerConnections.has(peerId)) {
+            // Same page instance, media never died — just restart the stats loop.
+            this.startStatsMonitoring(peerId, this.peerConnections.get(peerId).connection, container);
+        }
+
+        this.addChatMessage('System', `${username || entry.username} reconnected`, true);
+        return ghostId;
+    }
+
+    expirePeerGrace(peerId) {
+        const entry = this.disconnectedPeers.get(peerId);
+        if (!entry) return;
+        clearInterval(entry.intervalId);
+        clearTimeout(entry.timeoutId);
+        this.disconnectedPeers.delete(peerId);
+
+        this.removePeerConnection(peerId);
+        this.purgePeerState(peerId);
+        this.knownUsernames.delete(peerId);
+
+        // The departure is only announced now — a peer who made it back inside the
+        // window never produced a leave chime or a chat line at all.
+        this.addChatMessage('System', `${entry.username} left the room`, true);
+        this.playLeaveSound();
+    }
+
+    clearAllPeerGrace() {
+        this.disconnectedPeers.forEach(entry => {
+            clearInterval(entry.intervalId);
+            clearTimeout(entry.timeoutId);
+        });
+        this.disconnectedPeers.clear();
     }
 
     async attemptIceRestart(peerId) {
@@ -5517,6 +5719,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.moderatorUsername = null;
         this.clearedMessages = [];
         this.knownUsernames.clear();
+        this.clearAllPeerGrace();
         this.isIntentionalDisconnect = false;
         this.clearImagePreview();
         this.wsReconnectAttempts = 0;

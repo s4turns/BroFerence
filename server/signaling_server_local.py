@@ -43,11 +43,12 @@ async def unregister_client(websocket: WebSocketServerProtocol):
         if room and room in rooms:
             rooms[room]['users'].discard(websocket)
 
-            # Notify others in room
+            # Notify others in room ('dropped' = transport died; see leave_room)
             await broadcast_to_room(room, {
                 'type': 'user-left',
                 'clientId': client_id,
-                'username': username
+                'username': username,
+                'reason': 'dropped'
             }, exclude=websocket)
 
             # Clean up empty rooms
@@ -140,11 +141,12 @@ async def leave_room(websocket: WebSocketServerProtocol):
         rooms[room]['users'].discard(websocket)
         client_info['room'] = None
 
-        # Notify others
+        # Notify others ('left' = deliberate, so clients remove the tile at once)
         await broadcast_to_room(room, {
             'type': 'user-left',
             'clientId': client_info['id'],
-            'username': client_info['username']
+            'username': client_info['username'],
+            'reason': 'left'
         }, exclude=websocket)
 
         # Clean up empty rooms

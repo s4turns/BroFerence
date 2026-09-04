@@ -807,6 +807,82 @@ body::before {
     opacity: 1;
 }
 
+/* A peer whose transport died: last frame frozen and dimmed under a countdown
+   HUD while their slot is held open for a reconnect. visibility rather than
+   display keeps the tile's layout identical, so the grid doesn't twitch. */
+.video-container.disconnected video {
+    visibility: hidden;
+}
+
+.video-container.disconnected .freeze-frame,
+.video-container.disconnected .video-avatar {
+    filter: grayscale(0.6) brightness(0.35);
+}
+
+/* Controls on a held tile act on a peer who may already be gone. */
+.video-container.disconnected .remote-audio-controls,
+.video-container.disconnected .signal-bars {
+    pointer-events: none;
+    opacity: 0.25;
+}
+
+.freeze-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000000;
+    z-index: 3; /* over .video-avatar (2), under the tile controls (5/10) */
+}
+
+.disconnect-hud {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 11; /* over every other tile overlay */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    background: rgba(0, 0, 0, 0.82);
+    border: 2px solid var(--danger);
+    color: var(--danger);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    text-shadow: 0 0 8px var(--danger);
+    animation: disconnect-pulse 1.2s ease-in-out infinite;
+}
+
+/* Divider keeps the state and the countdown from reading as one run-on string
+   once both are uppercased and letter-spaced. */
+.disconnect-hud-count {
+    font-variant-numeric: tabular-nums; /* digit swaps must not resize the HUD */
+    letter-spacing: 1px;
+    font-weight: 400;
+    opacity: 0.85;
+    padding-left: 10px;
+    border-left: 1px solid rgba(255, 0, 64, 0.5);
+}
+
+@keyframes disconnect-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(255, 0, 64, 0.35); }
+    50%      { box-shadow: 0 0 26px rgba(255, 0, 64, 0.8); }
+}
+
+/* Respect a stated preference for less motion — keep the glow, drop the pulse. */
+@media (prefers-reduced-motion: reduce) {
+    .disconnect-hud {
+        animation: none;
+        box-shadow: 0 0 22px rgba(255, 0, 64, 0.6);
+    }
+}
+
 .muted-indicator {
     position: absolute;
     bottom: 52px;

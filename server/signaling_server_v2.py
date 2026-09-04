@@ -305,11 +305,14 @@ async def unregister_client(websocket: Peer):
             except ValueError:
                 pass
 
-            # Notify others in room
+            # Notify others in room. 'dropped' = the transport died under them, so
+            # clients hold the tile briefly in case they reconnect; an explicit
+            # leave-room sends 'left' and is removed immediately. See leave_room().
             await broadcast_to_room(room, {
                 'type': 'user-left',
                 'clientId': client_id,
-                'username': username
+                'username': username,
+                'reason': 'dropped'
             }, exclude=websocket)
 
             # Send IRC notification
@@ -598,11 +601,14 @@ async def leave_room(websocket: Peer):
             pass
         client_info['room'] = None
 
-        # Notify others
+        # Notify others. 'left' is deliberate, so clients drop the tile at once —
+        # unlike the 'dropped' broadcast in unregister_client(). client_info['room']
+        # was cleared above, so the socket close that follows won't re-broadcast.
         await broadcast_to_room(room, {
             'type': 'user-left',
             'clientId': client_info['id'],
-            'username': client_info['username']
+            'username': client_info['username'],
+            'reason': 'left'
         }, exclude=websocket)
 
         # Free the screen-share slot if the leaver held it
