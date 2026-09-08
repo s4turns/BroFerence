@@ -48,10 +48,25 @@ class Peer:
     async def send(self, data: str) -> None:
         try:
             await self._send_impl(data)
+        except PeerClosed as e:
+            # Already known to be gone, and _send_impl has already ended the
+            # session for the cases it raises this on. Nothing left to do.
+            logger.debug(f'send to {self.kind} peer {self.remote_ip} skipped: {e}')
+        except ValueError as e:
+            # An undeliverable message of ours, not a dead peer -- dropping the
+            # frame is right, disconnecting someone over it is not.
+            logger.warning(f'not sending to {self.kind} peer {self.remote_ip}: {e}')
         except Exception as e:
             # Dropping a message to a dying peer is normal and extremely noisy
             # at INFO; the session teardown path logs the disconnect itself.
             logger.debug(f'send to {self.kind} peer {self.remote_ip} failed: {e}')
+            # A failed write is often the first and only evidence that a peer
+            # is gone. Let the subclass turn it into a disconnect rather than
+            # swallowing it and leaving the peer in the room.
+            self._on_send_failure(e)
+
+    def _on_send_failure(self, exc: Exception) -> None:
+        """Hook: a send failed for a reason other than 'already closed'."""
 
     async def close(self) -> None:
         try:
@@ -149,6 +164,12 @@ class WebTransportPeer(Peer):
         if not self._closed:
             self._closed = True
             self._inbox.put_nowait(None)  # sentinel
+
+    def _on_send_failure(self, exc: Exception) -> None:
+        # Unlike websockets, aioquic has no keepalive of its own to notice a
+        # peer that stopped answering, so a write that blows up is the signal.
+        logger.info(f'WebTransport peer {self.remote_ip} failed a write ({exc}) — ending session')
+        self.feed_eof()
 
     async def _messages(self):
         while True:

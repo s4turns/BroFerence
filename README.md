@@ -140,22 +140,29 @@ over HTTP/3 (`https://host:8767/signaling`). **Media is unaffected either way** 
 audio and video always ride WebRTC/SRTP through the coturn relays, and none of
 that changes when the signaling transport does.
 
-Pick a mode under **Options → Signaling**:
+Pick a mode under **Options → Signaling**, or on the prejoin screen before joining:
 
 | Mode | Behaviour |
 |------|-----------|
-| `Auto` (default) | Try QUIC, fall back to WebSocket on failure or timeout |
+| `Auto` | Try QUIC, fall back to WebSocket on failure or timeout |
 | `QUIC` | Force WebTransport; fail with an error rather than downgrade |
-| `WebSocket` | Force WSS; never touch UDP 8767 |
+| `WebSocket` (default) | Force WSS; never touch UDP 8767 |
 
 The status bar shows which transport is actually carrying the session.
 
 **Browser support.** Chrome/Edge 97+ and Firefox 114+ support WebTransport.
-Safari and all iOS browsers do not, so they use WebSocket via `Auto` — which is
-exactly the pre-existing behaviour — and the `QUIC` option is disabled for them.
-Networks that block outbound UDP also fall back. After a QUIC failure the client
-stops retrying it for five minutes rather than paying the timeout on every
-reconnect.
+Safari and all iOS browsers do not, and the `QUIC` option is disabled for them;
+under `Auto` they fall back to WebSocket, as do networks that block outbound
+UDP. After a QUIC failure the client stops retrying it for five minutes rather
+than paying the timeout on every reconnect.
+
+**Why WebSocket is the default.** A signaling channel has to notice a peer that
+simply vanishes — a killed tab, a dropped path — or the room keeps a member who
+is not there. On WSS that comes free: the OS closes the TCP socket, and
+`ping_interval=20`/`ping_timeout=60` catches whatever the OS does not. QUIC has
+neither, so the server supplies its own equivalent (a 10s PING against a 30s
+`idle_timeout`) and the client ends its stream on close. `Auto` and `QUIC`
+remain fully supported; WebSocket is simply the one that needs no help.
 
 **Certificate.** WebTransport requires a publicly trusted certificate. The
 existing Let's Encrypt chain works as-is. For a self-signed dev box, launch
@@ -507,6 +514,11 @@ pip install -r server/requirements.txt
 ---
 
 ## Recent Updates
+
+### v2.4 (2026-09-08)
+- **WebSocket is the default signaling transport** — The Auto/QUIC/WebSocket choice is unchanged and QUIC stays fully selectable, but a fresh client now starts on WSS rather than trying QUIC first. An existing pick is left alone
+- **A QUIC peer that disappears is now actually dropped** — A vanished WebTransport session could hang: nothing ended the server's receive loop, so the peer stayed in the room with no `user-left` and its tile never cleared. The QUIC listener now runs a keepalive PING against an explicit idle timeout, a failed write ends the session instead of being swallowed, and a stream reset counts even before the signaling stream is up
+- **Closing a tab says goodbye** — The client now leaves the room on `pagehide` and ends its WebTransport stream when closing, so a closed tab is a prompt disconnect rather than one that waits for a timeout
 
 ### v2.3 (2026-08-29)
 - **Signaling transport is selectable on the prejoin screen** — The Auto/QUIC/WebSocket choice now sits alongside the mic and camera pickers on the setup screen, so it can be set before joining rather than only from the in-call Options menu. The two controls stay synchronised, matching how low-bandwidth mode already works in both places

@@ -8,6 +8,41 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ---
 
+## v2.4 — 2026-09-08
+
+The signaling default moves to WebSocket, and the reason it moves gets fixed at the same time.
+
+- **WebSocket is the default transport.** The prejoin and Options selectors still offer `Auto`,
+  `QUIC` and `WebSocket`, and QUIC is as supported as it was — but a client with no stored
+  preference now starts on WSS instead of reaching for QUIC first. `broference-signaling-transport`
+  is only ever written by an explicit choice, so anyone who picked a transport keeps it.
+- **A QUIC peer that vanishes no longer hangs the room.** The server's receive loop for a
+  WebTransport session blocks until something feeds it EOF, and the only reliable trigger was
+  aioquic's `ConnectionTerminated` — which a `QuicConfiguration` with no idle timeout and no
+  keepalive may never produce. A killed tab or a dropped UDP path therefore left the peer in the
+  room: no `user-left`, no roster update, a tile that never cleared. The listener now sets an
+  explicit 30s `idle_timeout` and PINGs each open session every 10s, so a live peer's ACK holds
+  the connection open and a dead one times out. This is the QUIC counterpart of the WSS listener's
+  `ping_interval=20`/`ping_timeout=60`, which is why the WebSocket path never had the bug.
+- **A failed QUIC write ends the session.** `Peer.send()` swallowed every exception, so
+  broadcasting to a dead peer could not surface the death either. Genuine failures now end the
+  session; "already closed" stays quiet, since that case is handled where it is raised.
+- **Smaller QUIC teardown fixes.** A `StreamReset` arriving before the signaling stream exists now
+  ends the session instead of falling through into H3; `_end_session()` is idempotent and drops
+  its peer reference rather than pinning a dead one for the life of the connection; and the
+  session task is cleared when it finishes.
+- **Closing a tab disconnects promptly.** There was no `pagehide` or `beforeunload` handler at all
+  — on WSS the OS closing the TCP socket covered for it, but a QUIC session had nothing
+  equivalent. The client now leaves the room on `pagehide`, and `QuicTransport.close()` ends its
+  bidirectional stream before closing the session so the server gets a `stream_ended` it can act
+  on immediately.
+- **Housekeeping since v2.3.** A dropped peer's tile is held for 10s under a `DISCONNECTED`
+  countdown instead of disappearing outright, and that HUD now also shows on local connection
+  loss rather than only when someone else leaves. Scripts moved to `scripts/` and docs to
+  `docs/`, and the linters are clean.
+
+---
+
 ## v2.3 — 2026-08-29
 
 Follow-up to v2.2, which shipped the QUIC signaling transport but only exposed the choice from

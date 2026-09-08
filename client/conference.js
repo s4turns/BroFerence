@@ -137,6 +137,10 @@ class QuicTransport {
     close() {
         if (this.readyState === WebSocket.CLOSED) return;
         this.readyState = WebSocket.CLOSING;
+        // End the signaling stream before tearing the session down. That gives
+        // the server a stream_ended event it can act on immediately, instead of
+        // leaving it to notice via the QUIC idle timeout seconds later.
+        try { this._writer.close(); } catch (_e) { /* already gone */ }
         try { this._wt.close(); } catch (_e) { /* already gone */ }
         this._fireClose();
     }
@@ -228,7 +232,10 @@ class ConferenceClient {
         this.lowBandwidthMode = this.isMobileDevice() || localStorage.getItem('broference-low-bandwidth') === 'true';
         this.videoQuality = localStorage.getItem('broference-video-quality') || '720';
         // Signaling transport: 'auto' (QUIC with WSS fallback), 'quic', or 'websocket'.
-        this.signalingTransportMode = localStorage.getItem('broference-signaling-transport') || 'auto';
+        // WebSocket is the default: it is the transport whose disconnect handling is backed by
+        // the library's own keepalive, so a peer that vanishes is reaped without waiting on a
+        // UDP idle timer. QUIC stays a deliberate choice rather than something everyone gets.
+        this.signalingTransportMode = localStorage.getItem('broference-signaling-transport') || 'websocket';
         this.activeTransport = null;      // what we actually ended up on
         this.quicBlockedUntil = 0;        // epoch ms; session-scoped QUIC cooldown
         this.quicSessionOpenedAt = 0;
@@ -848,6 +855,17 @@ class ConferenceClient {
         document.getElementById('changeNameBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.changeName(); });
         document.getElementById('leaveRoomBtn').addEventListener('click', () => { this.toggleOptionsMenu(); this.leaveRoom(); });
         document.getElementById('leaveRoomHeaderBtn').addEventListener('click', () => this.leaveRoom());
+
+        // A closed tab has to tell the server it is going. On WSS the OS closes
+        // the TCP socket for us, but a QUIC session has nothing equivalent, so
+        // without this the peer lingers until the idle timeout. pagehide rather
+        // than beforeunload because it also fires on iOS and Safari.
+        window.addEventListener('pagehide', () => {
+            if (!this.ws) return;
+            this.isIntentionalDisconnect = true;
+            try { this.sendMessage({ type: 'leave-room' }); } catch (_e) { /* going away anyway */ }
+            try { this.ws.close(); } catch (_e) { /* going away anyway */ }
+        });
 
         // Prejoin buttons
         document.getElementById('prejoinToggleAudioBtn').addEventListener('click', () => this.prejoinToggleAudio());
