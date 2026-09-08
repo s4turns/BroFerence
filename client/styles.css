@@ -149,7 +149,7 @@ body::before {
 /* Header */
 .header {
     background: var(--darker);
-    padding: 16px 32px;
+    padding: 7px 32px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -229,7 +229,7 @@ body::before {
 .header-banner {
     display: block;
     width: 100%;
-    max-width: 300px;
+    max-width: 232px;
     height: auto;
 }
 
@@ -2043,7 +2043,7 @@ body::before {
     }
 
     .header-banner {
-        max-width: 220px;
+        max-width: 190px;
     }
 
     .landing-features {
@@ -2135,7 +2135,7 @@ body::before {
     }
 
     .header-banner {
-        max-width: 180px;
+        max-width: 155px;
     }
 
     .landing-form {

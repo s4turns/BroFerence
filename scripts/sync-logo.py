@@ -21,10 +21,10 @@ HTML = os.path.join(ROOT, 'client', 'app.html')
 NOTE = ('<!-- Generated from client/logo-banner.svg by scripts/sync-logo.py.\n'
         '     Edit that file and re-run the script; do not hand-edit this block. -->')
 
-ROOT_TAG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 168" '
-            'width="760" height="168" role="img" aria-label="BroFerence">')
+ROOT_TAG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 14 760 138" '
+            'width="760" height="138" role="img" aria-label="BroFerence">')
 INLINE_TAG = ('<svg class="header-banner" xmlns="http://www.w3.org/2000/svg" '
-              'viewBox="0 0 760 168" role="img" aria-label="BroFerence">')
+              'viewBox="0 14 760 138" role="img" aria-label="BroFerence">')
 
 BLOCK_RE = re.compile(
     r'[ \t]*(?:<!-- Generated from client/logo-banner\.svg.*?-->\s*)?'
