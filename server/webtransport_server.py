@@ -35,12 +35,17 @@ SIGNALING_PATH = '/signaling'
 
 # Seconds of silence before aioquic tears a connection down. The effective
 # value is the minimum of both endpoints', so this is a ceiling, not a floor.
-QUIC_IDLE_TIMEOUT = 30.0
+#
+# Kept at aioquic's own default rather than tightened. aioquic only resets its
+# idle timer in receive_datagram(), never on send, so this fires on application
+# silence unless the keepalive below is genuinely drawing a packet back from
+# the peer. A value that cuts in before that is proven kills live calls, which
+# is far worse than reaping a dead peer slowly -- 30s did exactly that.
+QUIC_IDLE_TIMEOUT = 60.0
 
-# How often the server PINGs an open session. Signaling is bursty -- a call can
-# sit for minutes with nothing to say -- so the idle timeout above would reap
-# healthy connections without this. Mirrors ping_interval=20 on the WSS side,
-# and must stay comfortably under QUIC_IDLE_TIMEOUT.
+# How often the server PINGs an open session. A PING is ack-eliciting, so a
+# live peer answers and that inbound datagram is what actually resets the idle
+# timer. Must stay comfortably under QUIC_IDLE_TIMEOUT.
 QUIC_KEEPALIVE_INTERVAL = 10.0
 
 # Set by serve_webtransport(); called as `await session_handler(peer)` once the
@@ -172,10 +177,14 @@ class WebTransportProtocol(QuicConnectionProtocol):
                 self._ping_uid += 1
                 self._quic.send_ping(uid=self._ping_uid)
                 self.transmit()
+                logger.info(f'WebTransport keepalive ping #{self._ping_uid} '
+                            f'to {self._remote_ip}')
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            logger.debug(f'WebTransport keepalive for {self._remote_ip} stopped: {e}')
+        except Exception:
+            # Loud, not debug: a keepalive that dies quietly is what let the
+            # idle timeout look like a working disconnect detector.
+            logger.exception(f'WebTransport keepalive for {self._remote_ip} stopped')
 
     async def _run_session(self, peer):
         try:
@@ -222,11 +231,10 @@ async def serve_webtransport(session_handler, host: str, port: int,
         alpn_protocols=H3_ALPN,
         is_client=False,
         max_datagram_frame_size=65536,
-        # Without this a peer that simply vanishes -- a killed tab, a dropped
-        # UDP path -- never produces ConnectionTerminated, so nothing ever
-        # feeds EOF to the receive loop and the session hangs in the room
-        # forever. The WSS path reaps such a client in <=80s via
-        # ping_interval=20/ping_timeout=60; this is the QUIC equivalent.
+        # Set explicitly so the value is visible here rather than inherited:
+        # without an idle timeout a peer that simply vanishes never produces
+        # ConnectionTerminated, so nothing feeds EOF to the receive loop and
+        # the session hangs in the room forever.
         idle_timeout=QUIC_IDLE_TIMEOUT,
     )
     configuration.load_cert_chain(certfile, keyfile)
