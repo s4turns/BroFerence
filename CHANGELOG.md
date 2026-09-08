@@ -8,6 +8,29 @@ Versions match the number shown in the app footer and in `README.md`.
 
 ---
 
+## v2.5 — 2026-09-08
+
+- **Moderators and the owner can stop someone else's screen share.** Until now a share could only
+  be ended by the person sharing it, so the mildest response to an unwanted screen — a private
+  tab, a document nobody meant to show — was to kick them. The button appears on the sharer's
+  camera tile and on their screen tile, and only while they are actually sharing. Permissions are
+  the existing `can_act_on` rule, unchanged: the owner can stop anyone, a co-mod can stop anyone
+  but the owner. It is a one-shot action, not a lock — the user is free to start a new share.
+  Server-side it both notifies the target and releases the presenter slot, so every viewer's tile
+  clears and everyone's share button re-enables rather than waiting on the target's client.
+- **A glitch-cyberpunk wordmark replaces the plain text logo.** `[BROFERENCE]` is now drawn
+  artwork in the header bar: geometric letterforms with a chromatic split, torn slices and
+  scanlines, shaking and tearing in a short burst every few seconds and sitting still in between.
+  It is inlined SVG rather than an image so it recolours with the theme, and it holds still
+  entirely for anyone with `prefers-reduced-motion` set.
+- **Every theme gets its own aberration palette.** The split channels use dedicated
+  `--logo-ghost-a`/`--logo-ghost-b` tokens instead of `--secondary`/`--danger`, which on amber,
+  sunset and tron sit too close to `--primary` and collapsed the effect into a single blur. Tron
+  gets the Grid's own cyan/orange opposition; corporate, the one light theme, drops the screen
+  blending that would otherwise wash the mark out to white.
+
+---
+
 ## v2.4 — 2026-09-08
 
 The signaling default moves to WebSocket, and the reason it moves gets fixed at the same time.

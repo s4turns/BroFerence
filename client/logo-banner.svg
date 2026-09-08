@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 168" width="760" height="168" role="img" aria-label="BroFerence">
+    <title>BroFerence</title>
+
+    <!--
+      Letterforms are geometric paths, not <text>: the app ships no webfont, and
+      a logo that reshapes itself according to whichever monospace the viewer
+      happens to have is not a logo. Chamfered corners keep the angular feel.
+
+      Colours reference theme tokens so the banner recolours with the theme.
+      The two aberration channels use their own --logo-ghost-a/b rather than
+      --secondary/--danger: on amber, sunset and tron those sit too close to
+      --primary, and the chromatic split collapses into a single blur. Each
+      theme sets the pair deliberately in styles.css. The literal fallbacks
+      are what a standalone viewer of this file gets, with no CSS variables.
+
+      Those colours are set via style="" rather than stroke=/fill= attributes
+      on purpose: var() does not resolve inside an SVG presentation attribute,
+      so written that way every theme silently rendered the fallback pair.
+
+      The <style> lives in here rather than in styles.css so the file glitches
+      on its own too -- in a README, on GitHub, anywhere. Every class and
+      keyframe is bf- prefixed because inlining this into a page puts these
+      rules in that document's global scope.
+    -->
+
+    <style>
+        /* Bursts sit at 20% and 64% of the cycle, never at 0%: the animation
+           starts the moment the page paints, and a logo that is mid-glitch on
+           first sight just looks broken rather than deliberate. */
+        @keyframes bf-shake {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            20.5% { transform: translate(-5px, 2px); }
+            21.1% { transform: translate(4px, -3px); }
+            21.7% { transform: translate(-3px, -1px); }
+            22.2% { transform: translate(2px, 2px); }
+            64.5% { transform: translate(5px, -2px); }
+            65.1% { transform: translate(-4px, 1px); }
+            65.7% { transform: translate(2px, 3px); }
+            66.2% { transform: translate(-2px, -1px); }
+        }
+        @keyframes bf-tear-a {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            20.7% { transform: translate(-26px, 0); }
+            21.5% { transform: translate(18px, 0); }
+            22.1% { transform: translate(-9px, 0); }
+            64.8% { transform: translate(23px, 0); }
+            65.6% { transform: translate(-15px, 0); }
+        }
+        @keyframes bf-tear-b {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            20.9% { transform: translate(21px, 0); }
+            21.6% { transform: translate(-14px, 0); }
+            64.6% { transform: translate(-19px, 0); }
+            65.9% { transform: translate(12px, 0); }
+        }
+        /* The colour channels pull further apart mid-burst, then snap back. */
+        @keyframes bf-chan-left {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            21%   { transform: translate(-9px, 0); }
+            22%   { transform: translate(4px, 1px); }
+            65.2% { transform: translate(-7px, -1px); }
+        }
+        @keyframes bf-chan-right {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            21.3% { transform: translate(10px, -1px); }
+            22.2% { transform: translate(-5px, 0); }
+            65.4% { transform: translate(8px, 1px); }
+        }
+        /* Signal dropout: the wordmark blinks out for a couple of frames. */
+        @keyframes bf-flicker {
+            0%, 21.2%, 21.5%, 64.9%, 65.15%, 100% { opacity: 1; }
+            21.3%, 65% { opacity: 0.25; }
+        }
+
+        .bf-blend   { mix-blend-mode: screen; }
+
+        .bf-root    { animation: bf-shake 7.5s steps(1, end) infinite; }
+        .bf-core    { animation: bf-flicker 7.5s steps(1, end) infinite; }
+        .bf-chan-l  { animation: bf-chan-left 7.5s steps(1, end) infinite; }
+        .bf-chan-r  { animation: bf-chan-right 7.5s steps(1, end) infinite; }
+        .bf-slice-a { animation: bf-tear-a 7.5s steps(1, end) infinite; }
+        .bf-slice-b { animation: bf-tear-b 7.5s steps(1, end) infinite; }
+        .bf-slice-c { animation: bf-tear-a 7.5s steps(1, end) infinite; animation-delay: -0.4s; }
+
+        /* Someone who has asked the OS to stop moving things gets the static
+           logo, which is why the artwork still has to work without motion. */
+        @media (prefers-reduced-motion: reduce) {
+            .bf-root, .bf-core, .bf-chan-l, .bf-chan-r,
+            .bf-slice-a, .bf-slice-b, .bf-slice-c { animation: none; }
+        }
+    </style>
+
+    <defs>
+        <g id="bf-wordmark" fill="none" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter">
+            <!-- [ -->
+            <path d="M38,4 H14 V86 H38" transform="translate(0,41)"/>
+            <!-- B -->
+            <path d="M8,4 V86 M8,4 H40 L50,14 V36 L40,46 H8 M40,46 L50,56 V76 L40,86 H8" transform="translate(62,41)"/>
+            <!-- R -->
+            <path d="M8,4 V86 M8,4 H40 L50,14 V36 L40,46 H8 M32,46 L50,86" transform="translate(124,41)"/>
+            <!-- O -->
+            <path d="M8,14 L18,4 H42 L52,14 V76 L42,86 H18 L8,76 Z" transform="translate(186,41)"/>
+            <!-- F -->
+            <path d="M8,4 V86 M8,4 H50 M8,45 H38" transform="translate(248,41)"/>
+            <!-- E -->
+            <path d="M50,4 H8 V86 H50 M8,45 H38" transform="translate(310,41)"/>
+            <!-- R -->
+            <path d="M8,4 V86 M8,4 H40 L50,14 V36 L40,46 H8 M32,46 L50,86" transform="translate(372,41)"/>
+            <!-- E -->
+            <path d="M50,4 H8 V86 H50 M8,45 H38" transform="translate(434,41)"/>
+            <!-- N -->
+            <path d="M8,86 V4 L52,86 V4" transform="translate(496,41)"/>
+            <!-- C -->
+            <path d="M52,4 H18 L8,14 V76 L18,86 H52" transform="translate(558,41)"/>
+            <!-- E -->
+            <path d="M50,4 H8 V86 H50 M8,45 H38" transform="translate(620,41)"/>
+            <!-- ] -->
+            <path d="M706,4 H730 V86 H706" transform="translate(0,41)"/>
+        </g>
+
+        <!-- Glitch slices: bands of the wordmark torn sideways out of register. -->
+        <clipPath id="bf-clip-a"><rect x="0" y="56" width="760" height="15"/></clipPath>
+        <clipPath id="bf-clip-b"><rect x="0" y="100" width="760" height="11"/></clipPath>
+        <clipPath id="bf-clip-c"><rect x="0" y="82" width="760" height="7"/></clipPath>
+
+        <pattern id="bf-scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+            <rect width="4" height="2" fill="#000" opacity="0.24"/>
+        </pattern>
+    </defs>
+
+    <!-- The ground stays put; only the artwork shakes, so no gap opens at the edges.
+         Classed so a host page can hide it and let the mark sit on its own
+         background instead of on a visible dark plate. -->
+    <rect class="bf-plate" width="760" height="168" style="fill: var(--logo-ground, #05070a)"/>
+
+    <g class="bf-root">
+        <!-- Chromatic split: the same wordmark separated into channels. Screen
+             blending makes the overlaps brighten back toward white instead of
+             turning to mud where all three land on top of each other. -->
+        <g class="bf-blend">
+            <g class="bf-chan-l"><use href="#bf-wordmark" x="-7" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.85"/></g>
+            <g class="bf-chan-r"><use href="#bf-wordmark" x="7" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.85"/></g>
+            <g class="bf-core"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g>
+        </g>
+
+        <!-- Displaced slices, drawn over the top so they read as tearing. -->
+        <g class="bf-blend">
+            <g clip-path="url(#bf-clip-a)">
+                <g class="bf-slice-a"><use href="#bf-wordmark" x="-22" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.9"/></g>
+            </g>
+            <g clip-path="url(#bf-clip-b)">
+                <g class="bf-slice-b"><use href="#bf-wordmark" x="17" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.75"/></g>
+            </g>
+            <g clip-path="url(#bf-clip-c)">
+                <g class="bf-slice-c"><use href="#bf-wordmark" x="-11" style="stroke: var(--primary, #00ff41)" opacity="0.95"/></g>
+            </g>
+        </g>
+
+        <!-- Corruption blocks in the margin. -->
+        <g style="fill: var(--logo-ghost-a, #00ffff)">
+            <rect x="14" y="144" width="26" height="4" opacity="0.55"/>
+            <rect x="46" y="144" width="11" height="4" opacity="0.3"/>
+            <rect x="716" y="20" width="14" height="4" opacity="0.45"/>
+        </g>
+        <rect x="63" y="20" width="46" height="3" opacity="0.5" style="fill: var(--logo-ghost-b, #ff0040)"/>
+    </g>
+
+    <rect class="bf-scan" width="760" height="168" fill="url(#bf-scanlines)"/>
+</svg>

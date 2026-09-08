@@ -1777,6 +1777,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 break;
             }
 
+            case 'force-stop-screen-share':
+                // toggleScreenShare()'s stop path already stops the tracks,
+                // clears the flag, un-throttles the camera and notifies the
+                // server, so there is nothing to tear down here.
+                if (this.isScreenSharing) this.toggleScreenShare();
+                this.addChatMessage('System', `Your screen share was stopped by ${message.by}.`, true);
+                break;
+
             case 'force-mute':
                 if (this.audioEnabled) {
                     this.toggleAudio();
@@ -3633,6 +3641,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             muteBtn.onclick = () => this.muteUser(peerId);
 
             audioControls.appendChild(muteBtn);
+
+            // Only meaningful while they are actually the presenter, so this
+            // comes and goes with screen-share-state rather than being fixed.
+            if (this.currentPresenterId === peerId) {
+                audioControls.appendChild(this.createStopShareButton(peerId));
+            }
+
             audioControls.appendChild(renameBtn);
             audioControls.appendChild(kickBtn);
 
@@ -3696,6 +3711,41 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         this.sendMessage({
             type: 'mute-user',
+            targetId: targetId
+        });
+    }
+
+    // Built in one place because it hangs off two different overlays -- the
+    // sharer's camera tile and their screen tile -- which must not drift apart.
+    createStopShareButton(targetId) {
+        const btn = document.createElement('button');
+        setIcon(btn, 'screen-share-off');
+        btn.title = 'Stop their screen share';
+        btn.dataset.modControl = 'stop-share';
+        btn.onclick = (e) => {
+            e.stopPropagation();  // screen tiles toggle spotlight on click
+            this.stopUserScreenShare(targetId);
+        };
+        return btn;
+    }
+
+    // True if we may act on this peer at all: same hierarchy the server
+    // enforces in can_act_on() -- co-mods cannot touch the owner or each other.
+    canModerate(targetId) {
+        if (!this.isModerator) return false;
+        if (targetId === this.clientId) return false;
+        if (this.isOwner) return true;
+        return targetId !== this.moderatorId && !this.coModIds.has(targetId);
+    }
+
+    stopUserScreenShare(targetId) {
+        if (!this.isModerator) {
+            alert('Only moderator can stop screen shares');
+            return;
+        }
+
+        this.sendMessage({
+            type: 'stop-user-screen-share',
             targetId: targetId
         });
     }
@@ -4699,6 +4749,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         container.appendChild(video);
         if (!isLocal) {
             const screenControls = this.createScreenAudioControls(ownerId, video);
+            if (this.canModerate(ownerId)) {
+                screenControls.appendChild(this.createStopShareButton(ownerId));
+            }
             container.appendChild(screenControls);
             this.sealControls(screenControls);
         }
@@ -4818,6 +4871,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             btn.classList.toggle('locked', lockedOut);
             btn.title = lockedOut ? `${username || 'Someone'} is sharing their screen` : 'Share Screen';
         }
+
+        // This is the only place currentPresenterId moves, so it is also the
+        // only place the mod stop-share button can appear or go stale.
+        this.refreshModeratorControls();
     }
 
     // The server refused our claim — another presenter got there first.

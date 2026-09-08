@@ -515,6 +515,10 @@ pip install -r server/requirements.txt
 
 ## Recent Updates
 
+### v2.5 (2026-09-08)
+- **Moderators can stop a screen share** — A mod or the owner can end someone else's share from the sharer's camera tile or their screen tile, without kicking them. The owner can stop anyone; a co-mod can stop anyone but the owner. One-shot, not a block — the user can start a new share right away
+- **New glitch-cyberpunk logo** — The header wordmark is now drawn artwork with a chromatic split and torn scanlines, glitching briefly every few seconds. It recolours with the active theme, and holds still for anyone who has asked their OS to reduce motion
+
 ### v2.4 (2026-09-08)
 - **WebSocket is the default signaling transport** — The Auto/QUIC/WebSocket choice is unchanged and QUIC stays fully selectable, but a fresh client now starts on WSS rather than trying QUIC first. An existing pick is left alone
 - **A QUIC peer that disappears is now actually dropped** — A vanished WebTransport session could hang: nothing ended the server's receive loop, so the peer stayed in the room with no `user-left` and its tile never cleared. The QUIC listener now runs a keepalive PING against an explicit idle timeout, a failed write ends the session instead of being swallowed, and a stream reset counts even before the signaling stream is up

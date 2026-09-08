@@ -976,6 +976,32 @@ async def handle_message(websocket: Peer, message: str):
                     'message': 'Only moderators can mute users'
                 }))
 
+        elif msg_type == 'stop-user-screen-share':
+            client_info = clients[websocket]
+            room = client_info['room']
+            target_id = data.get('targetId')
+
+            if room and can_act_on(rooms[room], client_info['id'], target_id):
+                for ws, info in list(clients.items()):
+                    if info['id'] == target_id and info['room'] == room:
+                        await ws.send(json.dumps({
+                            'type': 'force-stop-screen-share',
+                            'by': client_info['username']
+                        }))
+                        break
+                # Unlike mute, the share has authoritative room state. Free the
+                # slot too, so every viewer drops the tile and gets their own
+                # share button back instead of waiting on the target's client.
+                # Guarded on the target actually holding it: a mis-aimed click
+                # must not cancel somebody else's share.
+                if rooms[room].get('presenter') == target_id:
+                    await release_presenter(room)
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderators can stop screen shares'
+                }))
+
         elif msg_type == 'change-name':
             # User changing their name
             client_info = clients[websocket]

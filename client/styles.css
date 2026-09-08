@@ -24,6 +24,8 @@
     --chat-font-size: 13px;
     --own-bg: #001a00;
     --own-highlighted-bg: #003300;
+    --logo-ghost-a: #00ffff;
+    --logo-ghost-b: #ff0040;
 }
 
 /* Theme: Cyberpunk (Purple/Pink) */
@@ -43,6 +45,8 @@
     --chat-font-size: 13px;
     --own-bg: #1a001a;
     --own-highlighted-bg: #2d002d;
+    --logo-ghost-a: #00ffff;
+    --logo-ghost-b: #ff0040;
 }
 
 /* Theme: Ocean (Blue) */
@@ -61,7 +65,8 @@
     --glow-strong: 0 0 5px #00bfff, 0 0 10px #00bfff, 0 0 15px #00bfff;
     --chat-font-size: 13px;
     --own-bg: #001a2a;
-    --own-highlighted-bg: #003355;
+    --logo-ghost-a: #ff2d95;  /* blue primary: magenta + the theme green */
+    --logo-ghost-b: #00ff99;
 }
 
 /* Theme: Sunset (Orange/Red) */
@@ -80,7 +85,8 @@
     --glow-strong: 0 0 5px #ff6600, 0 0 10px #ff6600, 0 0 15px #ff6600;
     --chat-font-size: 13px;
     --own-bg: #1a0a00;
-    --own-highlighted-bg: #331500;
+    --logo-ghost-a: #00ffff;  /* orange primary: cyan + magenta, its true opposites */
+    --logo-ghost-b: #ff00a0;
 }
 
 /* Theme: Amber (Classic terminal) */
@@ -100,6 +106,8 @@
     --chat-font-size: 13px;
     --own-bg: #1a1000;
     --own-highlighted-bg: #332200;
+    --logo-ghost-a: #00e5ff;  /* amber primary and secondary are both gold; cyan + magenta restore the split */
+    --logo-ghost-b: #ff2d95;
 }
 
 body {
@@ -149,15 +157,6 @@ body::before {
     border-bottom: 2px solid var(--primary);
     position: relative;
     z-index: 100;
-}
-
-.header h1 {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--primary);
-    text-shadow: var(--glow-strong);
-    letter-spacing: 2px;
-    text-transform: uppercase;
 }
 
 .room-info {
@@ -223,18 +222,30 @@ body::before {
     gap: 24px;
 }
 
-.landing-logo {
-    font-size: 36px;
-    font-weight: 900;
-    color: var(--primary);
-    text-shadow: var(--glow-strong);
-    letter-spacing: 3px;
-    text-transform: uppercase;
+/* The single BroFerence wordmark, in the header bar. The artwork (colours,
+   glitch animation) lives in client/logo-banner.svg and is inlined into
+   app.html by scripts/sync-logo.py, so it can read these theme variables --
+   an <img> could not see them. */
+.header-banner {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    height: auto;
 }
 
-.landing-logo-bracket {
-    color: var(--secondary);
-    opacity: 0.6;
+/* The mark sits directly on the header, so its own ground would read as a
+   pasted-on box. --logo-ground still matters: the dropout bars use it to punch
+   back through the letterforms, so it has to match whatever is behind them. */
+.header-banner .bf-plate,
+.header-banner .bf-scan {
+    display: none;
+}
+
+/* Corporate is the one light theme. mix-blend-mode:screen over a light ground
+   washes the whole mark out to near-white, so there the channels composite
+   normally instead. */
+[data-theme="corporate"] .bf-blend {
+    mix-blend-mode: normal;
 }
 
 .landing-tagline {
@@ -1967,11 +1978,6 @@ body::before {
         gap: 4px;
     }
 
-    .header h1 {
-        font-size: 17px;
-        letter-spacing: 1px;
-    }
-
     .logo-icon {
         font-size: 22px;
     }
@@ -2036,8 +2042,8 @@ body::before {
         padding: 20px 20px;
     }
 
-    .landing-logo {
-        font-size: 26px;
+    .header-banner {
+        max-width: 220px;
     }
 
     .landing-features {
@@ -2083,11 +2089,6 @@ body::before {
 
 /* ── Small phones (480px) ── */
 @media (max-width: 480px) {
-    .header h1 {
-        font-size: 16px;
-        letter-spacing: 1px;
-    }
-
     /* Room info: hide participant count, keep room name only */
     .room-info {
         gap: 4px;
@@ -2133,9 +2134,8 @@ body::before {
         gap: 8px;
     }
 
-    .landing-logo {
-        font-size: 22px;
-        text-align: center;
+    .header-banner {
+        max-width: 180px;
     }
 
     .landing-form {
@@ -2320,6 +2320,8 @@ body::before {
     --chat-font-size: 14px;
     --own-bg: #e8e8f4;
     --own-highlighted-bg: #dcdce8;
+    --logo-ghost-a: #00b7c3;
+    --logo-ghost-b: #c4314b;
 }
 
 [data-theme="corporate"] body {
@@ -2340,10 +2342,6 @@ body::before {
     background: #ffffff;
     border-bottom: 1px solid var(--border);
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
-
-[data-theme="corporate"] .header h1 {
-    color: var(--primary);
 }
 
 [data-theme="corporate"] .btn {
@@ -3126,6 +3124,8 @@ body::before {
     --chat-font-size: 13px;
     --own-bg: #06202c;
     --own-highlighted-bg: #0a2f3f;
+    --logo-ghost-a: #ff6a00;  /* the Grid's own cyan/orange opposition; --secondary is near-white and would just blur */
+    --logo-ghost-b: #0a58ff;
 }
 
 [data-theme="tron"] body {
@@ -3192,14 +3192,6 @@ body::before {
 @keyframes tron-ribbon {
     0%   { background-position: 200% 0; }
     100% { background-position: -100% 0; }
-}
-
-[data-theme="tron"] .header h1 {
-    color: var(--secondary);
-    font-weight: 300;
-    letter-spacing: 8px;
-    text-transform: uppercase;
-    filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.75));
 }
 
 /* Buttons: hard geometry, hairline circuits, base edge lights on hover */
