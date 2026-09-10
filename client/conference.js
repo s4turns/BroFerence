@@ -29,6 +29,11 @@ const QUIC_FLAP_THRESHOLD_MS = 10000;
 // is usually over well inside this, so the tile never flashes out of the grid.
 const PEER_GRACE_PERIOD_MS = 10000;
 
+// How long ICE has to be continuously 'disconnected' before the tile shows it.
+// Short enough to still land before the 6s ICE restart, long enough that the
+// routine consent-check blips on a loaded relay never reach the screen.
+const PEER_STALL_DEBOUNCE_MS = 4000;
+
 // Where this tab's client id is parked so it survives a reload. See loadClientId().
 const CLIENT_ID_KEY = 'broference.clientId';
 
@@ -3194,7 +3199,18 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 }, 20000);
             } else if (pc.connectionState === 'disconnected') {
                 console.warn('Disconnected from', peerUsername);
-                this.markPeerStalled(peerId, peerUsername);
+                // 'disconnected' is not a failure. A congested relay loses the odd
+                // consent check, so ICE flips here for a second or two at a time,
+                // several times a minute — raising the HUD on the transition made a
+                // merely bad connection look like it was dropping over and over.
+                // Wait and see whether it comes back on its own, but stay inside the
+                // 6s ICE restart below, which is a real event worth showing.
+                setTimeout(() => {
+                    const current = this.peerConnections.get(peerId);
+                    if (current && current.connection === pc && pc.connectionState === 'disconnected') {
+                        this.markPeerStalled(peerId, peerUsername);
+                    }
+                }, PEER_STALL_DEBOUNCE_MS);
                 // Some browsers never transition disconnected→failed; attempt ICE restart after a short delay
                 setTimeout(() => {
                     const current = this.peerConnections.get(peerId);
