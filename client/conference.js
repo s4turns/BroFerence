@@ -29,6 +29,9 @@ const QUIC_FLAP_THRESHOLD_MS = 10000;
 // is usually over well inside this, so the tile never flashes out of the grid.
 const PEER_GRACE_PERIOD_MS = 10000;
 
+// Where this tab's client id is parked so it survives a reload. See loadClientId().
+const CLIENT_ID_KEY = 'broference.clientId';
+
 class WsTransport {
     constructor(url) {
         this.kind = 'ws';
@@ -159,7 +162,7 @@ class ConferenceClient {
     constructor() {
         // WebSocket connection
         this.ws = null;
-        this.clientId = this.generateId();
+        this.clientId = this.loadClientId();
         this.username = null;
         this.currentRoom = null;
         this.isModerator = false;
@@ -264,6 +267,22 @@ class ConferenceClient {
 
     generateId() {
         return 'client_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Held across a reload so the server recognises the returning session: it
+    // evicts our dead socket and we reclaim the nick, the tile and any mod role
+    // instead of arriving as a stranger alongside our own ghost. sessionStorage,
+    // not localStorage, so a second tab is genuinely a second participant.
+    loadClientId() {
+        try {
+            const saved = sessionStorage.getItem(CLIENT_ID_KEY);
+            if (saved) return saved;
+            const fresh = this.generateId();
+            sessionStorage.setItem(CLIENT_ID_KEY, fresh);
+            return fresh;
+        } catch (_e) {
+            return this.generateId();   // storage blocked (private mode, embedded)
+        }
     }
 
     updateModStatus() {
@@ -3348,8 +3367,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
     addRemoteVideo(peerId, username, stream) {
         // A peer coming back inside their grace window reclaims the slot they had,
-        // rather than being appended to the end of the grid as a new arrival. After
-        // a reload their clientId differs, so the held tile is found under the old id.
+        // rather than being appended to the end of the grid as a new arrival. If
+        // they came back under a new id, the held tile is found under the old one.
         const ghostId = this.resolvePeerGrace(peerId, username);
 
         // Remove existing video if any
@@ -4178,9 +4197,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         el.textContent = `removing in ${left}s`;
     }
 
-    // Exact clientId wins. Otherwise fall back to the username, which is the only
-    // thread back to someone who reloaded — clientId is regenerated per page load.
-    // An ambiguous name (two people down under the same one) matches nothing.
+    // Exact clientId wins, and a reload normally keeps it (see loadClientId()).
+    // The username fallback covers the cases where it cannot: storage blocked, or
+    // a return from a different tab. An ambiguous name matches nothing.
     matchPeerGrace(peerId, username) {
         if (this.disconnectedPeers.has(peerId)) return peerId;
         if (!username) return null;

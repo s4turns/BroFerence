@@ -278,8 +278,69 @@ def find_ssl_certificates() -> Tuple[str, str]:
     return ('/etc/ssl/certs/fullchain.pem', '/etc/ssl/private/privkey.pem')
 
 
+async def reap_empty_room_later(room_id: str, delay: float = 60.0):
+    """Delete a room that an eviction emptied, unless someone comes back to it.
+
+    evict_stale_session() deliberately keeps an emptied room alive so the
+    reconnecting user rejoins the same room rather than recreating it. This is
+    the backstop for the case where they never actually rejoin.
+    """
+    await asyncio.sleep(delay)
+    if room_id in rooms and not rooms[room_id]['users']:
+        if irc_bridge and irc_bridge.connected and rooms[room_id].get('irc_channel'):
+            await irc_bridge.leave_channel(room_id)
+        del rooms[room_id]
+        logger.info(f"Room {room_id} deleted (still empty after eviction)")
+
+
+async def evict_stale_session(client_id: str, keep: Peer):
+    """Drop any older socket still registered under the same client_id.
+
+    A flaky link leaves the previous connection alive on our side for up to
+    ping_interval + ping_timeout. Until it is reaped it holds the nick, so the
+    returning user is renamed to `Dave_2` and shows up as a second person, and
+    relay_to_peer() hands their offers and ICE to the corpse. A fresh register
+    under the same id is proof the old one is gone, so reap it here.
+
+    Deliberately not unregister_client(): the user is reconnecting, not
+    leaving, so the owner role, the presenter slot and the room itself must
+    all survive the gap.
+    """
+    if not client_id:
+        return   # never let two unidentified clients evict each other
+
+    stale = [ws for ws, info in clients.items()
+             if info['id'] == client_id and ws is not keep]
+
+    for ws in stale:
+        info = clients.pop(ws)
+        room = info['room']
+        if room and room in rooms:
+            try:
+                rooms[room]['users'].remove(ws)
+            except ValueError:
+                pass
+            # 'dropped', so peers hold the tile — the same user is about to
+            # reclaim it under this very id when their join lands.
+            await broadcast_to_room(room, {
+                'type': 'user-left',
+                'clientId': client_id,
+                'username': info['username'],
+                'reason': 'dropped'
+            }, exclude=ws)
+            if not rooms[room]['users']:
+                asyncio.create_task(reap_empty_room_later(room))
+        admin_clients.discard(ws)
+        logger.info(f"Evicted stale session for {client_id} ({info['username']}) on reconnect")
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 async def register_client(websocket: Peer, client_id: str, username: str = None):
     """Register a new client connection."""
+    await evict_stale_session(client_id, keep=websocket)
     ip = websocket.remote_ip or 'unknown'
     clients[websocket] = {
         'id': client_id,
