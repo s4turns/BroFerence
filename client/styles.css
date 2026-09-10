@@ -192,7 +192,14 @@ body::before {
 .join-screen, .prejoin-screen {
     flex: 1;
     display: flex;
+    /* `safe` matters because this element is also the scroll container: with a
+       plain `center`, content taller than the space overflows equally in both
+       directions and the top -- the heading -- is pushed under the header where
+       it cannot be scrolled back into view. `safe` falls back to flex-start the
+       moment it would overflow. The unprefixed value stays first as a fallback
+       for anything that does not understand it. */
     align-items: center;
+    align-items: safe center;
     justify-content: center;
     padding: 40px 24px;
     background: radial-gradient(circle at 30% 50%, #001a00 0%, #000000 70%);
