@@ -840,9 +840,19 @@ class ConferenceClient {
             const order = timings.map(t => t.url);
             this.applyTurnOrder(order);
 
-            try {
-                sessionStorage.setItem(cacheKey, JSON.stringify({ fingerprint, order }));
-            } catch { /* storage unavailable */ }
+            // Only persist an order every server answered. A relay that was down,
+            // firewalled or briefly unroutable during this probe sorts last, and
+            // caching that pins the user to a worse relay for the whole tab
+            // session even after it recovers. Use the order now, re-probe later.
+            if (reachable.length === timings.length) {
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify({ fingerprint, order }));
+                } catch { /* storage unavailable */ }
+            } else {
+                const down = timings.filter(t => !Number.isFinite(t.rtt)).map(t => t.url);
+                console.log('Not caching TURN order; no answer from:', down.join(', '));
+                try { sessionStorage.removeItem(cacheKey); } catch { /* storage unavailable */ }
+            }
 
             this.bestTurnUrl = timings[0].url;
             console.log(`Preferred TURN server: ${this.bestTurnUrl} (${Math.round(timings[0].rtt)}ms)`);
