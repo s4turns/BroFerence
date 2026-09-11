@@ -710,15 +710,26 @@ class ConferenceClient {
             credential: SECONDARY_TURN_CREDENTIAL
         };
 
-        // Relay-only via both coturn servers. Asymmetric paths (server1↔server2)
+        // TERTIARY_TURN_CREDENTIAL rotated by scripts/update-vps.sh from .env (TURN3_PASSWORD) on each deploy
+        const TERTIARY_TURN_CREDENTIAL = 'TURN3_CREDENTIAL_REDACTED';
+        const turn3Config = {
+            urls: [
+                'turn:172.233.34.189:3479',
+                'turn:172.233.34.189:3479?transport=tcp'
+            ],
+            username: 'webrtc',
+            credential: TERTIARY_TURN_CREDENTIAL
+        };
+
+        // Relay-only via every coturn server. Asymmetric paths (server1↔server2)
         // handle same-NAT hairpin without needing a third-party TURN provider.
-        // Both are always offered for redundancy; selectBestTurnServer() reorders
+        // All are always offered for redundancy; selectBestTurnServer() reorders
         // them so the one with the lowest allocation RTT for this client is first,
         // which is what the ICE agent prioritises.
-        this.turnConfigs = [localTurnConfig, turn2Config];
+        this.turnConfigs = [localTurnConfig, turn2Config, turn3Config];
 
         this.iceServers = {
-            iceServers: [localTurnConfig, turn2Config],
+            iceServers: [localTurnConfig, turn2Config, turn3Config],
             iceTransportPolicy: 'relay'
         };
 
@@ -727,7 +738,8 @@ class ConferenceClient {
         this.iceServersFallback = {
             iceServers: [
                 localTurnConfig,
-                turn2Config
+                turn2Config,
+                turn3Config
             ],
             iceTransportPolicy: 'relay'
         };

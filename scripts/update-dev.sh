@@ -27,9 +27,11 @@ if [ -z "${PRIMARY_PASSWORD}" ]; then
     exit 1
 fi
 [ -n "${TURN2_PASSWORD}" ] || echo "WARNING: TURN2_PASSWORD not set in .env — turn2 relay will fail"
+[ -n "${TURN3_PASSWORD}" ] || echo "WARNING: TURN3_PASSWORD not set in .env — Amsterdam relay will fail"
 sed -i "s/const PRIMARY_TURN_CREDENTIAL = '[^']*'/const PRIMARY_TURN_CREDENTIAL = '${PRIMARY_PASSWORD}'/" client/conference.js
 sed -i "s/const SECONDARY_TURN_CREDENTIAL = '[^']*'/const SECONDARY_TURN_CREDENTIAL = '${TURN2_PASSWORD}'/" client/conference.js
-echo "  primary=${PRIMARY_PASSWORD:0:6}...  turn2=${TURN2_PASSWORD:0:6}..."
+sed -i "s/const TERTIARY_TURN_CREDENTIAL = '[^']*'/const TERTIARY_TURN_CREDENTIAL = '${TURN3_PASSWORD}'/" client/conference.js
+echo "  primary=${PRIMARY_PASSWORD:0:6}...  turn2=${TURN2_PASSWORD:0:6}...  turn3=${TURN3_PASSWORD:0:6}..."
 
 echo "[3/5] Cache-busting assets..."
 COMMIT=$(git rev-parse --short HEAD)

@@ -47,13 +47,14 @@ sed -i "s/^user=webrtc:.*/user=webrtc:${TURN_PASSWORD}/" config/turnserver.produ
 # the only path left). Strip any leftover line from older deploys.
 sed -i "/^external-ip=/d" config/turnserver.production.conf
 
-# Allowed relay peers: own IP (hairpin relay) AND the secondary TURN server,
-# so relay paths that cross between the two TURN servers aren't 403'd.
+# Allowed relay peers: own IP (hairpin relay) AND the other TURN servers,
+# so relay paths that cross between TURN servers aren't 403'd.
 # Client is relay-only with no P2P fallback — blocking cross-TURN pairs
 # breaks media whenever two users land on different TURN servers.
 TURN2_IP=174.138.183.167
+TURN3_IP=172.233.34.189
 sed -i "/^allowed-peer-ip=/d" config/turnserver.production.conf
-sed -i "/^listening-ip=/a allowed-peer-ip=${EXTERNAL_IP}\nallowed-peer-ip=${TURN2_IP}" config/turnserver.production.conf
+sed -i "/^listening-ip=/a allowed-peer-ip=${EXTERNAL_IP}\nallowed-peer-ip=${TURN2_IP}\nallowed-peer-ip=${TURN3_IP}" config/turnserver.production.conf
 echo "Updated config/turnserver.production.conf"
 
 # Update primary TURN credential in conference.js
@@ -68,6 +69,14 @@ if [ -n "${TURN2_PASSWORD}" ]; then
     echo "Updated client/conference.js (secondary TURN credential)"
 else
     echo "WARNING: TURN2_PASSWORD not set in .env — secondary TURN credential left as placeholder (turn2 relay will fail)"
+fi
+
+# Tertiary TURN credential (Amsterdam relay) — same deal, lives on another host.
+if [ -n "${TURN3_PASSWORD}" ]; then
+    sed -i "s/const TERTIARY_TURN_CREDENTIAL = '[^']*'/const TERTIARY_TURN_CREDENTIAL = '${TURN3_PASSWORD}'/" client/conference.js
+    echo "Updated client/conference.js (tertiary TURN credential)"
+else
+    echo "WARNING: TURN3_PASSWORD not set in .env — tertiary TURN credential left as placeholder (Amsterdam relay will fail)"
 fi
 
 # Sync fail2ban config if fail2ban is installed

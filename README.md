@@ -275,9 +275,11 @@ external-ip=YOUR_PUBLIC_IP
 
 And update `PRIMARY_TURN_CREDENTIAL` in `client/conference.js` to match.
 
-### Second TURN Server
+### Additional TURN Servers
 
-A second independent Coturn instance at a separate IP improves relay coverage. Configure its IP in the `turn2Config` block in `client/conference.js`:
+Independent Coturn instances at separate IPs improve relay coverage. There are currently
+three: the primary on the app host, a US relay, and an Amsterdam relay. Each has a config
+block in `client/conference.js`:
 
 ```javascript
 const turn2Config = {
@@ -286,6 +288,21 @@ const turn2Config = {
     credential: 'YOUR_SECOND_CREDENTIAL'
 };
 ```
+
+The client probes every configured relay at join time and puts the one with the lowest
+allocation round trip first, so users get the nearest relay without any server-side
+geo logic.
+
+Their credentials are not rotated by the deploy, since those Coturn instances live on other
+hosts. Put them in the gitignored `.env` on the app host as `TURN2_PASSWORD` and
+`TURN3_PASSWORD`; `scripts/update-vps.sh` substitutes them into the client on each deploy.
+Changing a password on a relay host requires a redeploy in the same window, or live clients
+get 401s.
+
+Every relay's own config must list **all** relay IPs on `allowed-peer-ip` lines. The client
+is relay-only with no P2P fallback, so a missing entry 403s media whenever two users land on
+different relays. The primary's list is rewritten by `scripts/update-vps.sh`; the other
+hosts are configured by hand.
 
 ### SSL Certificates
 
