@@ -40,18 +40,78 @@
         }
         @keyframes bf-tear-a {
             0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
-            20.7% { transform: translate(-26px, 0); }
-            21.5% { transform: translate(18px, 0); }
+            20.7% { transform: translate(-38px, 0); }
+            21.5% { transform: translate(30px, 0); }
             22.1% { transform: translate(-9px, 0); }
-            64.8% { transform: translate(23px, 0); }
+            64.8% { transform: translate(36px, 0); }
             65.6% { transform: translate(-15px, 0); }
         }
         @keyframes bf-tear-b {
             0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
-            20.9% { transform: translate(21px, 0); }
+            20.9% { transform: translate(33px, 0); }
             21.6% { transform: translate(-14px, 0); }
             64.6% { transform: translate(-19px, 0); }
             65.9% { transform: translate(12px, 0); }
+        }
+        /* Thin scanline tears: different offsets from the wide slices so the
+           bursts read as many separate lines ripping, not three fat bands. */
+        @keyframes bf-tear-c {
+            0%, 20%, 23%, 64%, 67%, 100% { transform: translate(0, 0); }
+            20.6% { transform: translate(31px, 0); }
+            21.2% { transform: translate(-24px, 0); }
+            21.8% { transform: translate(13px, 0); }
+            22.4% { transform: translate(-6px, 0); }
+            64.7% { transform: translate(-29px, 0); }
+            65.3% { transform: translate(20px, 0); }
+            66% { transform: translate(-10px, 0); }
+        }
+        /* Ambient rips: mostly at rest with quick violent jumps, so each band
+           tears on its own clock all the time, not only during the bursts. */
+        @keyframes bf-rip-1 {
+            0%, 100% { transform: translate(0, 0); }
+            8%  { transform: translate(-61px, 0); }
+            11% { transform: translate(0, 0); }
+            37% { transform: translate(40px, 0); }
+            40% { transform: translate(-22px, 0); }
+            43% { transform: translate(0, 0); }
+            71% { transform: translate(68px, 0); }
+            74% { transform: translate(0, 0); }
+        }
+        @keyframes bf-rip-2 {
+            0%, 100% { transform: translate(0, 0); }
+            14% { transform: translate(50px, 0); }
+            17% { transform: translate(-32px, 0); }
+            20% { transform: translate(0, 0); }
+            55% { transform: translate(-72px, 0); }
+            59% { transform: translate(0, 0); }
+            83% { transform: translate(27px, 0); }
+            86% { transform: translate(0, 0); }
+        }
+        @keyframes bf-rip-3 {
+            0%, 100% { transform: translate(0, 0); }
+            5%  { transform: translate(22px, 0); }
+            7%  { transform: translate(-54px, 0); }
+            10% { transform: translate(0, 0); }
+            30% { transform: translate(-16px, 0); }
+            33% { transform: translate(47px, 0); }
+            36% { transform: translate(0, 0); }
+            62% { transform: translate(-43px, 0); }
+            65% { transform: translate(0, 0); }
+            90% { transform: translate(61px, 0); }
+            93% { transform: translate(0, 0); }
+        }
+        /* A band also drops out for a frame or two as it tears. */
+        @keyframes bf-rip-blink {
+            0%, 100% { opacity: 1; }
+            9%, 38%, 72% { opacity: 0.2; }
+            10%, 39%, 73% { opacity: 1; }
+        }
+        /* The whole mark never sits perfectly still. */
+        @keyframes bf-jitter {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(1px, 0); }
+            50% { transform: translate(-1.5px, 0.5px); }
+            75% { transform: translate(0.5px, -0.5px); }
         }
         /* The colour channels pull further apart mid-burst, then snap back. */
         @keyframes bf-chan-left {
@@ -76,17 +136,33 @@
 
         .bf-root    { animation: bf-shake 7.5s steps(1, end) infinite; }
         .bf-core    { animation: bf-flicker 7.5s steps(1, end) infinite; }
+        .bf-jit     { animation: bf-jitter 0.24s steps(1, end) infinite; }
         .bf-chan-l  { animation: bf-chan-left 7.5s steps(1, end) infinite; }
         .bf-chan-r  { animation: bf-chan-right 7.5s steps(1, end) infinite; }
         .bf-slice-a { animation: bf-tear-a 7.5s steps(1, end) infinite; }
         .bf-slice-b { animation: bf-tear-b 7.5s steps(1, end) infinite; }
         .bf-slice-c { animation: bf-tear-a 7.5s steps(1, end) infinite; animation-delay: -0.4s; }
 
+        .bf-line-1 { animation: bf-rip-1 0.83s steps(1, end) infinite 0s, bf-rip-blink 1.41s steps(1, end) infinite 0s; }
+        .bf-line-2 { animation: bf-rip-2 1.21s steps(1, end) infinite -0.4s; }
+        .bf-line-3 { animation: bf-rip-3 0.97s steps(1, end) infinite -0.2s; }
+        .bf-line-4 { animation: bf-rip-1 1.37s steps(1, end) infinite -0.9s, bf-rip-blink 2.32s steps(1, end) infinite -0.9s; }
+        .bf-line-5 { animation: bf-rip-2 0.61s steps(1, end) infinite -0.1s; }
+        .bf-line-6 { animation: bf-rip-3 1.13s steps(1, end) infinite -0.6s; }
+        .bf-line-7 { animation: bf-rip-1 0.71s steps(1, end) infinite -0.3s, bf-rip-blink 1.20s steps(1, end) infinite -0.3s; }
+        .bf-line-8 { animation: bf-rip-3 1.49s steps(1, end) infinite -1.1s; }
+        .bf-line-9 { animation: bf-rip-2 0.89s steps(1, end) infinite -0.5s; }
+        .bf-line-10 { animation: bf-rip-1 1.09s steps(1, end) infinite -0.7s, bf-rip-blink 1.85s steps(1, end) infinite -0.7s; }
+        .bf-line-11 { animation: bf-rip-3 0.67s steps(1, end) infinite -0.2s; }
+        .bf-line-12 { animation: bf-rip-2 1.31s steps(1, end) infinite -0.8s; }
+        .bf-line-13 { animation: bf-rip-1 0.79s steps(1, end) infinite -0.35s, bf-rip-blink 1.34s steps(1, end) infinite -0.35s; }
+
         /* Someone who has asked the OS to stop moving things gets the static
            logo, which is why the artwork still has to work without motion. */
         @media (prefers-reduced-motion: reduce) {
             .bf-root, .bf-core, .bf-chan-l, .bf-chan-r,
-            .bf-slice-a, .bf-slice-b, .bf-slice-c { animation: none; }
+            .bf-slice-a, .bf-slice-b, .bf-slice-c,
+            .bf-line-1, .bf-line-2, .bf-line-3, .bf-line-4, .bf-line-5, .bf-line-6, .bf-line-7, .bf-line-8, .bf-line-9, .bf-line-10, .bf-line-11, .bf-line-12, .bf-line-13, .bf-jit { animation: none; }
         }
     </style>
 
@@ -123,6 +199,20 @@
         <clipPath id="bf-clip-b"><rect x="0" y="100" width="760" height="11"/></clipPath>
         <clipPath id="bf-clip-c"><rect x="0" y="82" width="760" height="7"/></clipPath>
 
+        <clipPath id="bf-clip-l1"><rect x="0" y="43" width="760" height="12"/></clipPath>
+        <clipPath id="bf-clip-l2"><rect x="0" y="50" width="760" height="9"/></clipPath>
+        <clipPath id="bf-clip-l3"><rect x="0" y="56" width="760" height="18"/></clipPath>
+        <clipPath id="bf-clip-l4"><rect x="0" y="64" width="760" height="9"/></clipPath>
+        <clipPath id="bf-clip-l5"><rect x="0" y="70" width="760" height="15"/></clipPath>
+        <clipPath id="bf-clip-l6"><rect x="0" y="77" width="760" height="12"/></clipPath>
+        <clipPath id="bf-clip-l7"><rect x="0" y="84" width="760" height="21"/></clipPath>
+        <clipPath id="bf-clip-l8"><rect x="0" y="92" width="760" height="9"/></clipPath>
+        <clipPath id="bf-clip-l9"><rect x="0" y="97" width="760" height="15"/></clipPath>
+        <clipPath id="bf-clip-l10"><rect x="0" y="104" width="760" height="12"/></clipPath>
+        <clipPath id="bf-clip-l11"><rect x="0" y="111" width="760" height="18"/></clipPath>
+        <clipPath id="bf-clip-l12"><rect x="0" y="119" width="760" height="12"/></clipPath>
+        <clipPath id="bf-clip-l13"><rect x="0" y="125" width="760" height="9"/></clipPath>
+
         <pattern id="bf-scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
             <rect width="4" height="2" fill="#000" opacity="0.24"/>
         </pattern>
@@ -140,7 +230,7 @@
         <g class="bf-blend">
             <g class="bf-chan-l"><use href="#bf-wordmark" x="-7" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.85"/></g>
             <g class="bf-chan-r"><use href="#bf-wordmark" x="7" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.85"/></g>
-            <g class="bf-core"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g>
+            <g class="bf-jit"><g class="bf-core"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
         </g>
 
         <!-- Displaced slices, drawn over the top so they read as tearing. -->
@@ -154,6 +244,19 @@
             <g clip-path="url(#bf-clip-c)">
                 <g class="bf-slice-c"><use href="#bf-wordmark" x="-11" style="stroke: var(--primary, #00ff41)" opacity="0.95"/></g>
             </g>
+            <g clip-path="url(#bf-clip-l1)"><g class="bf-line-1"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l2)"><g class="bf-line-2"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
+            <g clip-path="url(#bf-clip-l3)"><g class="bf-line-3"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l4)"><g class="bf-line-4"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
+            <g clip-path="url(#bf-clip-l5)"><g class="bf-line-5"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l6)"><g class="bf-line-6"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l7)"><g class="bf-line-7"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
+            <g clip-path="url(#bf-clip-l8)"><g class="bf-line-8"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l9)"><g class="bf-line-9"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l10)"><g class="bf-line-10"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
+            <g clip-path="url(#bf-clip-l11)"><g class="bf-line-11"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-b, #ff0040)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l12)"><g class="bf-line-12"><use href="#bf-wordmark" style="stroke: var(--logo-ghost-a, #00ffff)" opacity="0.9"/></g></g>
+            <g clip-path="url(#bf-clip-l13)"><g class="bf-line-13"><use href="#bf-wordmark" style="stroke: var(--primary, #00ff41)"/></g></g>
         </g>
 
         <!-- Corruption blocks in the margin. -->
