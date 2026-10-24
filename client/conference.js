@@ -14,6 +14,73 @@
 
 const SIGNALING_QUIC_PORT = 8767;
 const SIGNALING_QUIC_PATH = '/signaling';
+
+// ── Red Team matrix-rain backdrop ────────────────────────────────────────────
+// Classic falling-glyph "digital rain" rendered in the Red Team theme's red
+// onto the fixed #matrixRain canvas. Driven by setTheme(): started when the
+// Red Team theme is selected, stopped (and cleared) for every other theme so no
+// animation frame runs when the canvas is hidden.
+let _matrixRainHandle = null;
+function startMatrixRain() {
+    if (_matrixRainHandle) return;                 // already running
+    const canvas = document.getElementById('matrixRain');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const GLYPHS = 'アカサタナハマヤラワ0123456789ABCDEF<>/\\|=+*#%$'.split('');
+    const FONT_SIZE = 16;
+    const STEP_MS = 65;                             // ms between advances — higher = slower fall
+    let columns, drops, rafId, lastStep = 0;
+
+    const resize = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        columns = Math.max(1, Math.floor(canvas.width / FONT_SIZE));
+        // Stagger start positions above the fold so the rain doesn't fall in a line.
+        drops = Array.from({ length: columns }, () => Math.random() * -50);
+    };
+
+    const frame = (now) => {
+        rafId = requestAnimationFrame(frame);
+        // Advance on a fixed time step rather than every animation frame, so the
+        // fall speed is steady and calm regardless of the display's refresh rate.
+        if (now - lastStep < STEP_MS) return;
+        lastStep = now;
+        // Translucent black wash each step leaves a fading glowing tail.
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = `${FONT_SIZE}px "Courier New", monospace`;
+        for (let i = 0; i < drops.length; i++) {
+            const ch = GLYPHS[(Math.random() * GLYPHS.length) | 0];
+            const x = i * FONT_SIZE;
+            const y = drops[i] * FONT_SIZE;
+            // A fraction of leading glyphs flare warm (orange-red, not pink) over
+            // the deep blood-red trail.
+            ctx.fillStyle = Math.random() > 0.975 ? '#ff5a2d' : '#cc0000';
+            ctx.fillText(ch, x, y);
+            if (y > canvas.height && Math.random() > 0.975) drops[i] = 0;
+            drops[i]++;
+        }
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    frame();
+    _matrixRainHandle = {
+        stop() {
+            cancelAnimationFrame(rafId);
+            window.removeEventListener('resize', resize);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    };
+}
+function stopMatrixRain() {
+    if (_matrixRainHandle) {
+        _matrixRainHandle.stop();
+        _matrixRainHandle = null;
+    }
+}
 // Covers the QUIC handshake *and* the round trip to a `registered` reply. Kept
 // short because it is a fallback deadline, not a connection budget.
 const QUIC_CONNECT_TIMEOUT_MS = 3000;
@@ -1459,6 +1526,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             document.documentElement.removeAttribute('data-theme');
         } else {
             document.documentElement.setAttribute('data-theme', themeName);
+        }
+        // The Red Team theme runs an animated matrix-rain backdrop; every other
+        // theme leaves the canvas idle so we never burn a rAF loop needlessly.
+        if (themeName === 'redteam') {
+            startMatrixRain();
+        } else {
+            stopMatrixRain();
         }
         console.log(`Theme set to: ${themeName}`);
     }

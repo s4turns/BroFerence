@@ -110,6 +110,124 @@
     --logo-ghost-b: #ff2d95;
 }
 
+/* Theme: Red Team (blood-red matrix)
+   Pure red (no blue channel) so it reads red, not pink. Lighter accents warm
+   toward orange rather than toward white/pink, and the glow is kept tight and
+   deep-red so it doesn't bloom pink over the black background. */
+[data-theme="redteam"] {
+    --primary: #ff0000;
+    --primary-dark: #a30000;
+    --primary-glow: #ff0000;
+    --secondary: #ff3a2d;
+    --danger: #ff0000;
+    --warning: #ff7a00;
+    --light: #140000;
+    --gray: #ff0000;
+    --gray-light: #2b0000;
+    --border: #e60000;
+    --shadow: rgba(255, 0, 0, 0.3);
+    --shadow-lg: rgba(255, 0, 0, 0.5);
+    --glow: 0 0 4px #ff0000, 0 0 9px #cc0000;
+    --glow-strong: 0 0 4px #ff0000, 0 0 9px #cc0000, 0 0 14px #990000;
+    --chat-font-size: 13px;
+    --own-bg: #140000;
+    --own-highlighted-bg: #2b0000;
+    /* The logo's chromatic split screen-blends these two channels against the
+       red core; they must be distinct hues from red (and each other) or the
+       letters collapse into a dotty blur. Cyan + magenta is the classic
+       aberration pair other warm themes use — the core stays red, legible. */
+    --logo-ghost-a: #00ffff;
+    --logo-ghost-b: #ff00a0;
+}
+
+/* Matrix-rain backdrop canvas — hidden except under the Red Team theme.
+   z-index 0 keeps it above the body background but below the scanline (1),
+   video tiles (2) and header (100). The content wrapper is lifted into its
+   own layer so the rain only shows through the UI's transparent gaps. */
+#matrixRain {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    display: none;
+    pointer-events: none;
+}
+[data-theme="redteam"] #matrixRain { display: block; }
+[data-theme="redteam"] .container { position: relative; z-index: 1; }
+/* The landing/prejoin screens paint an opaque radial gradient; clear it under
+   Red Team so the matrix rain behind the content shows through the gaps. */
+[data-theme="redteam"] .join-screen,
+[data-theme="redteam"] .prejoin-screen {
+    background: transparent;
+}
+
+/* Red Team logo: the stock wordmark layers a cyan/magenta chromatic split,
+   three tear slices, 13 permanently-ripping scanline bands, margin corruption
+   blocks and a dotted scanline overlay — which reads as a pink, dotty mess.
+   Strip all of that for this theme and keep only the solid-red core wordmark,
+   which still shakes a couple of times per cycle (bf-shake on .bf-root). */
+[data-theme="redteam"] .bf-chan-l,
+[data-theme="redteam"] .bf-chan-r,
+[data-theme="redteam"] .bf-slice-a,
+[data-theme="redteam"] .bf-slice-b,
+[data-theme="redteam"] .bf-slice-c,
+[data-theme="redteam"] [class*="bf-line-"],
+[data-theme="redteam"] .bf-scan,
+[data-theme="redteam"] .bf-root > g:not([class]),
+[data-theme="redteam"] .bf-root > rect {
+    display: none;
+}
+[data-theme="redteam"] .bf-blend { mix-blend-mode: normal; }
+[data-theme="redteam"] .bf-jit { animation: none; }   /* no constant micro-jitter */
+
+/* Red Team: let the matrix rain show behind the in-call video area. The grid
+   loses its black fill and the tiles go translucent, so the fixed backdrop
+   canvas shows through around and behind the feeds. A live <video> still fills
+   (and so covers) its own tile; avatar tiles and letterbox bars reveal the rain. */
+[data-theme="redteam"] .video-grid { background: transparent; }
+[data-theme="redteam"] .video-container { background: rgba(20, 0, 0, 0.25); }
+[data-theme="redteam"] .video-container video { background: transparent; }
+[data-theme="redteam"] .video-avatar { background: rgba(20, 0, 0, 0.35); }
+
+/* Red Team: the connected status bar hardcodes a dark-GREEN background
+   (#001a00), which leaves its red text hard to read. Swap it for near-black
+   red so the "CONNECTED" status reads cleanly. */
+[data-theme="redteam"] .status-bar.connected {
+    background: #140000;
+    color: #ff6b5e;                 /* brighter warm red for legibility */
+    border-top-color: var(--secondary);
+    text-shadow: 0 0 5px var(--secondary);
+}
+
+/* Red Team: make any data table read as red as the rest of the UI. */
+[data-theme="redteam"] table,
+[data-theme="redteam"] .user-table {
+    border-collapse: collapse;
+    color: var(--primary);
+    border: 1px solid var(--border);
+    background: rgba(26, 0, 0, 0.6);
+}
+[data-theme="redteam"] th,
+[data-theme="redteam"] td,
+[data-theme="redteam"] .user-table th,
+[data-theme="redteam"] .user-table td {
+    border: 1px solid var(--border);
+    color: var(--primary);
+    padding: 8px 14px;
+}
+[data-theme="redteam"] th,
+[data-theme="redteam"] .user-table th {
+    background: var(--gray-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-shadow: var(--glow);
+}
+[data-theme="redteam"] tr:hover td,
+[data-theme="redteam"] .user-table tr:hover td {
+    background: rgba(51, 0, 0, 0.7);
+}
+
 body {
     font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
     background: #000000;

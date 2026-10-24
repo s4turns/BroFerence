@@ -6,10 +6,13 @@
     <title>BroFerence - Video Conferencing</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="shortcut icon" href="/favicon.ico">
-    <link rel="stylesheet" href="styles.css?v=scrn1">
-    <link rel="stylesheet" href="mobile.css?v=scrn1">
+    <link rel="stylesheet" href="styles.css?v=redteam6">
+    <link rel="stylesheet" href="mobile.css?v=redteam6">
 </head>
 <body>
+    <!-- Red Team theme backdrop: animated matrix rain, drawn only while
+         data-theme="redteam" is active (toggled from conference.js setTheme). -->
+    <canvas id="matrixRain" aria-hidden="true"></canvas>
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -394,6 +397,7 @@
                         <label><span class="ic-wrap" data-icon="palette"></span> Theme:</label>
                         <select id="themeSelect">
                             <option value="matrix">Matrix (Green)</option>
+                            <option value="redteam">Red Team (Matrix)</option>
                             <option value="cyberpunk">Cyberpunk (Purple)</option>
                             <option value="ocean">Ocean (Blue)</option>
                             <option value="sunset">Sunset (Orange)</option>
@@ -906,7 +910,7 @@
         </div>
     </div>
 
-    <script src="icons.js?v=scrn1"></script>
-    <script src="conference.js?v=scrn1"></script>
+    <script src="icons.js?v=redteam6"></script>
+    <script src="conference.js?v=redteam6"></script>
 </body>
 </html>
