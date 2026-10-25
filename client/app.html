@@ -1,13 +1,16 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="tron">
+<html lang="en" data-theme="breach">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>BroFerence - Video Conferencing</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="shortcut icon" href="/favicon.ico">
-    <link rel="stylesheet" href="styles.css?v=redteam6">
-    <link rel="stylesheet" href="mobile.css?v=redteam6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;600;800&display=swap">
+    <link rel="stylesheet" href="styles.css?v=breach1">
+    <link rel="stylesheet" href="mobile.css?v=breach1">
 </head>
 <body>
     <!-- Red Team theme backdrop: animated matrix rain, drawn only while
@@ -404,6 +407,7 @@
                             <option value="amber">Amber (Classic)</option>
                             <option value="tron">Tron (The Grid)</option>
                             <option value="corporate">Corporate (Teams)</option>
+                            <option value="breach">Breach (Red Team)</option>
                         </select>
                     </div>
                     <button id="inviteLinkBtn" class="options-item">
@@ -423,12 +427,28 @@
 
         </header>
 
+        <!-- Event Ticker (shown by themes that style it) -->
+        <div id="eventTicker" class="event-ticker" aria-hidden="true">
+            <div id="eventTickerTrack" class="event-ticker-track"></div>
+        </div>
+
         <!-- Join Screen -->
         <div id="joinScreen" class="join-screen">
             <div class="landing-layout">
 
                 <!-- Left: app info -->
                 <div class="landing-info">
+                    <!-- Join intro (shown by themes that style it) -->
+                    <div class="join-intro" aria-hidden="true">
+                        <div class="join-intro-title">YOU ARE<br><span>INSIDE.</span></div>
+                        <p class="join-intro-tagline">Encrypted, peer-to-peer video rooms. Calls never pass through our servers. Bridges to IRC.</p>
+                        <div class="boot-log">
+                            <div><span class="boot-ok">[ OK ]</span> loading webrtc stack</div>
+                            <div><span class="boot-ok">[ OK ]</span> noise-gate worklet armed</div>
+                            <div id="bootSignal"><span class="boot-wait">[WAIT]</span> opening signaling socket</div>
+                            <div><span class="boot-wait">[WAIT]</span> awaiting operator credentials<span class="boot-cursor">█</span></div>
+                        </div>
+                    </div>
                     <p class="landing-tagline">Private, encrypted video conferencing.<br>No accounts. No tracking. Just join.</p>
 
                     <div class="landing-features">
@@ -910,7 +930,7 @@
         </div>
     </div>
 
-    <script src="icons.js?v=redteam6"></script>
-    <script src="conference.js?v=redteam6"></script>
+    <script src="icons.js?v=breach1"></script>
+    <script src="conference.js?v=breach1"></script>
 </body>
 </html>

@@ -1115,7 +1115,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const themeSelect = document.getElementById('themeSelect');
         if (themeSelect) {
             // Load saved theme
-            const savedTheme = localStorage.getItem('broference-theme') || 'tron';
+            const savedTheme = localStorage.getItem('broference-theme') || 'breach';
             this.setTheme(savedTheme);
             themeSelect.value = savedTheme;
 
@@ -1519,6 +1519,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
         btn.innerHTML = `<span class="ic-wrap">${iconSvg(this.defconActive ? 'tv' : 'tv-off')}</span> DEFCON`;
         btn.classList.toggle('active', this.defconActive);
+        this.logEvent(this.defconActive ? 'defcon engaged · all feeds dark' : 'defcon lifted · feeds restored', this.defconActive ? 'warn' : 'ok');
     }
 
     setTheme(themeName) {
@@ -1545,6 +1546,33 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         } else if (type === 'error') {
             this.statusBar.classList.add('error');
         }
+
+        // Mirror signaling state into the join screen boot log
+        const bootSignal = document.getElementById('bootSignal');
+        if (bootSignal) {
+            const tag = document.createElement('span');
+            tag.className = type === 'connected' ? 'boot-ok' : type === 'error' ? 'boot-fail' : 'boot-wait';
+            tag.textContent = type === 'connected' ? '[ OK ]' : type === 'error' ? '[FAIL]' : '[WAIT]';
+            const text = type === 'connected' ? 'signaling socket open' : `signaling: ${message.toLowerCase()}`;
+            bootSignal.replaceChildren(tag, document.createTextNode(' ' + text));
+        }
+
+        this.logEvent(message.toLowerCase(), type === 'connected' ? 'ok' : type === 'error' ? 'bad' : 'info');
+    }
+
+    // Append an event to the header ticker (only visible in themes that style it)
+    logEvent(text, kind = 'info') {
+        const track = document.getElementById('eventTickerTrack');
+        if (!track) return;
+        const prefix = { ok: '[+]', info: '[*]', warn: '[!]', bad: '[x]' }[kind] || '[*]';
+        this.tickerEvents = [...(this.tickerEvents || []), { text: `${prefix} ${text}`, kind }].slice(-12);
+        // Render the list twice so the CSS scroll loops seamlessly
+        track.replaceChildren(...[...this.tickerEvents, ...this.tickerEvents].map(event => {
+            const span = document.createElement('span');
+            span.className = `ticker-${event.kind}`;
+            span.textContent = event.text;
+            return span;
+        }));
     }
 
     /**
@@ -1809,6 +1837,8 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 document.documentElement.classList.add('in-call');
                 this.updateLockButton();
                 this.onMobileCallStarted();
+                document.getElementById('eventTicker').classList.add('active');
+                this.logEvent(`joined room ${message.roomId} · ${message.users.length + 1} connected`, 'ok');
 
                 // Create peer connections for existing users.
                 // Skip peers that are already connected (e.g. after a WS reconnect —
@@ -1835,6 +1865,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 if (message.ircChannel) {
                     document.getElementById('ircStatus').textContent =
                         `Bridged to IRC: ${message.ircChannel}`;
+                    this.logEvent(`irc bridge ${message.ircChannel} linked`, 'ok');
                 }
 
                 // Show moderator status
@@ -1879,6 +1910,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 if (!reclaimed) {
                     this.addChatMessage('System', `${message.username} joined the room`, true);
                     this.playJoinSound();
+                    this.logEvent(`${message.username} joined`, 'ok');
+                } else {
+                    this.logEvent(`${message.username} reconnected`, 'ok');
                 }
                 // E2EE: exchange public keys with the new user
                 await this.sendPublicKey(message.clientId);
@@ -1899,11 +1933,13 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     // Transport died. Hold the tile and say nothing yet — they may
                     // be back before the countdown runs out.
                     this.beginPeerGrace(message.clientId, message.username);
+                    this.logEvent(`${message.username} dropped · holding tile`, 'warn');
                 } else {
                     this.removePeerConnection(message.clientId);
                     this.purgePeerState(message.clientId);
                     this.addChatMessage('System', `${message.username} left the room`, true);
                     this.playLeaveSound();
+                    this.logEvent(`${message.username} left`, 'bad');
                 }
                 this.updateRoomInfo(this.peerConnections.size + 1);
                 break;
@@ -1944,6 +1980,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     if (screenLabel) screenLabel.textContent = `${message.newUsername}'s screen`;
                 }
                 this.addChatMessage('System', `${message.oldUsername} changed their name to ${message.newUsername}`, true);
+                this.logEvent(`${message.oldUsername} is now ${message.newUsername}`, 'info');
                 break;
 
             case 'username-assigned':
@@ -1991,6 +2028,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 });
                 this.applyLabelBadge(message.moderatorId, message.username, 'owner');
                 this.addChatMessage('System', `${message.username} is now the room owner`, true);
+                this.logEvent(`${message.username} is now room owner`, 'warn');
                 break;
             }
 
@@ -2159,6 +2197,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 if (remoteContainer) {
                     remoteContainer.dataset.signaledVideoEnabled = message.videoEnabled ? 'true' : 'false';
                     remoteContainer.classList.toggle('no-video', !message.videoEnabled);
+                    const videoPeer = this.peerConnections.get(message.clientId);
+                    if (videoPeer) {
+                        this.logEvent(`${videoPeer.username} camera ${message.videoEnabled ? 'on' : 'off'}`, message.videoEnabled ? 'ok' : 'bad');
+                    }
                 }
                 break;
             }
@@ -2166,6 +2208,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             case 'audio-state':
                 // Show/hide muted indicator for remote user
                 const audioContainer = document.getElementById(`video-${message.clientId}`);
+                const audioPeer = this.peerConnections.get(message.clientId);
+                if (audioPeer) {
+                    this.logEvent(`${audioPeer.username} ${message.audioEnabled ? 'unmuted' : 'muted'}`, message.audioEnabled ? 'info' : 'warn');
+                }
                 if (audioContainer) {
                     let mutedIndicator = audioContainer.querySelector('.muted-indicator');
                     if (!message.audioEnabled) {
@@ -3105,6 +3151,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.applyBandwidthToSenders();
 
         console.log('Low bandwidth mode:', this.lowBandwidthMode ? 'ON' : 'OFF');
+        this.logEvent(`low-bandwidth mode ${this.lowBandwidthMode ? 'on' : 'off'}`, this.lowBandwidthMode ? 'warn' : 'info');
     }
 
     /** Wire one of the signaling <select>s (options menu or prejoin). */
@@ -3566,6 +3613,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 console.log('Successfully connected to', peerUsername);
                 // ICE came back before anyone was told they were gone — drop the HUD.
                 this.clearPeerStall(peerId);
+                this.logEvent(`p2p link up · ${peerUsername}`, 'ok');
                 // Reset restart counter on successful connection
                 const peerData = this.peerConnections.get(peerId);
                 if (peerData) {
@@ -3595,6 +3643,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 // a silent drop (closed lid, dead wifi) sends no close frame, so
                 // keepalive can take tens of seconds to notice.
                 this.markPeerStalled(peerId, peerUsername);
+                this.logEvent(`p2p link failed · ${peerUsername} · ice restart`, 'warn');
                 this.turnFailedPeers.add(peerId);
                 this.attemptIceRestart(peerId).catch(() => {});
                 // If still failed after giving ICE restart time to work, remove.
@@ -6336,6 +6385,9 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         document.getElementById('bottomControls').style.display = 'none';
         document.documentElement.classList.remove('in-call');
         this.onMobileCallEnded();
+        document.getElementById('eventTicker').classList.remove('active');
+        this.tickerEvents = [];
+        document.getElementById('eventTickerTrack').replaceChildren();
         this.chatMessages.innerHTML = '';
 
         // Reset audio/video enabled states
