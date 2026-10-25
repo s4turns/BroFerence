@@ -162,11 +162,11 @@
     background: transparent;
 }
 
-/* Red Team logo: the stock wordmark layers a cyan/magenta chromatic split,
-   three tear slices, 13 permanently-ripping scanline bands, margin corruption
-   blocks and a dotted scanline overlay — which reads as a pink, dotty mess.
-   Strip all of that for this theme and keep only the solid-red core wordmark,
-   which still shakes a couple of times per cycle (bf-shake on .bf-root). */
+/* Red Team / Breach logo: the stock wordmark layers a cyan/magenta chromatic
+   split, three tear slices, 13 permanently-ripping scanline bands, margin
+   corruption blocks and a dotted scanline overlay — which reads as a pink,
+   dotty mess. Strip all of that for these themes and keep only the solid core
+   wordmark, which still shakes a couple of times per cycle (bf-shake on .bf-root). */
 [data-theme="redteam"] .bf-chan-l,
 [data-theme="redteam"] .bf-chan-r,
 [data-theme="redteam"] .bf-slice-a,
@@ -175,11 +175,22 @@
 [data-theme="redteam"] [class*="bf-line-"],
 [data-theme="redteam"] .bf-scan,
 [data-theme="redteam"] .bf-root > g:not([class]),
-[data-theme="redteam"] .bf-root > rect {
+[data-theme="redteam"] .bf-root > rect,
+[data-theme="breach"] .bf-chan-l,
+[data-theme="breach"] .bf-chan-r,
+[data-theme="breach"] .bf-slice-a,
+[data-theme="breach"] .bf-slice-b,
+[data-theme="breach"] .bf-slice-c,
+[data-theme="breach"] [class*="bf-line-"],
+[data-theme="breach"] .bf-scan,
+[data-theme="breach"] .bf-root > g:not([class]),
+[data-theme="breach"] .bf-root > rect {
     display: none;
 }
-[data-theme="redteam"] .bf-blend { mix-blend-mode: normal; }
-[data-theme="redteam"] .bf-jit { animation: none; }   /* no constant micro-jitter */
+[data-theme="redteam"] .bf-blend,
+[data-theme="breach"] .bf-blend { mix-blend-mode: normal; }
+[data-theme="redteam"] .bf-jit,
+[data-theme="breach"] .bf-jit { animation: none; }   /* no constant micro-jitter */
 
 /* Red Team: let the matrix rain show behind the in-call video area. The grid
    loses its black fill and the tiles go translucent, so the fixed backdrop
