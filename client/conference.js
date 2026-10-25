@@ -101,6 +101,14 @@ const PEER_GRACE_PERIOD_MS = 10000;
 // routine consent-check blips on a loaded relay never reach the screen.
 const PEER_STALL_DEBOUNCE_MS = 4000;
 
+// Speaker view. A pause shorter than SPEECH_GAP_MS is still the same stretch of
+// talking; someone has to talk for SPEAKER_SWITCH_MS to take the stage, and the
+// person on it keeps it through SPEAKER_HOLD_MS of quiet, so a quick "mm-hm"
+// from someone else never flips the view.
+const SPEECH_GAP_MS = 600;
+const SPEAKER_SWITCH_MS = 800;
+const SPEAKER_HOLD_MS = 1500;
+
 // Where this tab's client id is parked so it survives a reload. See loadClientId().
 const CLIENT_ID_KEY = 'broference.clientId';
 
@@ -334,6 +342,25 @@ class ConferenceClient {
         this.micActiveWarningShown = false;
         this.hotMicCooldownUntil = 0;
 
+        // Talking while muted: a second analyser on a clone of the mic track,
+        // since the real one is disabled and reads as silence while muted.
+        this.mutedSpeechMonitor = null;   // {trackId, clone, source, gen}
+        this.mutedSpeechCooldownUntil = 0;
+        this.mutedSpeechHideTimer = null;
+        this.pttActive = false;           // Space held down to talk while muted
+        this.unmuteRequestTimer = null;
+
+        // Raise hand: the queue is the server's, oldest first, and arrives whole
+        this.raisedHands = [];            // Array<{clientId, username}>
+        this.handRaised = false;
+        this.peerAudioStates = new Map(); // Map<clientId, bool> last audio-state each peer sent
+
+        // Speaker view follows whoever is talking until a tile is clicked by hand
+        this.speakerViewEnabled = localStorage.getItem('broference-speaker-view') === 'true';
+        this.speakerViewInterval = null;
+        this.manualSpotlight = false;
+        this.speakerDismissedId = null;   // clicked off the stage; skipped until someone else talks
+
         this.initUI();
     }
 
@@ -361,6 +388,10 @@ class ConferenceClient {
         this.isOwner = this.clientId === this.moderatorId;
         this.isModerator = this.isOwner || this.coModIds.has(this.clientId);
         this.refreshOwnLabelBadge();
+        const muteAllBtn = document.getElementById('muteAllBtn');
+        if (muteAllBtn) muteAllBtn.style.display = this.isModerator ? '' : 'none';
+        // Hand badges are only clickable for people allowed to lower them
+        this.renderHandBadges();
     }
 
     // Your own tile gets the same crown/shield everyone else sees on you.
@@ -1024,6 +1055,61 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         const noiseBtn = document.getElementById('noiseSuppressionBtn');
         noiseBtn.addEventListener('click', () => this.toggleNoiseSuppression());
 
+        // Reactions and raise hand
+        document.getElementById('reactBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleReactionMenu(e.currentTarget);
+        });
+        document.querySelectorAll('#reactionMenu .reaction-pick').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.sendReaction(btn.dataset.emoji);
+                this.closeReactionMenu();
+            });
+        });
+        document.getElementById('raiseHandBtn').addEventListener('click', () => {
+            this.toggleHand();
+            this.closeReactionMenu();
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#reactionMenu')) this.closeReactionMenu();
+        });
+
+        // "You're muted" toast
+        document.getElementById('mutedSpeechUnmuteBtn').addEventListener('click', () => {
+            this.hideMutedSpeechToast();
+            if (!this.audioEnabled) this.toggleAudio();
+        });
+        document.getElementById('mutedSpeechDismissBtn').addEventListener('click', () => {
+            this.hideMutedSpeechToast();
+            this.mutedSpeechCooldownUntil = Date.now() + 60000;
+        });
+
+        // A moderator asking us to unmute
+        document.getElementById('unmuteRequestAcceptBtn').addEventListener('click', () => {
+            this.hideUnmuteRequest();
+            if (!this.audioEnabled) this.toggleAudio();
+        });
+        document.getElementById('unmuteRequestDeclineBtn').addEventListener('click', () => this.hideUnmuteRequest());
+
+        // Speaker view and mute everyone
+        const speakerViewBtn = document.getElementById('speakerViewBtn');
+        this.syncSpeakerViewButton();
+        speakerViewBtn.addEventListener('click', () => this.toggleSpeakerView());
+        if (this.speakerViewEnabled) this.startSpeakerView();
+        document.getElementById('muteAllBtn').addEventListener('click', () => {
+            this.toggleOptionsMenu();
+            this.muteEveryone();
+        });
+
+        // Keyboard shortcuts
+        document.getElementById('shortcutsBtn').addEventListener('click', () => {
+            this.toggleOptionsMenu();
+            this.toggleShortcuts();
+        });
+        document.getElementById('closeShortcutsBtn').addEventListener('click', () => this.toggleShortcuts());
+        document.getElementById('shortcutsOverlay').addEventListener('click', () => this.toggleShortcuts());
+        this.initKeyboardShortcuts();
+
         // Mic device selector
         const micSelect = document.getElementById('micDeviceSelect');
         micSelect.addEventListener('change', (e) => {
@@ -1201,7 +1287,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         probe.volume = 0.5;
         if (probe.volume !== 0.5) document.documentElement.classList.add('no-volume-control');
 
-        // Dock: mic, camera, flip, chat, options, leave.
+        // Dock: mic, camera, flip, reactions, chat, options, leave.
         const dock = document.createElement('div');
         dock.id = 'mobileDock';
         dock.className = 'mobile-dock';
@@ -1218,6 +1304,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             document.getElementById('toggleAudioBtn'),
             document.getElementById('toggleVideoBtn'),
             flipBtn,
+            document.getElementById('reactBtn'),
             document.getElementById('chatToggleBtn'),
             document.getElementById('optionsBtn'),
             document.getElementById('leaveRoomHeaderBtn')
@@ -1861,6 +1948,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     this.handleScreenShareState(message.presenterId, message.presenterUsername);
                 }
 
+                // Hands already up when we walk in (or still up after a reconnect)
+                this.applyHands(message.hands || []);
+                this.syncMutedSpeechMonitor();
+
                 // Show IRC status if bridged
                 if (message.ircChannel) {
                     document.getElementById('ircStatus').textContent =
@@ -2205,31 +2296,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 break;
             }
 
-            case 'audio-state':
-                // Show/hide muted indicator for remote user
-                const audioContainer = document.getElementById(`video-${message.clientId}`);
+            case 'audio-state': {
+                // Kept so a tile built later, and the moderator's mute button,
+                // both know whether this peer is muted
+                const wasEnabled = this.peerAudioStates.get(message.clientId);
+                this.peerAudioStates.set(message.clientId, message.audioEnabled);
                 const audioPeer = this.peerConnections.get(message.clientId);
                 if (audioPeer) {
                     this.logEvent(`${audioPeer.username} ${message.audioEnabled ? 'unmuted' : 'muted'}`, message.audioEnabled ? 'info' : 'warn');
                 }
-                if (audioContainer) {
-                    let mutedIndicator = audioContainer.querySelector('.muted-indicator');
-                    if (!message.audioEnabled) {
-                        // Show muted indicator
-                        if (!mutedIndicator) {
-                            mutedIndicator = document.createElement('div');
-                            mutedIndicator.className = 'muted-indicator';
-                            setIcon(mutedIndicator, 'mic-off');
-                            audioContainer.appendChild(mutedIndicator);
-                        }
-                    } else {
-                        // Hide muted indicator
-                        if (mutedIndicator) {
-                            mutedIndicator.remove();
-                        }
-                    }
-                }
+                this.applyRemoteMutedIndicator(message.clientId);
+                if (wasEnabled !== message.audioEnabled) this.refreshModeratorControls();
                 break;
+            }
 
             case 'noise-gate-set': {
                 const { enabled, threshold } = message;
@@ -2265,6 +2344,35 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                     this.toggleAudio();
                 }
                 this.addChatMessage('System', `You were muted by ${message.by}. You can unmute yourself with the mic button.`, true);
+                break;
+
+            case 'mute-all-done':
+                this.addChatMessage('System',
+                    message.count === 0 ? 'There was nobody to mute.'
+                        : `Muted ${message.count} ${message.count === 1 ? 'person' : 'people'}. They can unmute themselves.`,
+                    true);
+                break;
+
+            case 'unmute-request':
+                this.showUnmuteRequest(message.by);
+                break;
+
+            case 'hands': {
+                this.applyHands(message.hands || []);
+                const changed = message.changed;
+                if (!changed) break;
+                const isSelf = changed.clientId === this.clientId;
+                if (changed.raised) {
+                    this.addChatMessage('System', `${isSelf ? 'You' : changed.username} raised ${isSelf ? 'your' : 'their'} hand`, true);
+                    if (!isSelf) this.playHandSound();
+                } else if (changed.by && isSelf) {
+                    this.addChatMessage('System', `${changed.by} lowered your hand`, true);
+                }
+                break;
+            }
+
+            case 'reaction':
+                this.showReaction(message.clientId, message.emoji);
                 break;
         }
     }
@@ -2574,6 +2682,14 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
                 const SPEAKING_THRESHOLD = 20;
                 if (average > SPEAKING_THRESHOLD) {
                     containerElement.classList.add('speaking');
+                    // Speech has gaps between words; only a pause longer than
+                    // SPEECH_GAP_MS starts a new stretch. Speaker view reads these.
+                    const now = performance.now();
+                    if (!containerElement._speakingSince ||
+                        now - containerElement._lastSpokeAt > SPEECH_GAP_MS) {
+                        containerElement._speakingSince = now;
+                    }
+                    containerElement._lastSpokeAt = now;
                 } else {
                     containerElement.classList.remove('speaking');
                 }
@@ -3960,6 +4076,10 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         // Update grid layout for new participant count
         this.updateVideoGridLayout();
 
+        // State that may have arrived before this tile existed
+        this.applyRemoteMutedIndicator(peerId);
+        this.renderHandBadges();
+
         // Add click handler for spotlight mode
         this.sealControls(audioControls);
         this.attachTileMenu(container, audioControls);
@@ -4128,11 +4248,20 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             kickBtn.dataset.modControl = 'kick';
             kickBtn.onclick = () => this.kickUser(peerId);
 
+            // Muting someone already muted does nothing, so for them the same
+            // slot asks them to unmute instead. Only they can act on it.
             const muteBtn = document.createElement('button');
-            setIcon(muteBtn, 'mic-off');
-            muteBtn.title = 'Mute user';
-            muteBtn.dataset.modControl = 'mute';
-            muteBtn.onclick = () => this.muteUser(peerId);
+            if (this.peerAudioStates.get(peerId) === false) {
+                setIcon(muteBtn, 'mic');
+                muteBtn.title = 'Ask to unmute';
+                muteBtn.dataset.modControl = 'ask-unmute';
+                muteBtn.onclick = () => this.requestUnmute(peerId);
+            } else {
+                setIcon(muteBtn, 'mic-off');
+                muteBtn.title = 'Mute user';
+                muteBtn.dataset.modControl = 'mute';
+                muteBtn.onclick = () => this.muteUser(peerId);
+            }
 
             audioControls.appendChild(muteBtn);
 
@@ -4207,6 +4336,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             type: 'mute-user',
             targetId: targetId
         });
+    }
+
+    muteEveryone() {
+        if (!this.isModerator || !this.currentRoom) return;
+        if (!confirm('Mute everyone? They will be able to unmute themselves.')) return;
+        this.sendMessage({ type: 'mute-all' });
+    }
+
+    requestUnmute(targetId) {
+        if (!this.canModerate(targetId)) return;
+        this.sendMessage({ type: 'request-unmute', targetId });
+        const name = this.peerConnections.get(targetId)?.username || 'them';
+        this.addChatMessage('System', `Asked ${name} to unmute`, true);
     }
 
     // Built in one place because it hangs off two different overlays -- the
@@ -4545,6 +4687,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.peerSharedKeys.delete(peerId);
         this.peerGravatarHashes.delete(peerId);
         this.peerVideoStates.delete(peerId);
+        this.peerAudioStates.delete(peerId);
     }
 
     removePeerConnection(peerId) {
@@ -5433,6 +5576,12 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             type: 'audio-state',
             audioEnabled: this.audioEnabled
         });
+
+        if (this.audioEnabled) {
+            this.hideMutedSpeechToast();
+            this.hideUnmuteRequest();
+        }
+        this.syncMutedSpeechMonitor();
     }
 
     toggleVideo() {
@@ -5861,6 +6010,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
             if (localContainer) {
                 this.monitorAudioLevel(this.localStream, localContainer);
             }
+            this.syncMutedSpeechMonitor();
         } catch (error) {
             console.error('Error switching microphone:', error);
         }
@@ -6136,6 +6286,7 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
 
     // Drop spotlight mode and put every tile back in the grid.
     exitSpotlight() {
+        this.manualSpotlight = false;
         this.videoGrid.classList.remove('spotlight-mode');
         this.videoGrid.querySelectorAll('.video-container').forEach(c => {
             c.classList.remove('spotlight-active', 'spotlight-hidden');
@@ -6221,16 +6372,21 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         if (el) el.addEventListener('click', (e) => e.stopPropagation());
     }
 
-    toggleSpotlight(containerId) {
+    // A click spotlights by hand, which pins it: speaker view leaves a manual
+    // spotlight alone until it is clicked off again.
+    toggleSpotlight(containerId, { auto = false } = {}) {
         const grid = this.videoGrid;
         const target = document.getElementById(containerId);
         if (!target) return;
+        if (!auto) this.manualSpotlight = true;
 
         const alreadySpotlit = grid.classList.contains('spotlight-mode') &&
             target.classList.contains('spotlight-active');
 
         if (alreadySpotlit) {
-            // Click same tile again → exit spotlight
+            // Click same tile again → exit spotlight. Under speaker view that
+            // means "not them": the grid stays until someone else talks.
+            if (!auto && this.speakerViewEnabled) this.speakerDismissedId = containerId;
             this.exitSpotlight();
             this.updateVideoGridLayout();
             return;
@@ -6367,6 +6523,16 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.clearAllPeerGrace();
         this.isIntentionalDisconnect = false;
         this.clearImagePreview();
+
+        // Hands, reactions, toasts and the muted-speech monitor
+        this.applyHands([]);
+        this.peerAudioStates.clear();
+        this.closeReactionMenu();
+        this.stopMutedSpeechMonitor();
+        this.hideMutedSpeechToast();
+        this.hideUnmuteRequest();
+        this.pttActive = false;
+        this.exitSpotlight();
         this.wsReconnectAttempts = 0;
         this.wsReconnecting = false;
 
@@ -6395,6 +6561,368 @@ document.getElementById('chatToggleBtn').addEventListener('click', () => this.to
         this.videoEnabled = true;
 
         this.updateStatus('Disconnected', 'error');
+    }
+
+    // ── Muted-speech warning ────────────────────────────────────────────
+    // While muted the real mic track is disabled and reads as silence, so a
+    // clone of it is analysed instead. It only exists while muted in a call.
+
+    syncMutedSpeechMonitor() {
+        const track = this.localStream && this.localStream.getAudioTracks()[0];
+        const wanted = this.currentRoom && track && track.readyState === 'live' && !this.audioEnabled;
+        if (!wanted) {
+            this.stopMutedSpeechMonitor();
+            return;
+        }
+        if (this.mutedSpeechMonitor && this.mutedSpeechMonitor.trackId === track.id) return;
+        this.stopMutedSpeechMonitor();
+
+        try {
+            const clone = track.clone();
+            clone.enabled = true;  // a clone inherits the muted track's enabled=false
+            const ctx = this.getSharedAudioContext();
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            const source = ctx.createMediaStreamSource(new MediaStream([clone]));
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 64;
+            source.connect(analyser);
+            const data = new Uint8Array(analyser.frequencyBinCount);
+
+            const monitor = { trackId: track.id, clone, source };
+            this.mutedSpeechMonitor = monitor;
+
+            // Same scale as the speaking glow. Five of the last seven 200ms
+            // samples have to be loud, so a cough or a door does not trip it.
+            const recent = [];
+            const tick = () => {
+                if (this.mutedSpeechMonitor !== monitor) return;
+                analyser.getByteFrequencyData(data);
+                let sum = 0;
+                for (let i = 0; i < data.length; i++) sum += data[i];
+                recent.push(sum / data.length > 20);
+                if (recent.length > 7) recent.shift();
+                if (recent.filter(Boolean).length >= 5 && !this.pttActive &&
+                    Date.now() > this.mutedSpeechCooldownUntil) {
+                    this.showMutedSpeechToast();
+                    recent.length = 0;
+                }
+                setTimeout(tick, 200);
+            };
+            tick();
+        } catch (error) {
+            console.warn('Could not watch for speech while muted:', error);
+        }
+    }
+
+    stopMutedSpeechMonitor() {
+        const monitor = this.mutedSpeechMonitor;
+        if (!monitor) return;
+        this.mutedSpeechMonitor = null;
+        try { monitor.source.disconnect(); } catch { /* already gone */ }
+        monitor.clone.stop();
+    }
+
+    showMutedSpeechToast() {
+        const toast = document.getElementById('mutedSpeechToast');
+        if (!toast) return;
+        // The Space hint is wrong on a phone, which has no Space bar
+        toast.querySelector('.call-toast-hint').hidden = !!this.isMobileLayout;
+        toast.classList.remove('hidden');
+        hydrateIcons(toast);
+        // Shown once per stretch of talking, then quiet for a while
+        this.mutedSpeechCooldownUntil = Date.now() + 15000;
+        clearTimeout(this.mutedSpeechHideTimer);
+        this.mutedSpeechHideTimer = setTimeout(() => this.hideMutedSpeechToast(), 6000);
+    }
+
+    hideMutedSpeechToast() {
+        clearTimeout(this.mutedSpeechHideTimer);
+        const toast = document.getElementById('mutedSpeechToast');
+        if (toast) toast.classList.add('hidden');
+    }
+
+    // ── Unmute requests ─────────────────────────────────────────────────
+
+    showUnmuteRequest(by) {
+        if (this.audioEnabled || !this.hasLocalTrack('audio')) return;
+        const toast = document.getElementById('unmuteRequestToast');
+        if (!toast) return;
+        document.getElementById('unmuteRequestText').textContent = `${by} is asking you to unmute`;
+        toast.classList.remove('hidden');
+        hydrateIcons(toast);
+        this.playHandSound();
+        clearTimeout(this.unmuteRequestTimer);
+        this.unmuteRequestTimer = setTimeout(() => this.hideUnmuteRequest(), 20000);
+    }
+
+    hideUnmuteRequest() {
+        clearTimeout(this.unmuteRequestTimer);
+        const toast = document.getElementById('unmuteRequestToast');
+        if (toast) toast.classList.add('hidden');
+    }
+
+    applyRemoteMutedIndicator(peerId) {
+        const container = document.getElementById(`video-${peerId}`);
+        if (!container) return;
+        let indicator = container.querySelector('.muted-indicator');
+        if (this.peerAudioStates.get(peerId) === false) {
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.className = 'muted-indicator';
+                setIcon(indicator, 'mic-off');
+                container.appendChild(indicator);
+            }
+        } else if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    // ── Raise hand ──────────────────────────────────────────────────────
+
+    toggleHand() {
+        if (!this.currentRoom) return;
+        this.sendMessage({ type: 'raise-hand', raised: !this.handRaised });
+    }
+
+    lowerHand(clientId) {
+        if (clientId === this.clientId) {
+            this.sendMessage({ type: 'raise-hand', raised: false });
+        } else if (this.isModerator) {
+            this.sendMessage({ type: 'lower-hand', targetId: clientId });
+        }
+    }
+
+    applyHands(hands) {
+        this.raisedHands = hands;
+        this.handRaised = hands.some(h => h.clientId === this.clientId);
+
+        const label = document.querySelector('#raiseHandBtn .raise-hand-label');
+        if (label) label.textContent = this.handRaised ? 'Lower Hand' : 'Raise Hand';
+        document.getElementById('raiseHandBtn')?.classList.toggle('active', this.handRaised);
+        document.getElementById('reactBtn')?.classList.toggle('hand-up', this.handRaised);
+
+        this.renderHandBadges();
+    }
+
+    // A hand and its place in the queue on each tile. Your own badge, and
+    // everyone's for a moderator, lowers the hand when clicked.
+    renderHandBadges() {
+        document.querySelectorAll('.hand-badge').forEach(el => el.remove());
+        this.raisedHands.forEach((hand, index) => {
+            const isSelf = hand.clientId === this.clientId;
+            const container = document.getElementById(isSelf ? 'localContainer' : `video-${hand.clientId}`);
+            if (!container) return;
+
+            const canLower = isSelf || this.isModerator;
+            const badge = document.createElement(canLower ? 'button' : 'div');
+            badge.className = 'hand-badge';
+            badge.innerHTML = `${iconSvg('hand')}<span class="hand-order">${index + 1}</span>`;
+            badge.title = canLower
+                ? (isSelf ? 'Lower your hand' : `Lower ${hand.username}'s hand`)
+                : `${hand.username} raised their hand (#${index + 1})`;
+            if (canLower) {
+                badge.addEventListener('click', (e) => {
+                    e.stopPropagation();  // tiles toggle spotlight on click
+                    this.lowerHand(hand.clientId);
+                });
+            }
+            container.appendChild(badge);
+        });
+    }
+
+    playHandSound() { this.playSoundTone(700, 1050, 0.12); }
+
+    // ── Reactions ───────────────────────────────────────────────────────
+
+    toggleReactionMenu(anchor) {
+        const menu = document.getElementById('reactionMenu');
+        if (!menu.classList.contains('hidden')) {
+            this.closeReactionMenu();
+            return;
+        }
+        if (!this.currentRoom) return;
+        menu.classList.remove('hidden');
+        hydrateIcons(menu);
+        anchor.setAttribute('aria-expanded', 'true');
+        this.positionReactionMenu(menu, anchor);
+        menu.querySelector('.reaction-pick').focus({ preventScroll: true });
+    }
+
+    // Fixed-position, so it can open from the tile strip, the dock or the rail.
+    // Above the button when there is room, otherwise below; clamped to the window.
+    positionReactionMenu(menu, anchor) {
+        const gap = 8;
+        const margin = 8;
+        const a = anchor.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        let top = a.top - m.height - gap;
+        if (top < margin) top = a.bottom + gap;
+        let left = a.left + a.width / 2 - m.width / 2;
+        left = Math.max(margin, Math.min(left, window.innerWidth - m.width - margin));
+        top = Math.max(margin, Math.min(top, window.innerHeight - m.height - margin));
+        menu.style.top = `${top}px`;
+        menu.style.left = `${left}px`;
+    }
+
+    closeReactionMenu() {
+        const menu = document.getElementById('reactionMenu');
+        if (!menu || menu.classList.contains('hidden')) return;
+        menu.classList.add('hidden');
+        document.getElementById('reactBtn')?.setAttribute('aria-expanded', 'false');
+    }
+
+    sendReaction(emoji) {
+        if (!this.currentRoom) return;
+        this.sendMessage({ type: 'reaction', emoji });
+    }
+
+    // The emoji floats up over the sender's tile. A burst is capped per tile
+    // so a held key cannot bury the video.
+    showReaction(clientId, emoji) {
+        const container = document.getElementById(clientId === this.clientId ? 'localContainer' : `video-${clientId}`);
+        if (!container) return;
+        const floating = container.querySelectorAll('.reaction-float');
+        if (floating.length >= 6) floating[0].remove();
+
+        const el = document.createElement('span');
+        el.className = 'reaction-float';
+        el.textContent = emoji;
+        el.style.left = `${15 + Math.random() * 60}%`;
+        el.setAttribute('aria-hidden', 'true');
+        container.appendChild(el);
+        const remove = () => el.remove();
+        el.addEventListener('animationend', remove, { once: true });
+        setTimeout(remove, 4000);  // reduced motion has no animationend to wait for
+    }
+
+    // ── Speaker view ────────────────────────────────────────────────────
+    // Reuses spotlight: the tile of whoever has been talking is spotlit.
+    // A tile spotlit by hand, or a screen share on screen, holds still.
+
+    toggleSpeakerView() {
+        this.speakerViewEnabled = !this.speakerViewEnabled;
+        localStorage.setItem('broference-speaker-view', String(this.speakerViewEnabled));
+        this.syncSpeakerViewButton();
+        if (this.speakerViewEnabled) {
+            this.startSpeakerView();
+        } else {
+            clearInterval(this.speakerViewInterval);
+            this.speakerViewInterval = null;
+            if (!this.manualSpotlight) this.exitSpotlight();
+        }
+        if (this.currentRoom) {
+            this.addChatMessage('System', `Speaker view ${this.speakerViewEnabled ? 'on' : 'off'}`, true);
+        }
+    }
+
+    syncSpeakerViewButton() {
+        const btn = document.getElementById('speakerViewBtn');
+        if (!btn) return;
+        btn.setAttribute('data-enabled', String(this.speakerViewEnabled));
+        btn.querySelector('.toggle-status').textContent = this.speakerViewEnabled ? 'ON' : 'OFF';
+    }
+
+    startSpeakerView() {
+        clearInterval(this.speakerViewInterval);
+        this.speakerViewInterval = setInterval(() => this.updateSpeakerView(), 400);
+    }
+
+    updateSpeakerView() {
+        if (!this.speakerViewEnabled || this.manualSpotlight || !this.currentRoom) return;
+        if (this.videoGrid.querySelector('.screen-tile')) return;
+
+        const now = performance.now();
+        const isTalking = c => c._lastSpokeAt && now - c._lastSpokeAt < SPEECH_GAP_MS;
+
+        const current = this.videoGrid.querySelector('.spotlight-active');
+        // The current speaker keeps the stage through a short pause
+        if (current && current._lastSpokeAt && now - current._lastSpokeAt < SPEAKER_HOLD_MS) return;
+
+        // Remote camera tiles only: your own face is not who you want to watch
+        let next = null;
+        this.videoGrid.querySelectorAll('.video-container[id^="video-"]:not(.screen-tile)').forEach(c => {
+            if (c.id === this.speakerDismissedId) return;
+            if (!isTalking(c) || now - c._speakingSince < SPEAKER_SWITCH_MS) return;
+            if (!next || c._speakingSince < next._speakingSince) next = c;
+        });
+        if (next && next !== current) {
+            this.speakerDismissedId = null;
+            this.toggleSpotlight(next.id, { auto: true });
+        }
+    }
+
+    // ── Keyboard shortcuts ──────────────────────────────────────────────
+    // Alt (Option on a Mac) plus a letter, matched on the physical key so they
+    // work on any layout. Skipped while typing, where Option+letter is how a Mac
+    // types characters. Hold Space to talk while muted.
+
+    initKeyboardShortcuts() {
+        const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+        if (isMac) document.querySelectorAll('.mod-key').forEach(k => { k.textContent = '⌥'; });
+
+        const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeReactionMenu();
+                if (!document.getElementById('shortcutsModal').classList.contains('hidden')) this.toggleShortcuts();
+                return;
+            }
+            if (isTyping(e.target)) return;
+
+            if (e.code === 'Space' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                if (this.pttActive) { e.preventDefault(); return; }  // key repeat
+                if (e.repeat || !this.currentRoom || this.audioEnabled || !this.hasLocalTrack('audio')) return;
+                e.preventDefault();  // a focused button would otherwise click on Space
+                this.pttActive = true;
+                this.hideMutedSpeechToast();
+                this.toggleAudio();
+                document.getElementById('localContainer').classList.add('push-to-talk');
+                return;
+            }
+
+            if (e.key === '?' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                this.toggleShortcuts();
+                return;
+            }
+
+            if (!e.altKey || e.ctrlKey || e.metaKey || e.repeat || !this.currentRoom) return;
+            const actions = {
+                KeyA: () => this.toggleAudio(),
+                KeyV: () => this.toggleVideo(),
+                KeyY: () => this.toggleHand(),
+                KeyR: () => this.toggleReactionMenu(document.getElementById('reactBtn')),
+                KeyH: () => this.toggleChat(),
+                KeyS: () => { if (!document.getElementById('shareScreenBtn').disabled) this.toggleScreenShare(); },
+                KeyL: () => this.toggleSpeakerView(),
+                KeyM: () => this.muteEveryone()
+            };
+            const action = actions[e.code];
+            if (!action) return;
+            e.preventDefault();
+            action();
+        });
+
+        const releasePushToTalk = () => {
+            if (!this.pttActive) return;
+            this.pttActive = false;
+            document.getElementById('localContainer').classList.remove('push-to-talk');
+            if (this.audioEnabled) this.toggleAudio();
+        };
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space' && this.pttActive) {
+                e.preventDefault();
+                releasePushToTalk();
+            }
+        });
+        // Letting go of Space in another window would otherwise leave us live
+        window.addEventListener('blur', releasePushToTalk);
+    }
+
+    toggleShortcuts() {
+        document.getElementById('shortcutsModal').classList.toggle('hidden');
+        document.getElementById('shortcutsOverlay').classList.toggle('hidden');
     }
 
     sendMessage(message) {

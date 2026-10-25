@@ -60,6 +60,17 @@ ADMIN_SECRET = os.environ.get('ADMIN_SECRET') or secrets.token_hex(16)
 QUIC_PORT = int(os.environ.get('QUIC_PORT', '8767'))
 QUIC_ENABLED = os.environ.get('QUIC_ENABLED', '1') not in ('0', 'false', 'False')
 
+# Local development only: SIGNALING_TLS=0 serves plain ws:// so the full server
+# can run on localhost without certificates (the client already uses ws:// when
+# the page is on localhost). QUIC needs TLS, so it is skipped in this mode.
+SIGNALING_TLS = os.environ.get('SIGNALING_TLS', '1') not in ('0', 'false', 'False')
+
+# Reactions are relayed as-is to every tile, so only this fixed set is accepted,
+# and each client is held to one per REACTION_MIN_INTERVAL seconds so a held-down
+# key cannot flood the room.
+ALLOWED_REACTIONS = {'👍', '👏', '❤️', '😂', '😮', '🎉'}
+REACTION_MIN_INTERVAL = 0.25
+
 # How long users are given between the restart warning and the containers going
 # down. scripts/update-vps.sh sleeps for the same span, so keep the two in step — both
 # default to 60 and both read RESTART_GRACE_SECONDS from .env.
@@ -385,6 +396,8 @@ async def unregister_client(websocket: Peer):
             if rooms[room].get('presenter') == client_id:
                 await release_presenter(room)
 
+            await set_hand(room, client_id, False, username=username)
+
             # Transfer mod role if the disconnecting user was the moderator
             await transfer_mod_if_needed(room, client_id)
 
@@ -412,7 +425,8 @@ async def create_room(room_id: str, password: Optional[str] = None,
             'co_mods': set(),   # Additional co-moderators promoted by the owner
             'banned': set(),
             'e2ee_enabled': False,
-            'presenter': None   # Client id currently sharing their screen (one at a time)
+            'presenter': None,  # Client id currently sharing their screen (one at a time)
+            'hands': []         # Client ids with a raised hand, oldest first
         }
 
         # Initialize IRC bridge if channel specified and not already connected
@@ -586,7 +600,8 @@ async def join_room(websocket: Peer, room_id: str, password: Optional[str] = Non
         'e2eeEnabled': rooms[room_id].get('e2ee_enabled', False),
         'presenterId': rooms[room_id].get('presenter'),
         'presenterUsername': (get_username_by_id(room_id, rooms[room_id]['presenter'])
-                              if rooms[room_id].get('presenter') else None)
+                              if rooms[room_id].get('presenter') else None),
+        'hands': hand_queue(room_id)
     }))
 
     # Notify others in room
@@ -676,6 +691,8 @@ async def leave_room(websocket: Peer):
         if rooms[room].get('presenter') == client_info['id']:
             await release_presenter(room)
 
+        await set_hand(room, client_info['id'], False, username=client_info['username'])
+
         # Transfer mod role if the leaver was the moderator
         await transfer_mod_if_needed(room, client_info['id'])
 
@@ -706,6 +723,44 @@ async def release_presenter(room_id: str):
         'type': 'screen-share-state',
         'presenterId': None,
         'username': None
+    })
+
+
+def hand_queue(room_id: str) -> list:
+    """The raised hands in a room, oldest first, with current usernames."""
+    if room_id not in rooms:
+        return []
+    return [{'clientId': cid, 'username': get_username_by_id(room_id, cid)}
+            for cid in rooms[room_id].get('hands', [])]
+
+
+async def set_hand(room_id: str, client_id: str, raised: bool, by: Optional[str] = None,
+                   username: Optional[str] = None):
+    """Raise or lower one hand and send everyone the whole queue.
+
+    The full queue goes out every time rather than a delta, so the order shown
+    on every tile is always the server's and can never drift between clients.
+    Pass `username` when the client has already been taken out of the room,
+    since the lookup by id can no longer find them there.
+    """
+    if room_id not in rooms:
+        return
+    hands = rooms[room_id].setdefault('hands', [])
+    if raised == (client_id in hands):
+        return
+    if raised:
+        hands.append(client_id)
+    else:
+        hands.remove(client_id)
+    await broadcast_to_room(room_id, {
+        'type': 'hands',
+        'hands': hand_queue(room_id),
+        'changed': {
+            'clientId': client_id,
+            'username': username or get_username_by_id(room_id, client_id),
+            'raised': raised,
+            'by': by
+        }
     })
 
 
@@ -1062,6 +1117,69 @@ async def handle_message(websocket: Peer, message: str):
                     'type': 'error',
                     'message': 'Only moderators can stop screen shares'
                 }))
+
+        elif msg_type == 'raise-hand':
+            client_info = clients[websocket]
+            room = client_info['room']
+            if room and room in rooms:
+                await set_hand(room, client_info['id'], bool(data.get('raised')))
+
+        elif msg_type == 'lower-hand':
+            # A moderator clearing someone else's hand, e.g. once they have spoken
+            client_info = clients[websocket]
+            room = client_info['room']
+            target_id = data.get('targetId')
+            if room and room in rooms and is_privileged(rooms[room], client_info['id']):
+                await set_hand(room, target_id, False, by=client_info['username'])
+
+        elif msg_type == 'reaction':
+            client_info = clients[websocket]
+            room = client_info['room']
+            emoji = data.get('emoji')
+            now = asyncio.get_event_loop().time()
+            if (room and emoji in ALLOWED_REACTIONS and
+                    now - client_info.get('last_reaction', 0) >= REACTION_MIN_INTERVAL):
+                client_info['last_reaction'] = now
+                await broadcast_to_room(room, {
+                    'type': 'reaction',
+                    'clientId': client_info['id'],
+                    'emoji': emoji
+                })
+
+        elif msg_type == 'mute-all':
+            # Mutes everyone the sender is allowed to act on. Co-mods therefore
+            # leave the owner and the other co-mods alone, same as mute-user.
+            client_info = clients[websocket]
+            room = client_info['room']
+            if room and room in rooms and is_privileged(rooms[room], client_info['id']):
+                muted = 0
+                for ws in list(rooms[room]['users']):
+                    info = clients.get(ws)
+                    if not info or ws is websocket:
+                        continue
+                    if can_act_on(rooms[room], client_info['id'], info['id']):
+                        await ws.send(json.dumps({
+                            'type': 'force-mute',
+                            'by': client_info['username']
+                        }))
+                        muted += 1
+                await websocket.send(json.dumps({'type': 'mute-all-done', 'count': muted}))
+            else:
+                await websocket.send(json.dumps({
+                    'type': 'error',
+                    'message': 'Only moderators can mute everyone'
+                }))
+
+        elif msg_type == 'request-unmute':
+            # Never unmutes anyone: the target is asked, and only they can say yes.
+            client_info = clients[websocket]
+            room = client_info['room']
+            target_id = data.get('targetId')
+            if room and room in rooms and can_act_on(rooms[room], client_info['id'], target_id):
+                await relay_to_peer(target_id, {
+                    'type': 'unmute-request',
+                    'by': client_info['username']
+                })
 
         elif msg_type == 'change-name':
             # User changing their name
@@ -1578,19 +1696,23 @@ async def main():
     port = 8765
     quic_port = QUIC_PORT
 
-    # Find SSL certificates
-    cert_path, key_path = find_ssl_certificates()
+    ssl_context = None
+    cert_path = key_path = None
+    if SIGNALING_TLS:
+        # Find SSL certificates
+        cert_path, key_path = find_ssl_certificates()
 
-    # SSL context for WSS
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    try:
-        ssl_context.load_cert_chain(cert_path, key_path)
-        logger.info(f"Loaded SSL certificates: {cert_path}, {key_path}")
-    except Exception as e:
-        logger.error(f"Failed to load SSL certificates: {e}")
-        raise
-
-    logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
+        # SSL context for WSS
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            ssl_context.load_cert_chain(cert_path, key_path)
+            logger.info(f"Loaded SSL certificates: {cert_path}, {key_path}")
+        except Exception as e:
+            logger.error(f"Failed to load SSL certificates: {e}")
+            raise
+        logger.info(f"Starting enhanced WebRTC signaling server on wss://{host}:{port}")
+    else:
+        logger.warning(f"SIGNALING_TLS=0: serving plain ws://{host}:{port} -- local development only")
     logger.info("Features: Multi-participant, IRC bridge (on-demand), Password protection")
     if not os.environ.get('ADMIN_SECRET'):
         logger.warning("ADMIN_SECRET not set in environment — a random secret was generated for this session")
@@ -1615,7 +1737,7 @@ async def main():
         # QUIC is strictly an addition. If aioquic is missing, the UDP port is
         # taken, or the handshake stack blows up, we log it and carry on with
         # WSS — a QUIC problem must never take signaling down.
-        if QUIC_ENABLED:
+        if QUIC_ENABLED and SIGNALING_TLS:
             try:
                 from webtransport_server import serve_webtransport
                 await serve_webtransport(run_session, host, quic_port, cert_path, key_path)
@@ -1624,7 +1746,7 @@ async def main():
             except Exception as e:
                 logger.error(f'QUIC/WebTransport listener failed to start on udp/{quic_port}: {e}')
         else:
-            logger.info('QUIC/WebTransport disabled (QUIC_ENABLED=0)')
+            logger.info('QUIC/WebTransport disabled (QUIC_ENABLED=0 or SIGNALING_TLS=0)')
         await asyncio.Future()  # Run forever
 
 

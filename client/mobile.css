@@ -592,6 +592,16 @@ html.mobile .hotmic-warning {
     font-size: 13px;
 }
 
+/* Call toasts sit just above the dock, not under it */
+html.mobile .call-toast {
+    bottom: calc(var(--dock-h) + 10px + var(--sab));
+    font-size: 13px;
+}
+
+html.mobile #unmuteRequestToast {
+    bottom: calc(var(--dock-h) + 64px + var(--sab));
+}
+
 html.mobile .restart-warning {
     padding: calc(10px + var(--sat)) 12px 10px;
     flex-wrap: wrap;
@@ -665,6 +675,17 @@ html.mobile .landing-join-btn {
         [data-participants="16"]) {
         --tile-cols: 3;
         --tile-aspect: 16 / 9;
+    }
+
+    /* The dock is a rail on the right here, so toasts drop to the bottom
+       edge and stay clear of it. */
+    html.mobile .call-toast {
+        bottom: calc(10px + var(--sab));
+        max-width: calc(100vw - 2 * (min(46px, 12vh) + 32px));
+    }
+
+    html.mobile #unmuteRequestToast {
+        bottom: calc(64px + var(--sab));
     }
 
     /* The status pill must not sit under the rail. */
