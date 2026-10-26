@@ -1,6 +1,6 @@
 # BroFerence — WebRTC Video Conferencing
 
-**Live demo:** https://broference.cam/
+**Live demo:** https://bro.interdo.me/ _(temporary host while broference.cam is down)_
 
 <img width="1913" height="910" alt="image" src="https://github.com/user-attachments/assets/132524df-a1e2-4266-b78b-cade81818ff8" />
 <p></p>

@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;600;800&display=swap">
-    <link rel="stylesheet" href="styles.css?v=breach2">
-    <link rel="stylesheet" href="mobile.css?v=breach2">
+    <link rel="stylesheet" href="styles.css?v=quickwins1">
+    <link rel="stylesheet" href="mobile.css?v=quickwins1">
 </head>
 <body>
     <!-- Red Team theme backdrop: animated matrix rain, drawn only while
@@ -342,6 +342,13 @@
                         <span class="toggle-label"><span class="ic-wrap" data-icon="signal"></span> Low Bandwidth Mode</span>
                         <span class="toggle-status">OFF</span>
                     </button>
+                    <button id="speakerViewBtn" class="options-item options-toggle" data-enabled="false">
+                        <span class="toggle-label"><span class="ic-wrap" data-icon="spotlight"></span> Speaker View</span>
+                        <span class="toggle-status">OFF</span>
+                    </button>
+                    <button id="muteAllBtn" class="options-item" style="display:none;">
+                        <span class="ic-wrap" data-icon="mic-off"></span> Mute Everyone
+                    </button>
                     <button id="e2eeToggleBtn" class="options-item options-toggle" data-enabled="false" style="display:none;">
                         <span class="toggle-label"><span class="ic-wrap" data-icon="key"></span> End-to-End Encryption</span>
                         <span class="toggle-status">OFF</span>
@@ -415,6 +422,9 @@
                     </button>
                     <button id="defconBtn" class="options-item">
                         <span class="ic-wrap" data-icon="tv-off"></span> DEFCON
+                    </button>
+                    <button id="shortcutsBtn" class="options-item desktop-only">
+                        <span class="ic-wrap" data-icon="keyboard"></span> Keyboard Shortcuts
                     </button>
                     <a href="https://github.com/s4turns/BroFerence/issues" target="_blank" rel="noopener noreferrer" class="options-item options-item-link">
                         <span class="ic-wrap" data-icon="bug"></span> Report a Bug
@@ -580,6 +590,37 @@
             <button id="hotMicDismissBtn" class="hotmic-dismiss" title="Dismiss"><span class="ic-wrap" data-icon="x"></span></button>
         </div>
 
+        <!-- "You're muted" toast: shown when you talk with the mic off -->
+        <div id="mutedSpeechToast" class="call-toast hidden" role="status">
+            <span class="ic-wrap call-toast-icon" data-icon="mic-off"></span>
+            <span class="call-toast-text"><strong>You're muted.</strong> <span class="call-toast-hint">Hold Space to talk.</span></span>
+            <button id="mutedSpeechUnmuteBtn" class="call-toast-action">Unmute</button>
+            <button id="mutedSpeechDismissBtn" class="call-toast-dismiss" title="Dismiss"><span class="ic-wrap" data-icon="x"></span></button>
+        </div>
+
+        <!-- A moderator asking you to unmute. Only you can say yes. -->
+        <div id="unmuteRequestToast" class="call-toast hidden" role="alertdialog" aria-labelledby="unmuteRequestText">
+            <span class="ic-wrap call-toast-icon" data-icon="mic"></span>
+            <span id="unmuteRequestText" class="call-toast-text"></span>
+            <button id="unmuteRequestAcceptBtn" class="call-toast-action">Unmute</button>
+            <button id="unmuteRequestDeclineBtn" class="call-toast-action call-toast-secondary">Stay muted</button>
+        </div>
+
+        <!-- Reactions and raise hand, opened from the reactions button -->
+        <div id="reactionMenu" class="reaction-menu hidden" role="menu" aria-label="Reactions">
+            <div class="reaction-row">
+                <button class="reaction-pick" data-emoji="👍" title="Thumbs up" role="menuitem">👍</button>
+                <button class="reaction-pick" data-emoji="👏" title="Clap" role="menuitem">👏</button>
+                <button class="reaction-pick" data-emoji="❤️" title="Heart" role="menuitem">❤️</button>
+                <button class="reaction-pick" data-emoji="😂" title="Laugh" role="menuitem">😂</button>
+                <button class="reaction-pick" data-emoji="😮" title="Wow" role="menuitem">😮</button>
+                <button class="reaction-pick" data-emoji="🎉" title="Celebrate" role="menuitem">🎉</button>
+            </div>
+            <button id="raiseHandBtn" class="reaction-hand" role="menuitem">
+                <span class="ic-wrap" data-icon="hand"></span> <span class="raise-hand-label">Raise Hand</span>
+            </button>
+        </div>
+
         <!-- Server restart countdown -->
         <div id="restartWarning" class="restart-warning hidden" role="alert">
             <span class="ic-wrap" data-icon="alert-triangle"></span>
@@ -608,6 +649,9 @@
                         </button>
                         <button id="shareScreenBtn" class="control-btn" title="Share Screen">
                             <span class="icon" data-icon="screen-share"></span>
+                        </button>
+                        <button id="reactBtn" class="control-btn" title="Reactions and raise hand" aria-haspopup="menu" aria-expanded="false">
+                            <span class="icon" data-icon="smile"></span>
                         </button>
                     </div>
                 </div>
@@ -657,6 +701,27 @@
     </div>
 
     <!-- Changelog Modal -->
+    <div id="shortcutsOverlay" class="options-overlay hidden"></div>
+    <div id="shortcutsModal" class="options-menu shortcuts-modal hidden" role="dialog" aria-labelledby="shortcutsTitle">
+        <div class="options-header">
+            <h3 id="shortcutsTitle">Keyboard Shortcuts</h3>
+            <button id="closeShortcutsBtn" class="btn-icon"><span class="ic-wrap" data-icon="x"></span></button>
+        </div>
+        <dl class="shortcuts-list">
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>A</kbd></dt><dd>Mute / unmute</dd>
+            <dt>Hold <kbd>Space</kbd></dt><dd>Talk while muted</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>V</kbd></dt><dd>Camera on / off</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>Y</kbd></dt><dd>Raise / lower hand</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>R</kbd></dt><dd>Reactions</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>H</kbd></dt><dd>Chat</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>S</kbd></dt><dd>Share screen</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>L</kbd></dt><dd>Speaker view</dd>
+            <dt><kbd class="mod-key">Alt</kbd> <kbd>M</kbd></dt><dd>Mute everyone (moderators)</dd>
+            <dt><kbd>?</kbd></dt><dd>This list</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Close menus</dd>
+        </dl>
+    </div>
+
     <div id="changelogOverlay" class="options-overlay hidden"></div>
     <div id="changelogModal" class="options-menu hidden">
         <div class="options-header">
@@ -930,7 +995,7 @@
         </div>
     </div>
 
-    <script src="icons.js?v=breach2"></script>
-    <script src="conference.js?v=breach2"></script>
+    <script src="icons.js?v=quickwins1"></script>
+    <script src="conference.js?v=quickwins1"></script>
 </body>
 </html>

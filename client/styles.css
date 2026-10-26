@@ -4028,6 +4028,311 @@ body::before {
 }
 
 /* ============================================================
+   Raise hand, reactions, call toasts, keyboard shortcuts
+   Built on the theme tokens, so every theme picks them up as is.
+   ============================================================ */
+
+/* Hand badge, top-left of a tile, with the place in the queue */
+.hand-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 9px 5px 7px;
+    background: var(--warning);
+    color: #111;
+    border: none;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    animation: hand-pop 0.35s ease-out;
+}
+
+.hand-badge .ic {
+    width: 16px;
+    height: 16px;
+}
+
+button.hand-badge {
+    cursor: pointer;
+}
+
+button.hand-badge:hover {
+    filter: brightness(1.1);
+}
+
+@keyframes hand-pop {
+    0%   { transform: scale(0.4) rotate(-20deg); opacity: 0; }
+    70%  { transform: scale(1.12) rotate(6deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); }
+}
+
+/* Reactions button shows when your own hand is up */
+.control-btn.hand-up {
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
+/* Floating reaction: rises from the bottom of the sender's tile and fades */
+.reaction-float {
+    position: absolute;
+    bottom: 18%;
+    z-index: 7;
+    font-size: clamp(28px, 6vmin, 52px);
+    line-height: 1;
+    pointer-events: none;
+    animation: reaction-rise 2.6s ease-out forwards;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+@keyframes reaction-rise {
+    0%   { transform: translateY(0) scale(0.5); opacity: 0; }
+    12%  { transform: translateY(-10%) scale(1.15); opacity: 1; }
+    70%  { opacity: 1; }
+    100% { transform: translateY(-260%) scale(1); opacity: 0; }
+}
+
+/* Reactions menu: a small floating panel anchored to the button by JS */
+.reaction-menu {
+    position: fixed;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: var(--darker);
+    border: 2px solid var(--primary);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+}
+
+.reaction-menu.hidden {
+    display: none;
+}
+
+.reaction-row {
+    display: flex;
+    gap: 4px;
+}
+
+.reaction-pick {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.reaction-pick:hover,
+.reaction-pick:focus-visible {
+    transform: scale(1.18);
+    background: var(--light);
+    border-color: var(--border);
+    outline: none;
+}
+
+.reaction-hand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.reaction-hand .ic-wrap {
+    display: inline-flex;
+}
+
+.reaction-hand .ic {
+    width: 18px;
+    height: 18px;
+}
+
+.reaction-hand:hover {
+    background: var(--light);
+}
+
+.reaction-hand.active {
+    background: var(--warning);
+    border-color: var(--warning);
+    color: #111;
+}
+
+/* Call toasts: "You're muted", and a moderator asking you to unmute */
+.call-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100vw - 32px);
+    padding: 10px 12px 10px 14px;
+    background: var(--darker);
+    color: var(--gray);
+    border: 2px solid var(--warning);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+    font-size: 14px;
+    animation: call-toast-in 0.2s ease-out;
+}
+
+.call-toast.hidden {
+    display: none;
+}
+
+#unmuteRequestToast {
+    bottom: 120px;  /* clear of the muted toast if both are up */
+    border-color: var(--primary);
+}
+
+.call-toast-icon {
+    display: inline-flex;
+    color: var(--warning);
+    flex-shrink: 0;
+}
+
+#unmuteRequestToast .call-toast-icon {
+    color: var(--primary);
+}
+
+.call-toast-icon .ic {
+    width: 20px;
+    height: 20px;
+}
+
+.call-toast-text strong {
+    color: var(--secondary);
+}
+
+.call-toast-action {
+    padding: 6px 12px;
+    background: var(--primary);
+    color: var(--darker);
+    border: 1px solid var(--primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.call-toast-action:hover {
+    filter: brightness(1.1);
+}
+
+.call-toast-secondary {
+    background: transparent;
+    color: var(--primary);
+}
+
+.call-toast-dismiss {
+    display: inline-flex;
+    background: none;
+    border: none;
+    color: var(--gray);
+    cursor: pointer;
+    padding: 2px;
+    opacity: 0.7;
+}
+
+.call-toast-dismiss:hover {
+    opacity: 1;
+}
+
+.call-toast-dismiss .ic {
+    width: 16px;
+    height: 16px;
+}
+
+@keyframes call-toast-in {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Push-to-talk: your tile shows it is live while Space is held */
+.video-container.push-to-talk {
+    border-color: var(--warning);
+    box-shadow: 0 0 0 2px var(--warning);
+}
+
+/* Keyboard shortcuts panel */
+.shortcuts-modal {
+    width: 420px;
+    max-width: 92vw;
+}
+
+.shortcuts-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px 18px;
+    align-items: center;
+    padding: 16px 20px 20px;
+    margin: 0;
+    color: var(--gray);
+    font-size: 14px;
+}
+
+.shortcuts-list dt {
+    white-space: nowrap;
+    color: var(--gray);
+}
+
+.shortcuts-list dd {
+    margin: 0;
+}
+
+.shortcuts-list kbd {
+    display: inline-block;
+    min-width: 24px;
+    padding: 2px 7px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    background: var(--light);
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hand-badge,
+    .call-toast {
+        animation: none;
+    }
+
+    /* Still shown, just without the flight */
+    .reaction-float {
+        animation: reaction-fade 2.2s steps(1, end) forwards;
+    }
+}
+
+@keyframes reaction-fade {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* ============================================================
    Theme: Tron (The Grid)
    Blue-black void, lightcycle cyan, white-hot cores.
    Orange is reserved for danger/derezzed states.
