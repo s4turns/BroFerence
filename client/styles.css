@@ -2028,7 +2028,7 @@ body::before {
     color: #000;
 }
 
-.github-link {
+.source-link {
     display: flex;
     align-items: center;
     color: var(--primary);
@@ -2037,13 +2037,13 @@ body::before {
     filter: drop-shadow(0 0 3px var(--primary));
 }
 
-.github-link:hover {
+.source-link:hover {
     color: var(--secondary);
     filter: drop-shadow(0 0 5px var(--secondary));
     transform: scale(1.1);
 }
 
-.github-link svg {
+.source-link svg {
     width: 20px;
     height: 20px;
 }

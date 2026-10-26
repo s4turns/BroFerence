@@ -86,7 +86,7 @@ For other platforms or a manual package install, see the [official Docker instal
 
 **2. Clone the repo**
 ```bash
-git clone https://github.com/s4turns/BroFerence.git
+git clone https://git.interdo.me/interdome/BroFerence.git
 cd BroFerence
 ```
 
@@ -649,4 +649,4 @@ pip install -r server/requirements.txt
 
 ---
 
-[GitHub](https://github.com/s4turns/BroFerence) · [Issues](https://github.com/s4turns/BroFerence/issues)
+[Source](https://git.interdo.me/interdome/BroFerence) · [Issues](https://git.interdo.me/interdome/BroFerence/issues) · [GitHub mirror](https://github.com/s4turns/BroFerence) (read-only)
